@@ -22,17 +22,17 @@ export default async function CustomerDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: customer, error } = await supabase
+  const { data: customer } = await supabase
     .from("customers")
     .select("*")
     .eq("id", id)
     .single();
 
-  if (error || !customer) {
+  if (!customer) {
     notFound();
   }
 
-  const bomConfig = customer.bom_config as Record<string, unknown>;
+  const bomConfig = customer.bom_config as Record<string, unknown> | null;
 
   return (
     <div className="space-y-6">
