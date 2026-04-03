@@ -19,7 +19,7 @@ import {
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, enabled: true },
   { name: "Customers", href: "/customers", icon: Users, enabled: true },
-  { name: "BOMs", href: "/bom", icon: FileSpreadsheet, enabled: false },
+  { name: "BOMs", href: "/bom", icon: FileSpreadsheet, enabled: true },
   { name: "Quotes", href: "/quotes", icon: Calculator, enabled: false },
   { name: "Jobs", href: "/jobs", icon: Briefcase, enabled: false },
   { name: "Procurement", href: "/procurement", icon: ShoppingCart, enabled: false },
