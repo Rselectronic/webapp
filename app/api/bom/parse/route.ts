@@ -156,7 +156,7 @@ export async function POST(request: Request) {
         is_pcb: true,
         is_dni: false,
         m_code: null,
-        m_code_confidence: null,
+        m_code_confidence: null as unknown as number,
         m_code_source: null,
       });
     }

@@ -42,7 +42,8 @@ export function UploadForm({ customers }: UploadFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const handleCustomerChange = useCallback(async (id: string) => {
+  const handleCustomerChange = useCallback(async (id: string | null) => {
+    if (!id) return;
     setCustomerId(id);
     setGmpId("");
     setIsNewGmp(false);
@@ -133,7 +134,7 @@ export function UploadForm({ customers }: UploadFormProps) {
           <Label>GMP (Board / Product)</Label>
           {gmps.length > 0 && !isNewGmp ? (
             <div className="flex gap-2">
-              <Select value={gmpId} onValueChange={setGmpId}>
+              <Select value={gmpId} onValueChange={(v) => v && setGmpId(v)}>
                 <SelectTrigger className="flex-1">
                   <SelectValue placeholder="Select existing GMP..." />
                 </SelectTrigger>
@@ -203,8 +204,8 @@ export function UploadForm({ customers }: UploadFormProps) {
                   className="hidden"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
-                <Button variant="outline" size="sm" asChild>
-                  <span>Browse files</span>
+                <Button variant="outline" size="sm" type="button">
+                  Browse files
                 </Button>
               </label>
             </div>

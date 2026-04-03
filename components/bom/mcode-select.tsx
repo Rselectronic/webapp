@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -36,21 +35,18 @@ export function McodeSelect({ value, source, onSelect }: McodeSelectProps) {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn(
-            "justify-between min-w-[90px] text-xs font-mono",
-            !value && "text-orange-600 border-orange-300 bg-orange-50",
-            value && source === "manual" && "border-blue-300 bg-blue-50",
-            value && source === "database" && "border-green-300 bg-green-50",
-            value && source === "rules" && "border-gray-200"
-          )}
-        >
-          {value ?? "Assign"}
-          <ChevronsUpDown className="ml-1 h-3 w-3 opacity-50 shrink-0" />
-        </Button>
+      <PopoverTrigger
+        className={cn(
+          "inline-flex items-center justify-between min-w-[90px] rounded-md border px-2 py-1 text-xs font-mono hover:bg-accent transition-colors",
+          !value && "text-orange-600 border-orange-300 bg-orange-50",
+          value && source === "manual" && "border-blue-300 bg-blue-50",
+          value && source === "database" && "border-green-300 bg-green-50",
+          value && source === "rules" && "border-gray-200 bg-white",
+          !value && !source && "border-gray-200 bg-white"
+        )}
+      >
+        {value ?? "Assign"}
+        <ChevronsUpDown className="ml-1 h-3 w-3 opacity-50 shrink-0" />
       </PopoverTrigger>
       <PopoverContent className="w-[260px] p-1" align="start">
         <div className="space-y-0.5">
