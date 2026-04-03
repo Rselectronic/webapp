@@ -20,13 +20,13 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, enabled: true },
   { name: "Customers", href: "/customers", icon: Users, enabled: true },
   { name: "BOMs", href: "/bom", icon: FileSpreadsheet, enabled: true },
-  { name: "Quotes", href: "/quotes", icon: Calculator, enabled: false },
+  { name: "Quotes", href: "/quotes", icon: Calculator, enabled: true },
   { name: "Jobs", href: "/jobs", icon: Briefcase, enabled: false },
   { name: "Procurement", href: "/procurement", icon: ShoppingCart, enabled: false },
   { name: "Production", href: "/production", icon: Factory, enabled: false },
   { name: "Invoices", href: "/invoices", icon: FileText, enabled: false },
   { name: "Reports", href: "/reports", icon: BarChart3, enabled: false },
-  { name: "Settings", href: "/settings", icon: Settings, enabled: false },
+  { name: "Settings", href: "/settings", icon: Settings, enabled: true },
 ];
 
 export function Sidebar() {

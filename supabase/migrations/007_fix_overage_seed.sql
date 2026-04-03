@@ -1,0 +1,48 @@
+-- Fix overage seed: Sprint 2 used wrong column names.
+-- Schema is: m_code TEXT, qty_threshold INT, extras INT
+
+TRUNCATE public.overage_table;
+
+INSERT INTO public.overage_table (m_code, qty_threshold, extras) VALUES
+('0201', 1,    50),
+('0201', 100,  70),
+('0201', 500,  100),
+('0201', 1000, 150),
+('0402', 1,    50),
+('0402', 60,   60),
+('0402', 100,  70),
+('0402', 200,  80),
+('0402', 300,  100),
+('0402', 500,  120),
+('CP',   1,    10),
+('CP',   60,   30),
+('CP',   100,  35),
+('CP',   200,  40),
+('CP',   300,  50),
+('CP',   500,  60),
+('CPEXP', 1,   10),
+('CPEXP', 60,  25),
+('CPEXP', 100, 30),
+('CPEXP', 200, 35),
+('CPEXP', 500, 45),
+('IP',   1,    5),
+('IP',   10,   5),
+('IP',   20,   10),
+('IP',   50,   15),
+('IP',   100,  20),
+('IP',   250,  20),
+('TH',   1,    1),
+('TH',   10,   1),
+('TH',   20,   2),
+('TH',   50,   5),
+('TH',   100,  5),
+('TH',   250,  20),
+('MANSMT', 1,   2),
+('MANSMT', 50,  3),
+('MANSMT', 100, 5),
+('MEC',  1,    1),
+('MEC',  100,  2),
+('Accs', 1,    1),
+('CABLE', 1,   1),
+('DEV B', 1,   1)
+ON CONFLICT (m_code, qty_threshold) DO UPDATE SET extras = EXCLUDED.extras;
