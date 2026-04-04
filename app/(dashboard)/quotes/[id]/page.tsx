@@ -106,7 +106,7 @@ export default async function QuoteDetailPage({
         </div>
 
         <div className="flex gap-2">
-          <QuoteActions quoteId={id} currentStatus={quote.status} />
+          <QuoteActions quoteId={id} currentStatus={quote.status} quantity={qtyValues[0]} />
           <Link href={`/api/quotes/${id}/pdf`} target="_blank">
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />

@@ -13,14 +13,18 @@ const STATUS_TRANSITIONS: Record<string, { label: string; next: string }> = {
 interface QuoteActionsProps {
   quoteId: string;
   currentStatus: string;
+  quantity?: number;
 }
 
-export function QuoteActions({ quoteId, currentStatus }: QuoteActionsProps) {
+export function QuoteActions({
+  quoteId,
+  currentStatus,
+  quantity,
+}: QuoteActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const transition = STATUS_TRANSITIONS[currentStatus];
-  if (!transition) return null;
 
   async function handleAdvance() {
     if (!transition) return;
@@ -45,9 +49,42 @@ export function QuoteActions({ quoteId, currentStatus }: QuoteActionsProps) {
     }
   }
 
+  async function handleCreateJob() {
+    if (!quantity) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote_id: quoteId, quantity }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to create job");
+      }
+      const job = (await res.json()) as { id: string; job_number: string };
+      router.push(`/jobs/${job.id}`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Job creation failed:", err);
+      alert(err instanceof Error ? err.message : "Failed to create job");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <Button size="sm" disabled={loading} onClick={handleAdvance}>
-      {loading ? "Updating..." : transition.label}
-    </Button>
+    <div className="flex gap-2">
+      {transition && (
+        <Button size="sm" disabled={loading} onClick={handleAdvance}>
+          {loading ? "Updating..." : transition.label}
+        </Button>
+      )}
+      {currentStatus === "accepted" && (
+        <Button size="sm" disabled={loading || !quantity} onClick={handleCreateJob}>
+          {loading ? "Creating..." : "Create Job"}
+        </Button>
+      )}
+    </div>
   );
 }
