@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Clock, Package, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { JobStatusBadge } from "@/components/jobs/job-status-badge";
+import { JobActions } from "@/components/jobs/job-actions";
 
 interface JobCustomer {
   code: string;
@@ -19,6 +21,32 @@ interface JobQuote {
   quote_number: string;
 }
 
+interface StatusLogEntry {
+  old_status: string | null;
+  new_status: string;
+  notes: string | null;
+  created_at: string;
+}
+
+interface ProductionEvent {
+  id: string;
+  event_type: string;
+  notes: string | null;
+  created_at: string;
+  users: { full_name: string } | null;
+}
+
+const PROCUREMENT_ELIGIBLE_STATUSES = [
+  "procurement",
+  "parts_ordered",
+  "parts_received",
+  "production",
+  "inspection",
+  "shipping",
+  "delivered",
+  "invoiced",
+];
+
 export default async function JobDetailPage({
   params,
 }: {
@@ -27,22 +55,41 @@ export default async function JobDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("jobs")
-    .select(
-      "*, customers(code, company_name), gmps(gmp_number, board_name), quotes(quote_number)"
-    )
-    .eq("id", id)
-    .single();
+  const [jobResult, statusLogResult, productionResult] = await Promise.all([
+    supabase
+      .from("jobs")
+      .select(
+        "*, customers(code, company_name), gmps(gmp_number, board_name), quotes(quote_number)"
+      )
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("job_status_log")
+      .select("old_status, new_status, notes, created_at")
+      .eq("job_id", id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("production_events")
+      .select("id, event_type, notes, created_at, users:operator_id(full_name)")
+      .eq("job_id", id)
+      .order("created_at", { ascending: true }),
+  ]);
 
-  if (error || !data) {
+  if (jobResult.error || !jobResult.data) {
     notFound();
   }
 
-  const job = data;
+  const job = jobResult.data;
   const customer = job.customers as unknown as JobCustomer | null;
   const gmp = job.gmps as unknown as JobGmp | null;
   const quote = job.quotes as unknown as JobQuote | null;
+  const statusLog = (statusLogResult.data ?? []) as unknown as StatusLogEntry[];
+  const productionEvents = (productionResult.data ??
+    []) as unknown as ProductionEvent[];
+
+  const canCreateProcurement = PROCUREMENT_ELIGIBLE_STATUSES.includes(
+    job.status
+  );
 
   return (
     <div className="space-y-6">
@@ -53,15 +100,14 @@ export default async function JobDetailPage({
         </Button>
       </Link>
 
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
             <h2 className="font-mono text-2xl font-bold text-gray-900">
               {job.job_number}
             </h2>
-            <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium capitalize text-gray-700">
-              {job.status.replace(/_/g, " ")}
-            </span>
+            <JobStatusBadge status={job.status} />
           </div>
           <p className="mt-1 text-gray-500">
             {customer
@@ -71,9 +117,22 @@ export default async function JobDetailPage({
             {gmp?.board_name ? ` (${gmp.board_name})` : ""}
           </p>
         </div>
+
+        <div className="flex gap-2">
+          <JobActions jobId={id} currentStatus={job.status} />
+          {canCreateProcurement && (
+            <Link href={`/procurement/new?job_id=${id}`}>
+              <Button variant="outline" size="sm">
+                <Plus className="mr-1.5 h-4 w-4" />
+                Create Procurement
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Info cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">Quantity</CardTitle>
@@ -85,7 +144,9 @@ export default async function JobDetailPage({
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500">Assembly Type</CardTitle>
+            <CardTitle className="text-sm text-gray-500">
+              Assembly Type
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{job.assembly_type ?? "TB"}</p>
@@ -108,39 +169,151 @@ export default async function JobDetailPage({
           </Card>
         )}
 
-        {job.scheduled_start && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">Scheduled Start</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p>{new Date(job.scheduled_start).toLocaleDateString()}</p>
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">
+              Scheduled Start
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm">
+              {job.scheduled_start
+                ? new Date(job.scheduled_start).toLocaleDateString()
+                : "Not set"}
+            </p>
+          </CardContent>
+        </Card>
 
-        {job.scheduled_completion && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-500">Scheduled Completion</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p>{new Date(job.scheduled_completion).toLocaleDateString()}</p>
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">
+              Scheduled Completion
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm">
+              {job.scheduled_completion
+                ? new Date(job.scheduled_completion).toLocaleDateString()
+                : "Not set"}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
+      {/* Notes */}
       {job.notes && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm text-gray-500">Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="whitespace-pre-wrap text-sm text-gray-700">{job.notes}</p>
+            <p className="whitespace-pre-wrap text-sm text-gray-700">
+              {job.notes}
+            </p>
           </CardContent>
         </Card>
       )}
+
+      {/* Status Timeline + Production Events side by side */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Status Timeline */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Clock className="h-4 w-4" />
+              Status Timeline
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {statusLog.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                No status changes recorded yet.
+              </p>
+            ) : (
+              <ol className="relative border-l border-gray-200 ml-2">
+                {statusLog.map((entry, i) => (
+                  <li key={i} className="mb-6 ml-6 last:mb-0">
+                    <span className="absolute -left-2 flex h-4 w-4 items-center justify-center rounded-full bg-blue-100 ring-4 ring-white">
+                      <span className="h-2 w-2 rounded-full bg-blue-600" />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        {entry.old_status && (
+                          <>
+                            <span className="text-xs capitalize text-gray-400">
+                              {entry.old_status.replace(/_/g, " ")}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              &rarr;
+                            </span>
+                          </>
+                        )}
+                        <span className="text-sm font-medium capitalize text-gray-900">
+                          {entry.new_status.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      <time className="text-xs text-gray-500">
+                        {new Date(entry.created_at).toLocaleString()}
+                      </time>
+                      {entry.notes && (
+                        <p className="mt-1 text-xs text-gray-600">
+                          {entry.notes}
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Production Events */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Package className="h-4 w-4" />
+              Production Events
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {productionEvents.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                No production events logged yet.
+              </p>
+            ) : (
+              <ol className="relative border-l border-gray-200 ml-2">
+                {productionEvents.map((event) => {
+                  const operator = event.users as unknown as {
+                    full_name: string;
+                  } | null;
+                  return (
+                    <li key={event.id} className="mb-6 ml-6 last:mb-0">
+                      <span className="absolute -left-2 flex h-4 w-4 items-center justify-center rounded-full bg-green-100 ring-4 ring-white">
+                        <span className="h-2 w-2 rounded-full bg-green-600" />
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium capitalize text-gray-900">
+                          {event.event_type.replace(/_/g, " ")}
+                        </span>
+                        <time className="text-xs text-gray-500">
+                          {new Date(event.created_at).toLocaleString()}
+                          {operator ? ` by ${operator.full_name}` : ""}
+                        </time>
+                        {event.notes && (
+                          <p className="mt-1 text-xs text-gray-600">
+                            {event.notes}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

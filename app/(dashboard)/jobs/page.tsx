@@ -1,4 +1,9 @@
+import Link from "next/link";
+import { LayoutGrid, List } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
+import { JobKanban } from "@/components/jobs/job-kanban";
+import { JobStatusBadge } from "@/components/jobs/job-status-badge";
 
 interface Job {
   id: string;
@@ -13,26 +18,62 @@ interface Job {
   gmps: { gmp_number: string; board_name: string | null } | null;
 }
 
-export default async function JobsPage() {
+export default async function JobsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; status?: string }>;
+}) {
+  const { view, status } = await searchParams;
+  const activeView = view === "table" ? "table" : "kanban";
+
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("jobs")
     .select(
       "id, job_number, status, quantity, assembly_type, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name)"
     )
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(200);
+
+  if (status) {
+    query = query.eq("status", status);
+  }
+
+  const { data, error } = await query;
 
   const jobs = (data ?? []) as unknown as Job[];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Jobs</h2>
-        <p className="mt-1 text-gray-500">
-          Track jobs from creation through production to delivery.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Jobs</h2>
+          <p className="mt-1 text-gray-500">
+            Track jobs from creation through production to delivery.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Link href={`/jobs?view=kanban${status ? `&status=${status}` : ""}`}>
+            <Button
+              variant={activeView === "kanban" ? "default" : "outline"}
+              size="sm"
+            >
+              <LayoutGrid className="mr-1.5 h-4 w-4" />
+              Kanban
+            </Button>
+          </Link>
+          <Link href={`/jobs?view=table${status ? `&status=${status}` : ""}`}>
+            <Button
+              variant={activeView === "table" ? "default" : "outline"}
+              size="sm"
+            >
+              <List className="mr-1.5 h-4 w-4" />
+              Table
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -45,17 +86,34 @@ export default async function JobsPage() {
         <div className="rounded-md border border-dashed p-8 text-center text-gray-500">
           No jobs yet. Create a job from an accepted quote.
         </div>
+      ) : activeView === "kanban" ? (
+        <JobKanban jobs={jobs} />
       ) : (
         <div className="overflow-x-auto rounded-md border">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Job #</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Customer</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">GMP</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Qty</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Created</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Job #
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Customer
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  GMP
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Qty
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Assembly
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Created
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -73,16 +131,19 @@ export default async function JobsPage() {
                       </a>
                     </td>
                     <td className="px-4 py-3">
-                      {customer ? `${customer.code} — ${customer.company_name}` : "—"}
+                      {customer
+                        ? `${customer.code} — ${customer.company_name}`
+                        : "—"}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">
                       {gmp?.gmp_number ?? "—"}
                     </td>
                     <td className="px-4 py-3">{job.quantity}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {job.assembly_type ?? "TB"}
+                    </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium capitalize text-gray-700">
-                        {job.status.replace(/_/g, " ")}
-                      </span>
+                      <JobStatusBadge status={job.status} />
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {new Date(job.created_at).toLocaleDateString()}
