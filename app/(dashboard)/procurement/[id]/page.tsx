@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Package, PackageCheck, ShoppingCart, ClipboardList } from "lucide-react";
+import { ArrowLeft, Package, PackageCheck, ShoppingCart, ClipboardList, FileText } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { formatDateTime } from "@/lib/utils/format";
 import { ReceiveButton } from "@/components/procurement/receive-button";
+import { CreatePOButton } from "@/components/procurement/create-po-button";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -94,6 +95,12 @@ export default async function ProcurementDetailPage({
     .eq("procurement_id", id)
     .order("created_at", { ascending: true });
 
+  const { data: supplierPOs } = await supabase
+    .from("supplier_pos")
+    .select("*")
+    .eq("procurement_id", id)
+    .order("created_at", { ascending: false });
+
   const job = proc.jobs as unknown as ProcJob | null;
   const customer = job?.customers as unknown as {
     code: string;
@@ -151,6 +158,15 @@ export default async function ProcurementDetailPage({
             </p>
           )}
         </div>
+        <CreatePOButton
+          procurementId={id}
+          lines={procLines.map((l) => ({
+            id: l.id,
+            mpn: l.mpn,
+            supplier: l.supplier,
+            order_status: l.order_status,
+          }))}
+        />
       </div>
 
       {/* Summary cards */}
@@ -296,6 +312,79 @@ export default async function ProcurementDetailPage({
               })}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {/* Supplier POs */}
+      {(supplierPOs ?? []).length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Supplier Purchase Orders
+          </h3>
+          <div className="rounded-lg border bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>PO Number</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead className="text-right">Lines</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">PDF</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(supplierPOs ?? []).map((po) => {
+                  const poLines = Array.isArray(po.lines) ? po.lines : [];
+                  return (
+                    <TableRow key={po.id}>
+                      <TableCell className="font-mono text-sm font-medium">
+                        {po.po_number}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {po.supplier_name}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {poLines.length}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        ${Number(po.total_amount || 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            po.status === "sent"
+                              ? "bg-blue-100 text-blue-700"
+                              : po.status === "received" || po.status === "closed"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-700"
+                          }
+                        >
+                          {po.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-500">
+                        {formatDateTime(po.created_at)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <a
+                          href={`/api/supplier-pos/${po.id}/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Button variant="outline" size="sm">
+                            <FileText className="mr-1 h-3 w-3" />
+                            PDF
+                          </Button>
+                        </a>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
