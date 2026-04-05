@@ -3,6 +3,7 @@ import { logout } from "@/app/(auth)/login/actions";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { SearchCommand } from "@/components/search-command";
 
 export async function Topbar() {
   const supabase = await createClient();
@@ -34,7 +35,7 @@ export async function Topbar() {
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-      <div />
+      <SearchCommand />
       <div className="flex items-center gap-4">
         {profile && (
           <>

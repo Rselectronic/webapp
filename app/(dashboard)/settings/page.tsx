@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, FileSpreadsheet, Cpu } from "lucide-react";
+import { DollarSign, FileSpreadsheet, Cpu, ScrollText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const settingsLinks = [
@@ -23,6 +23,13 @@ const settingsLinks = [
       "View the 47 PAR classification rules used by the M-Code engine.",
     href: "/settings/m-codes",
     icon: Cpu,
+  },
+  {
+    title: "Audit Log",
+    description:
+      "View a chronological log of all data changes across the system. CEO only.",
+    href: "/settings/audit",
+    icon: ScrollText,
   },
 ];
 
