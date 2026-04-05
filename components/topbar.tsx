@@ -34,15 +34,15 @@ export async function Topbar() {
   };
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-white px-6">
+    <div className="flex h-full w-full items-center justify-between">
       <SearchCommand />
       <div className="flex items-center gap-4">
         {profile && (
           <>
-            <Badge variant="secondary">
+            <Badge variant="secondary" className="hidden sm:inline-flex">
               {roleLabel[profile.role] ?? profile.role}
             </Badge>
-            <span className="text-sm text-gray-600">{profile.full_name}</span>
+            <span className="hidden sm:inline text-sm text-gray-600">{profile.full_name}</span>
             <Avatar className="h-8 w-8">
               <AvatarFallback className="text-xs">{initials}</AvatarFallback>
             </Avatar>
@@ -54,6 +54,6 @@ export async function Topbar() {
           </Button>
         </form>
       </div>
-    </header>
+    </div>
   );
 }

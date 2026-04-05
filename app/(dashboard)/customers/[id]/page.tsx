@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Mail, Phone } from "lucide-react";
-import { formatPhone } from "@/lib/utils/format";
+import { formatPhone, formatDate, formatCurrency } from "@/lib/utils/format";
 
 export default async function CustomerDetailPage({
   params,
@@ -33,6 +33,53 @@ export default async function CustomerDetailPage({
   }
 
   const bomConfig = customer.bom_config as Record<string, unknown> | null;
+
+  const [quotesResult, jobsResult, invoicesResult] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select("id, quote_number, status, created_at, gmps(gmp_number)")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("jobs")
+      .select("id, job_number, status, quantity, created_at")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("invoices")
+      .select("id, invoice_number, status, total, created_at")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(10),
+  ]);
+
+  type QuoteRow = {
+    id: string;
+    quote_number: string;
+    status: string;
+    created_at: string;
+    gmps: { gmp_number: string } | null;
+  };
+  type JobRow = {
+    id: string;
+    job_number: string;
+    status: string;
+    quantity: number;
+    created_at: string;
+  };
+  type InvoiceRow = {
+    id: string;
+    invoice_number: string;
+    status: string;
+    total: number;
+    created_at: string;
+  };
+
+  const quotes = (quotesResult.data ?? []) as unknown as QuoteRow[];
+  const jobs = (jobsResult.data ?? []) as unknown as JobRow[];
+  const invoices = (invoicesResult.data ?? []) as unknown as InvoiceRow[];
 
   return (
     <div className="space-y-6">
@@ -142,10 +189,121 @@ export default async function CustomerDetailPage({
             Recent quotes, jobs, and invoices for this customer
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="py-8 text-center text-sm text-gray-500">
-            Order history will appear here once quotes and jobs are created (Sprint 2+).
-          </p>
+        <CardContent className="space-y-8">
+          {/* Recent Quotes */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900">Recent Quotes</h3>
+            {quotes.length === 0 ? (
+              <p className="text-sm text-gray-500">No quotes yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-gray-500">
+                      <th className="pb-2 pr-4 font-medium">Quote #</th>
+                      <th className="pb-2 pr-4 font-medium">GMP</th>
+                      <th className="pb-2 pr-4 font-medium">Status</th>
+                      <th className="pb-2 font-medium">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quotes.map((q) => (
+                      <tr key={q.id} className="border-b last:border-0">
+                        <td className="py-2 pr-4">
+                          <Link href={`/quotes/${q.id}`} className="text-blue-600 hover:underline">
+                            {q.quote_number}
+                          </Link>
+                        </td>
+                        <td className="py-2 pr-4 font-mono text-xs">{q.gmps?.gmp_number ?? "-"}</td>
+                        <td className="py-2 pr-4">
+                          <Badge variant="secondary" className="text-xs">{q.status}</Badge>
+                        </td>
+                        <td className="py-2 text-gray-500">{formatDate(q.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Recent Jobs */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900">Recent Jobs</h3>
+            {jobs.length === 0 ? (
+              <p className="text-sm text-gray-500">No jobs yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-gray-500">
+                      <th className="pb-2 pr-4 font-medium">Job #</th>
+                      <th className="pb-2 pr-4 font-medium">Status</th>
+                      <th className="pb-2 pr-4 font-medium">Qty</th>
+                      <th className="pb-2 font-medium">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobs.map((j) => (
+                      <tr key={j.id} className="border-b last:border-0">
+                        <td className="py-2 pr-4">
+                          <Link href={`/jobs/${j.id}`} className="text-blue-600 hover:underline">
+                            {j.job_number}
+                          </Link>
+                        </td>
+                        <td className="py-2 pr-4">
+                          <Badge variant="secondary" className="text-xs">{j.status}</Badge>
+                        </td>
+                        <td className="py-2 pr-4">{j.quantity}</td>
+                        <td className="py-2 text-gray-500">{formatDate(j.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Recent Invoices */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900">Recent Invoices</h3>
+            {invoices.length === 0 ? (
+              <p className="text-sm text-gray-500">No invoices yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-gray-500">
+                      <th className="pb-2 pr-4 font-medium">Invoice #</th>
+                      <th className="pb-2 pr-4 font-medium">Status</th>
+                      <th className="pb-2 pr-4 font-medium">Total</th>
+                      <th className="pb-2 font-medium">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map((inv) => (
+                      <tr key={inv.id} className="border-b last:border-0">
+                        <td className="py-2 pr-4">
+                          <Link href={`/invoices/${inv.id}`} className="text-blue-600 hover:underline">
+                            {inv.invoice_number}
+                          </Link>
+                        </td>
+                        <td className="py-2 pr-4">
+                          <Badge variant="secondary" className="text-xs">{inv.status}</Badge>
+                        </td>
+                        <td className="py-2 pr-4">{formatCurrency(inv.total)}</td>
+                        <td className="py-2 text-gray-500">{formatDate(inv.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
