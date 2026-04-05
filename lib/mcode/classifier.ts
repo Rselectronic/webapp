@@ -1,12 +1,14 @@
 import type { ClassificationInput, ClassificationResult } from "./types";
+import type { MCode } from "./types";
 import { classifyByRules } from "./rules";
+import { classifyWithAI } from "./ai-classifier";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * 3-Layer M-Code classification pipeline.
  * Layer 1: Database lookup by MPN
  * Layer 2: Rule engine (PAR rules)
- * Layer 3: API lookup (deferred to Sprint 3)
+ * Layer 3: Claude AI classification
  */
 export async function classifyComponent(
   input: ClassificationInput,
@@ -29,7 +31,23 @@ export async function classifyComponent(
     };
   }
 
-  // Layer 3: API — deferred
+  // Layer 3: AI classification (Claude)
+  const aiResult = await classifyWithAI(
+    input.mpn,
+    input.description,
+    input.manufacturer,
+    input.package_case
+  );
+  if (aiResult && aiResult.confidence >= 0.80) {
+    return {
+      m_code: aiResult.m_code as MCode,
+      confidence: aiResult.confidence,
+      source: "api",
+      rule_id: `AI: ${aiResult.reasoning}`,
+    };
+  }
+
+  // All layers failed
   return { m_code: null, confidence: 0, source: null };
 }
 
