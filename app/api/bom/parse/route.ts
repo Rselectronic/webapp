@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { parseBom } from "@/lib/bom/parser";
 import { resolveColumnMapping } from "@/lib/bom/column-mapper";
 import { classifyBomLines } from "@/lib/mcode/classifier";
@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
+  const admin = createAdminClient();
 
   const {
     data: { user },
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: customer } = await supabase
+  const { data: customer } = await admin
     .from("customers")
     .select("code, bom_config")
     .eq("id", customerId)
@@ -85,15 +86,15 @@ export async function POST(request: Request) {
     const mapping = resolveColumnMapping(bomConfig, headers);
     const parseResult = parseBom(rawRows, mapping, headers, bomConfig);
 
-    // Upload file to Supabase Storage
+    // Upload file to Supabase Storage (admin bypasses RLS)
     const filePath = `${customer.code}/${gmpId}/${file.name}`;
-    await supabase.storage.from("boms").upload(filePath, buffer, {
+    await admin.storage.from("boms").upload(filePath, buffer, {
       contentType: file.type || "application/octet-stream",
       upsert: true,
     });
 
-    // Create BOM record
-    const { data: bom, error: bomError } = await supabase
+    // Create BOM record (admin bypasses RLS)
+    const { data: bom, error: bomError } = await admin
       .from("boms")
       .insert({
         gmp_id: gmpId,
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
         cpc: l.cpc,
         manufacturer: l.manufacturer,
       })),
-      supabase
+      admin
     );
 
     // Build bom_lines rows
@@ -161,7 +162,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const { error: linesError } = await supabase.from("bom_lines").insert(bomLines);
+    const { error: linesError } = await admin.from("bom_lines").insert(bomLines);
     if (linesError) {
       return NextResponse.json(
         { error: "Failed to insert BOM lines", details: linesError.message },
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
     const unclassifiedCount = classificationResults.filter((r) => r.m_code === null).length;
 
     // Update BOM to parsed
-    await supabase
+    await admin
       .from("boms")
       .update({
         status: "parsed",
