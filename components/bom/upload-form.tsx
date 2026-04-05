@@ -197,17 +197,23 @@ export function UploadForm({ customers }: UploadFormProps) {
               <Upload className="h-10 w-10 text-gray-400" />
               <p className="font-medium">Drag & drop a BOM file here</p>
               <p className="text-sm text-gray-500">Supports .xlsx, .xls, .csv</p>
-              <label>
+              <div>
                 <input
+                  id="bom-file-input"
                   type="file"
                   accept=".xlsx,.xls,.csv"
                   className="hidden"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
-                <Button variant="outline" size="sm" type="button">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => document.getElementById("bom-file-input")?.click()}
+                >
                   Browse files
                 </Button>
-              </label>
+              </div>
             </div>
           )}
         </div>
