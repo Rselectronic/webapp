@@ -43,7 +43,7 @@ async function lookupInDatabase(
     .eq("mpn", mpn)
     .not("m_code", "is", null)
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (data?.m_code) {
     return { m_code: data.m_code, confidence: 0.95, source: "database" };

@@ -88,10 +88,15 @@ export async function POST(request: Request) {
 
     // Upload file to Supabase Storage (admin bypasses RLS)
     const filePath = `${customer.code}/${gmpId}/${file.name}`;
-    await admin.storage.from("boms").upload(filePath, buffer, {
+    const fileBuffer = new Uint8Array(buffer);
+    const { error: uploadError } = await admin.storage.from("boms").upload(filePath, fileBuffer, {
       contentType: file.type || "application/octet-stream",
       upsert: true,
     });
+    if (uploadError) {
+      console.error("[BOM UPLOAD] Storage error:", uploadError);
+      return NextResponse.json({ error: "File upload failed", details: uploadError.message }, { status: 500 });
+    }
 
     // Create BOM record (admin bypasses RLS)
     const { data: bom, error: bomError } = await admin
@@ -199,10 +204,12 @@ export async function POST(request: Request) {
       unclassified: unclassifiedCount,
     });
   } catch (err) {
+    console.error("[BOM PARSE] Error:", err);
     return NextResponse.json(
       {
         error: "Parse failed",
         details: err instanceof Error ? err.message : "Unknown error",
+        stack: err instanceof Error ? err.stack : undefined,
       },
       { status: 500 }
     );
