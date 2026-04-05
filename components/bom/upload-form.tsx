@@ -116,7 +116,9 @@ export function UploadForm({ customers }: UploadFormProps) {
         <Label>Customer</Label>
         <Select value={customerId} onValueChange={handleCustomerChange}>
           <SelectTrigger>
-            <SelectValue placeholder="Select a customer..." />
+            <SelectValue placeholder="Select a customer...">
+              {customerId ? (() => { const c = customers.find(c => c.id === customerId); return c ? `${c.code} — ${c.company_name}` : customerId; })() : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {customers.map((c) => (
@@ -136,7 +138,9 @@ export function UploadForm({ customers }: UploadFormProps) {
             <div className="flex gap-2">
               <Select value={gmpId} onValueChange={(v) => v && setGmpId(v)}>
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select existing GMP..." />
+                  <SelectValue placeholder="Select existing GMP...">
+                    {gmpId ? (() => { const g = gmps.find(g => g.id === gmpId); return g ? `${g.gmp_number}${g.board_name ? ` — ${g.board_name}` : ""}` : gmpId; })() : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {gmps.map((g) => (

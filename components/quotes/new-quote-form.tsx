@@ -176,7 +176,9 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
         <CardContent>
           <Select value={customerId} onValueChange={(v) => { if (v) handleCustomerChange(v); }}>
             <SelectTrigger>
-              <SelectValue placeholder="Select a customer..." />
+              <SelectValue placeholder="Select a customer...">
+                {customerId ? (() => { const c = customers.find(c => c.id === customerId); return c ? `${c.code} — ${c.company_name}` : customerId; })() : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {customers.map((c) => (
@@ -204,7 +206,9 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
             ) : (
               <Select value={bomId} onValueChange={(v) => { if (v) handleBomChange(v); }}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a BOM..." />
+                  <SelectValue placeholder="Select a BOM...">
+                    {bomId ? (() => { const b = boms.find(b => b.id === bomId); return b ? `${b.gmps?.gmp_number ?? "Unknown"} — ${b.file_name} (rev ${b.revision})` : bomId; })() : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {boms.map((b) => (
