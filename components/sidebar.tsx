@@ -25,7 +25,7 @@ const navigation = [
   { name: "Procurement", href: "/procurement", icon: ShoppingCart, enabled: true },
   { name: "Production", href: "/production", icon: Factory, enabled: true },
   { name: "Invoices", href: "/invoices", icon: FileText, enabled: true },
-  { name: "Reports", href: "/reports", icon: BarChart3, enabled: false },
+  { name: "Reports", href: "/reports", icon: BarChart3, enabled: true },
   { name: "Settings", href: "/settings", icon: Settings, enabled: true },
 ];
 
