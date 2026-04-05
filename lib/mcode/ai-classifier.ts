@@ -39,7 +39,7 @@ export async function classifyWithAI(
 
   try {
     const anthropic = getClient();
-    const prompt = `Classify this electronic component into one M-Code for PCB assembly.
+    const prompt = `You are an electronics manufacturing expert. Classify this component into exactly ONE M-Code.
 
 Component:
 - MPN: ${mpn}
@@ -47,10 +47,21 @@ Component:
 - Manufacturer: ${manufacturer}
 ${packageCase ? `- Package/Case: ${packageCase}` : ""}
 
-${MCODE_DEFINITIONS}
+VALID M-Codes (you MUST use one of these exact strings):
+- "CP" = Chip Package: standard SMT passives — resistors, capacitors, LEDs, diodes, small transistors in packages like 0603, 0805, 1206, SOD-323, SOT-23
+- "0402" = 0402-size passives only
+- "0201" = 0201-size passives only
+- "CPEXP" = Expanded Chip: larger SMT like SO8, SOT-89, MSOP-8, SSOP
+- "IP" = IC Package: large ICs — QFP, BGA, TSSOP-48, LQFP, microcontrollers, FPGAs, voltage regulators in large packages
+- "TH" = Through-Hole: connectors, headers, DIP packages, electrolytic caps, transformers
+- "MANSMT" = Manual SMT: DPAK, D2PAK, large thermal pads, RF modules
+- "MEC" = Mechanical: standoffs, heatsinks, brackets, screws, spacers
+- "Accs" = Accessories: labels, tapes, clips
+- "CABLE" = Cables and wiring
+- "DEV B" = Development boards
 
-Respond with ONLY a JSON object (no markdown, no backticks):
-{"m_code": "XX", "confidence": 0.XX, "reasoning": "one sentence why"}`;
+Respond with ONLY a raw JSON object, NO markdown, NO backticks:
+{"m_code": "CP", "confidence": 0.95, "reasoning": "one sentence"}`;
 
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -58,9 +69,11 @@ Respond with ONLY a JSON object (no markdown, no backticks):
       messages: [{ role: "user", content: prompt }],
     });
 
-    const text =
-      response.content[0].type === "text" ? response.content[0].text : "";
-    const parsed = JSON.parse(text.trim());
+    let text = response.content[0].type === "text" ? response.content[0].text : "";
+    // Strip markdown code fences if present
+    text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    console.log("[AI CLASSIFIER] Raw response:", text);
+    const parsed = JSON.parse(text);
 
     if (
       parsed.m_code &&

@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { MobileNav } from "@/components/mobile-nav";
+import { AIChat } from "@/components/chat/ai-chat";
 
 export default function DashboardLayout({
   children,
@@ -25,6 +26,7 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+      <AIChat />
     </div>
   );
 }
