@@ -77,21 +77,14 @@ export function parseBom(
       continue;
     }
 
-    // N.M. (Not Mounted) Filter
-    if (config.mount_filter_col && config.mount_exclude_values) {
-      const mountVal = String(row[config.mount_filter_col] ?? "")
-        .trim()
-        .toUpperCase();
-      if (
-        config.mount_exclude_values.some(
-          (v) => mountVal === v.toUpperCase()
-        )
-      ) {
-        log.push({
-          raw_row_index: i,
-          action: "NOT_MOUNTED",
-          detail: mountVal,
-        });
+    // N.M. (Not Mounted) Filter — check config or auto-detect "Mounted" column
+    const mountCol = config.mount_filter_col ??
+      headers.find((h) => h.toLowerCase().trim() === "mounted");
+    const mountExclude = config.mount_exclude_values ?? ["N.M.", "NOT MOUNTED", "NOT PLACE", "NOT PLACED", "DNM"];
+    if (mountCol) {
+      const mountVal = String(row[mountCol] ?? "").trim().toUpperCase();
+      if (mountVal && mountExclude.some((v) => mountVal === v.toUpperCase())) {
+        log.push({ raw_row_index: i, action: "NOT_MOUNTED", detail: mountVal });
         continue;
       }
     }
