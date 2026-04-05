@@ -270,7 +270,13 @@ function matchesCondition(
     case "contains":
       return strValue.includes(value);
     case "regex": {
-      const re = new RegExp(value);
+      // Strip Python-style (?i) flag and use JS "i" flag instead
+      let pattern = value;
+      let flags = "i"; // always case-insensitive for M-Code matching
+      if (pattern.startsWith("(?i)")) {
+        pattern = pattern.slice(4);
+      }
+      const re = new RegExp(pattern, flags);
       return re.test(strValue);
     }
     case "in":
