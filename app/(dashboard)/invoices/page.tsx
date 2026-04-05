@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, Clock, AlertTriangle, AlertCircle } from "lucide-react";
+import { DollarSign, Clock, AlertTriangle, AlertCircle, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -119,11 +119,19 @@ export default async function InvoicesPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Invoices</h2>
-        <p className="text-gray-500">
-          {filtered.length} invoice{filtered.length !== 1 ? "s" : ""}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Invoices</h2>
+          <p className="text-gray-500">
+            {filtered.length} invoice{filtered.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <a href="/api/export?table=invoices" download>
+          <Button variant="outline" size="sm">
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+        </a>
       </div>
 
       {/* Aging KPI Cards */}

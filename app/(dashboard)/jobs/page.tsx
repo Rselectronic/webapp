@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { JobKanban } from "@/components/jobs/job-kanban";
@@ -55,6 +55,12 @@ export default async function JobsPage({
         </div>
 
         <div className="flex items-center gap-2">
+          <a href="/api/export?table=jobs" download>
+            <Button variant="outline" size="sm">
+              <Download className="mr-1.5 h-4 w-4" />
+              Export CSV
+            </Button>
+          </a>
           <Link href={`/jobs?view=kanban${status ? `&status=${status}` : ""}`}>
             <Button
               variant={activeView === "kanban" ? "default" : "outline"}

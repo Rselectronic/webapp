@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,12 +51,20 @@ export default async function QuotesPage({
             {quotes?.length ?? 0} quote{quotes?.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Link href="/quotes/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Quote
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <a href="/api/export?table=quotes" download>
+            <Button variant="outline" size="sm">
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </a>
+          <Link href="/quotes/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New Quote
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Status filter tabs */}
