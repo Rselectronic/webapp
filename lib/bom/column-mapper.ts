@@ -72,8 +72,9 @@ export function autoDetectColumns(headers: string[]): ColumnMapping {
   }
 
   if (mapping.qty === undefined || mapping.mpn === undefined) {
+    const headerPreview = headers.slice(0, 20).join(", ");
     throw new Error(
-      `Could not auto-detect required columns. Found: ${JSON.stringify(mapping)}. Headers: ${JSON.stringify(headers)}`
+      `Could not auto-detect required columns (need at least qty + mpn). Found: ${JSON.stringify(mapping)}. Headers (first 20): [${headerPreview}]`
     );
   }
 

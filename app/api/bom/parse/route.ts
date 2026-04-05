@@ -61,16 +61,37 @@ export async function POST(request: Request) {
     if (bomConfig.columns_fixed) {
       headers = bomConfig.columns_fixed;
       dataStartIndex = 0;
-    } else if (bomConfig.header_row === null || bomConfig.header_row === undefined) {
-      headers = allRows[0].map((h) => String(h ?? ""));
-      dataStartIndex = 1;
-    } else {
+    } else if (bomConfig.header_row !== null && bomConfig.header_row !== undefined) {
       const headerRowIndex = bomConfig.header_row;
       if (allRows.length <= headerRowIndex) {
         return NextResponse.json({ error: "header_row exceeds file length" }, { status: 400 });
       }
       headers = allRows[headerRowIndex].map((h) => String(h ?? ""));
       dataStartIndex = headerRowIndex + 1;
+    } else {
+      // Auto-scan: try rows 0-20 to find the one with recognizable column headers
+      const knownHeaders = [
+        "qty", "quantity", "designator", "mpn", "manufacturer part number",
+        "description", "reference", "part number", "manufacturer", "value",
+        "ref des", "refdes", "manufacturer part", "qté",
+      ];
+      let foundRow = -1;
+      for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+        const rowStrs = (allRows[i] ?? []).map((c) => String(c ?? "").toLowerCase().trim()).filter(Boolean);
+        const matches = rowStrs.filter((s) => knownHeaders.some((kw) => s.includes(kw)));
+        if (matches.length >= 2) {
+          foundRow = i;
+          break;
+        }
+      }
+      if (foundRow >= 0) {
+        headers = allRows[foundRow].map((h) => String(h ?? ""));
+        dataStartIndex = foundRow + 1;
+      } else {
+        // Fallback: use row 0
+        headers = allRows[0].map((h) => String(h ?? ""));
+        dataStartIndex = 1;
+      }
     }
 
     // Convert to RawRow objects
