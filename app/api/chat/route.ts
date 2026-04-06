@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { streamText, stepCountIs } from "ai";
+import { streamText, stepCountIs, convertToModelMessages } from "ai";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { classifyWithAI } from "@/lib/mcode/ai-classifier";
@@ -14,8 +14,9 @@ const anthropic = createAnthropic({
 });
 
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  const { messages: uiMessages } = await req.json();
   const supabase = createAdminClient();
+  const messages = convertToModelMessages(uiMessages);
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
