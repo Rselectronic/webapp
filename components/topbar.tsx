@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { SearchCommand } from "@/components/search-command";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function Topbar() {
   const supabase = await createClient();
@@ -36,13 +37,14 @@ export async function Topbar() {
   return (
     <div className="flex h-full w-full items-center justify-between">
       <SearchCommand />
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        <ThemeToggle />
         {profile && (
           <>
             <Badge variant="secondary" className="hidden sm:inline-flex">
               {roleLabel[profile.role] ?? profile.role}
             </Badge>
-            <span className="hidden sm:inline text-sm text-gray-600">{profile.full_name}</span>
+            <span className="hidden sm:inline text-sm text-gray-600 dark:text-gray-400">{profile.full_name}</span>
             <Avatar className="h-8 w-8">
               <AvatarFallback className="text-xs">{initials}</AvatarFallback>
             </Avatar>

@@ -128,3 +128,20 @@
     @apply font-sans;
   }
 }
+
+/* Dark mode text visibility overrides for hardcoded gray text */
+.dark .text-gray-900 { color: oklch(0.95 0 0); }
+.dark .text-gray-800 { color: oklch(0.90 0 0); }
+.dark .text-gray-700 { color: oklch(0.85 0 0); }
+.dark .text-gray-600 { color: oklch(0.75 0 0); }
+.dark .text-gray-500 { color: oklch(0.65 0 0); }
+.dark .text-gray-400 { color: oklch(0.55 0 0); }
+
+/* Dark mode background overrides */
+.dark .bg-white { background-color: oklch(0.205 0 0); }
+.dark .bg-gray-50 { background-color: oklch(0.17 0 0); }
+.dark .bg-gray-100 { background-color: oklch(0.23 0 0); }
+
+/* Dark mode border overrides */
+.dark .border-gray-200 { border-color: oklch(1 0 0 / 10%); }
+.dark .border-gray-300 { border-color: oklch(1 0 0 / 15%); }
