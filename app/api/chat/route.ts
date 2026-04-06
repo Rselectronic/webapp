@@ -1,7 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { streamText, stepCountIs } from "ai";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { classifyWithAI } from "@/lib/mcode/ai-classifier";
 
 const anthropic = createAnthropic({
@@ -96,6 +96,19 @@ Types: CP (standard SMT ~59%), IP (large SMT ~15%), TH (through-hole ~12%), CPEX
 - Be concise but thorough when guiding workflows`;
 
 export async function POST(req: Request) {
+  // --- AUTH + ROLE CHECK ---
+  const userSupabase = await createClient();
+  const { data: { user } } = await userSupabase.auth.getUser();
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
+  const { data: profile } = await userSupabase.from("users").select("role").eq("id", user.id).single();
+  const userRole = profile?.role ?? "shop_floor";
+
+  // Shop floor gets read-only access (no write tools)
+  // Only CEO and operations_manager get full access
+  const isPrivileged = userRole === "ceo" || userRole === "operations_manager";
+
   const body = await req.json();
   const supabase = createAdminClient();
 
@@ -202,7 +215,7 @@ export async function POST(req: Request) {
         inputSchema: z.object({ query: z.string().describe("Search term") }),
         execute: async ({ query }: { query: string }) => {
           const [c, q, j, i] = await Promise.all([
-            supabase.from("customers").select("code, company_name").or(`code.ilike.%${query}%,company_name.ilike.%${query}%`).limit(5),
+            supabase.from("customers").select("code, company_name").or(`code.ilike.%${query.replace(/[,.()"\\]/g, "")}%,company_name.ilike.%${query.replace(/[,.()"\\]/g, "")}%`).limit(5),
             supabase.from("quotes").select("quote_number, status").ilike("quote_number", `%${query}%`).limit(5),
             supabase.from("jobs").select("job_number, status").ilike("job_number", `%${query}%`).limit(5),
             supabase.from("invoices").select("invoice_number, status, total").ilike("invoice_number", `%${query}%`).limit(5),
@@ -489,13 +502,14 @@ export async function POST(req: Request) {
       // ==========================================
 
       updateJobStatus: {
-        description: "Update a job's status. Valid transitions: created→procurement, procurement→parts_ordered→parts_received→production→inspection→shipping→delivered→invoiced",
+        description: isPrivileged ? "Update a job's status. Valid transitions: created→procurement→parts_ordered→parts_received→production→inspection→shipping→delivered→invoiced" : "DISABLED: requires CEO or Operations Manager role",
         inputSchema: z.object({
           job_number: z.string().describe("Job number"),
           new_status: z.string().describe("New status value"),
           notes: z.string().optional().describe("Optional note about the status change"),
         }),
         execute: async ({ job_number, new_status, notes }: { job_number: string; new_status: string; notes?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can update job status." };
           const { data: job } = await supabase.from("jobs").select("id, status").eq("job_number", job_number).single();
           if (!job) return { error: "Job not found" };
 
@@ -515,6 +529,7 @@ export async function POST(req: Request) {
           m_code: z.string().describe("M-Code to assign: CP, IP, TH, CPEXP, 0402, 0201, MANSMT, MEC, Accs, CABLE, DEV"),
         }),
         execute: async ({ bom_line_id, m_code }: { bom_line_id: string; m_code: string }) => {
+          if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can classify components." };
           const { error } = await supabase
             .from("bom_lines")
             .update({ m_code, m_code_source: "manual", m_code_confidence: 1.0, })
@@ -528,6 +543,7 @@ export async function POST(req: Request) {
         description: "Auto-classify all unclassified BOM lines for a BOM using AI. Returns how many were classified.",
         inputSchema: z.object({ bom_id: z.string().describe("BOM UUID to classify") }),
         execute: async ({ bom_id }: { bom_id: string }) => {
+          if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can batch-classify." };
           const { data: lines } = await supabase
             .from("bom_lines")
             .select("id, mpn, description, manufacturer, m_code, is_pcb, is_dni")
@@ -567,6 +583,7 @@ export async function POST(req: Request) {
         description: "Create a procurement (PROC) for a job. Auto-populates component lines from BOM with overage.",
         inputSchema: z.object({ job_number: z.string().describe("Job number to create procurement for") }),
         execute: async ({ job_number }: { job_number: string }) => {
+          if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can create procurement." };
           const { data: job } = await supabase.from("jobs").select("id, customer_id, bom_id, quantity, assembly_type, customers(code)").eq("job_number", job_number).single();
           if (!job) return { error: "Job not found" };
 
@@ -592,6 +609,7 @@ export async function POST(req: Request) {
         description: "Generate serial numbers for all boards in a job",
         inputSchema: z.object({ job_number: z.string().describe("Job number") }),
         execute: async ({ job_number }: { job_number: string }) => {
+          if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can generate serial numbers." };
           const { data: job } = await supabase.from("jobs").select("id, quantity").eq("job_number", job_number).single();
           if (!job) return { error: "Job not found" };
 

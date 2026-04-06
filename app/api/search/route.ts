@@ -18,7 +18,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const pattern = `%${q}%`;
+  // Sanitize input — strip PostgREST filter metacharacters to prevent filter injection
+  const sanitized = q.replace(/[,.()"\\]/g, "");
+  const pattern = `%${sanitized}%`;
 
   const [customers, quotes, jobs, invoices, components] = await Promise.all([
     supabase

@@ -39,8 +39,9 @@ export default async function CustomersPage({
   }
 
   if (params.search) {
+    const sanitized = params.search.replace(/[,.()"\\]/g, "");
     query = query.or(
-      `code.ilike.%${params.search}%,company_name.ilike.%${params.search}%`
+      `code.ilike.%${sanitized}%,company_name.ilike.%${sanitized}%`
     );
   }
 

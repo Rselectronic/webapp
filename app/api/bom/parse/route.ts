@@ -230,7 +230,6 @@ export async function POST(request: Request) {
       {
         error: "Parse failed",
         details: err instanceof Error ? err.message : "Unknown error",
-        stack: err instanceof Error ? err.stack : undefined,
       },
       { status: 500 }
     );
