@@ -3,19 +3,64 @@ import { createClient } from "@/lib/supabase/server";
 import { getOverage } from "@/lib/pricing/overage";
 import type { OverageTier } from "@/lib/pricing/types";
 
+/**
+ * Maps job assembly_type to the SOP X+Y code characters.
+ * X = B (Batch/multiple boards) or S (Single board)
+ * Y = T (Turnkey), A (Assembly Only), C (Consignment), P (PCB Only)
+ */
+const ASSEMBLY_TYPE_MAP: Record<string, string> = {
+  TB: "BT", // Top+Bottom → Batch Turnkey
+  TS: "ST", // Top-side only → Single Turnkey
+  CS: "BC", // Consignment → Batch Consignment
+  CB: "BA", // Customer Board → Batch Assembly
+  AS: "BA", // Assembly-only → Batch Assembly
+};
+
+/**
+ * Generates a proc code in SOP format: "YYMMDD CUST-XYNNN"
+ * Example: "250413 TLAN-BT029"
+ */
 async function generateProcCode(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  customerCode: string
+  customerCode: string,
+  assemblyType: string,
+  isBatch: boolean = true
 ): Promise<string> {
+  const xy = ASSEMBLY_TYPE_MAP[assemblyType] ?? "BT";
+  // Override the X character if caller explicitly specifies batch/single
+  const xChar = isBatch ? "B" : "S";
+  const yChar = xy[1] ?? "T";
+  const typeCode = `${xChar}${yChar}`;
+
   const now = new Date();
   const yy = String(now.getFullYear()).slice(2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const prefix = `${yy}${mm}-${customerCode}-TB`;
-  const { count } = await supabase
+  const dd = String(now.getDate()).padStart(2, "0");
+  const datePart = `${yy}${mm}${dd}`;
+
+  // Match existing codes for this customer + type code to find next sequence
+  // Format: "YYMMDD CUST-XYNNN" — match on "% CUST-XY%"
+  const pattern = `% ${customerCode}-${typeCode}%`;
+  const { data: existing } = await supabase
     .from("procurements")
-    .select("id", { count: "exact", head: true })
-    .like("proc_code", `${prefix}%`);
-  return `${prefix}${String((count ?? 0) + 1).padStart(3, "0")}`;
+    .select("proc_code")
+    .like("proc_code", pattern);
+
+  // Extract the highest NNN from existing codes
+  let maxSeq = 0;
+  const seqRegex = new RegExp(
+    `\\d{6} ${customerCode}-${typeCode}(\\d{3})$`
+  );
+  for (const row of existing ?? []) {
+    const match = row.proc_code.match(seqRegex);
+    if (match) {
+      const seq = parseInt(match[1], 10);
+      if (seq > maxSeq) maxSeq = seq;
+    }
+  }
+
+  const nextSeq = String(maxSeq + 1).padStart(3, "0");
+  return `${datePart} ${customerCode}-${typeCode}${nextSeq}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -49,7 +94,10 @@ export async function POST(req: NextRequest) {
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json()) as { job_id: string };
+  const body = (await req.json()) as {
+    job_id: string;
+    is_batch?: boolean;
+  };
 
   if (!body.job_id) {
     return NextResponse.json(
@@ -61,7 +109,7 @@ export async function POST(req: NextRequest) {
   // Fetch the job with customer code
   const { data: job } = await supabase
     .from("jobs")
-    .select("id, customer_id, bom_id, quantity, status, customers(code)")
+    .select("id, customer_id, bom_id, quantity, status, assembly_type, customers(code)")
     .eq("id", body.job_id)
     .single();
 
@@ -83,7 +131,14 @@ export async function POST(req: NextRequest) {
 
   const customer = job.customers as unknown as { code: string } | null;
   const customerCode = customer?.code ?? "UNK";
-  const procCode = await generateProcCode(supabase, customerCode);
+  const assemblyType = (job.assembly_type as string) ?? "TB";
+  const isBatch = body.is_batch ?? true;
+  const procCode = await generateProcCode(
+    supabase,
+    customerCode,
+    assemblyType,
+    isBatch
+  );
 
   // Fetch BOM lines (non-PCB)
   const { data: bomLines, error: bomError } = await supabase

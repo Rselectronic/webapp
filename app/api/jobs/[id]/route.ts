@@ -82,6 +82,7 @@ export async function PATCH(
     po_number?: string;
     scheduled_start?: string;
     scheduled_completion?: string;
+    metadata?: Record<string, unknown>;
   };
 
   // Look up current job
@@ -112,6 +113,7 @@ export async function PATCH(
   if (body.scheduled_start !== undefined) update.scheduled_start = body.scheduled_start;
   if (body.scheduled_completion !== undefined)
     update.scheduled_completion = body.scheduled_completion;
+  if (body.metadata !== undefined) update.metadata = body.metadata;
 
   const { data: updated, error: updateError } = await supabase
     .from("jobs")

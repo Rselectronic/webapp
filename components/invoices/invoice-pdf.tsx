@@ -17,6 +17,15 @@ function fmtDate(iso?: string | null): string {
   return new Date(iso).toLocaleDateString("en-CA");
 }
 
+export interface InvoiceLineItem {
+  job_number: string;
+  gmp_number: string;
+  board_name?: string | null;
+  quantity: number;
+  per_unit: number;
+  subtotal: number;
+}
+
 export interface InvoicePDFProps {
   invoiceNumber: string;
   customerName: string;
@@ -33,6 +42,8 @@ export interface InvoicePDFProps {
   total: number;
   paymentTerms: string;
   notes?: string | null;
+  /** For consolidated multi-job invoices */
+  lineItems?: InvoiceLineItem[];
 }
 
 const styles = StyleSheet.create({
@@ -242,6 +253,7 @@ export function InvoicePDF({
   total,
   paymentTerms,
   notes,
+  lineItems,
 }: InvoicePDFProps) {
   const dateStr = fmtDate(issuedDate);
   const dueDateStr = fmtDate(dueDate);
@@ -281,8 +293,16 @@ export function InvoicePDF({
           </View>
           <View style={styles.infoBlock}>
             <Text style={styles.sectionLabel}>Invoice Details</Text>
-            <Text style={styles.infoText}>Job: {jobNumber}</Text>
-            <Text style={styles.infoText}>GMP: {gmpNumber}</Text>
+            {lineItems && lineItems.length > 1 ? (
+              <Text style={styles.infoText}>
+                Jobs: {lineItems.map((li) => li.job_number).join(", ")}
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.infoText}>Job: {jobNumber}</Text>
+                <Text style={styles.infoText}>GMP: {gmpNumber}</Text>
+              </>
+            )}
             <Text style={styles.infoText}>Due Date: {dueDateStr}</Text>
             <Text style={styles.infoText}>Terms: {paymentTerms}</Text>
           </View>
@@ -291,21 +311,53 @@ export function InvoicePDF({
         {/* -- Line Items Table -- */}
         <View style={styles.table}>
           <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderLabel, { width: "70%" as unknown as number }]}>
+            <Text style={[styles.tableHeaderLabel, { width: "45%" as unknown as number }]}>
               Description
             </Text>
-            <Text style={[styles.tableHeaderCell, { width: "30%" as unknown as number }]}>
+            <Text style={[styles.tableHeaderCell, { width: "15%" as unknown as number }]}>
+              Qty
+            </Text>
+            <Text style={[styles.tableHeaderCell, { width: "20%" as unknown as number }]}>
+              Unit Price
+            </Text>
+            <Text style={[styles.tableHeaderCell, { width: "20%" as unknown as number }]}>
               Amount
             </Text>
           </View>
-          <View style={styles.tableRow}>
-            <Text style={[styles.tableCellLabel, { width: "70%" as unknown as number }]}>
-              PCB Assembly — Job {jobNumber} (GMP: {gmpNumber})
-            </Text>
-            <Text style={[styles.tableCell, { width: "30%" as unknown as number }]}>
-              {fmt(subtotal)}
-            </Text>
-          </View>
+          {lineItems && lineItems.length > 1 ? (
+            lineItems.map((item, idx) => (
+              <View key={idx} style={styles.tableRow}>
+                <Text style={[styles.tableCellLabel, { width: "45%" as unknown as number }]}>
+                  PCB Assembly — Job {item.job_number} (GMP: {item.gmp_number})
+                  {item.board_name ? ` — ${item.board_name}` : ""}
+                </Text>
+                <Text style={[styles.tableCell, { width: "15%" as unknown as number }]}>
+                  {item.quantity}
+                </Text>
+                <Text style={[styles.tableCell, { width: "20%" as unknown as number }]}>
+                  {fmt(item.per_unit)}
+                </Text>
+                <Text style={[styles.tableCell, { width: "20%" as unknown as number }]}>
+                  {fmt(item.subtotal)}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <View style={styles.tableRow}>
+              <Text style={[styles.tableCellLabel, { width: "45%" as unknown as number }]}>
+                PCB Assembly — Job {jobNumber} (GMP: {gmpNumber})
+              </Text>
+              <Text style={[styles.tableCell, { width: "15%" as unknown as number }]}>
+                {" "}
+              </Text>
+              <Text style={[styles.tableCell, { width: "20%" as unknown as number }]}>
+                {" "}
+              </Text>
+              <Text style={[styles.tableCell, { width: "20%" as unknown as number }]}>
+                {fmt(subtotal)}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* -- Summary -- */}

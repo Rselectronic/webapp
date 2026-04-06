@@ -21,6 +21,69 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const status = url.searchParams.get("status");
   const customerId = url.searchParams.get("customer_id");
+  const invoicable = url.searchParams.get("invoicable");
+
+  // Special mode: return jobs eligible for invoicing (shipped/delivered, not yet invoiced)
+  if (invoicable === "true" && customerId) {
+    // Get jobs that are shipped or delivered for this customer
+    const { data: candidateJobs, error: jobsErr } = await supabase
+      .from("jobs")
+      .select(
+        "id, job_number, quantity, gmps(gmp_number, board_name), quotes(pricing)"
+      )
+      .eq("customer_id", customerId)
+      .in("status", ["shipping", "delivered"])
+      .order("created_at", { ascending: false });
+
+    if (jobsErr) {
+      return NextResponse.json({ error: jobsErr.message }, { status: 500 });
+    }
+
+    // Filter out jobs that already have an invoice
+    const { data: existingInvoices } = await supabase
+      .from("invoices")
+      .select("job_id")
+      .eq("customer_id", customerId)
+      .neq("status", "cancelled");
+
+    const invoicedJobIds = new Set(
+      (existingInvoices ?? []).map((inv) => inv.job_id)
+    );
+
+    type CandidateJob = {
+      id: string;
+      job_number: string;
+      quantity: number;
+      gmps: { gmp_number: string; board_name: string | null } | null;
+      quotes: {
+        pricing: {
+          tiers?: { board_qty: number; subtotal: number }[];
+        };
+      } | null;
+    };
+
+    const invoicableJobs = ((candidateJobs ?? []) as unknown as CandidateJob[])
+      .filter((j) => !invoicedJobIds.has(j.id))
+      .map((j) => {
+        const tiers = j.quotes?.pricing?.tiers;
+        let subtotal = 0;
+        if (tiers?.length) {
+          const matched =
+            tiers.find((t) => t.board_qty === j.quantity) ?? tiers[0];
+          subtotal = matched.subtotal;
+        }
+        return {
+          id: j.id,
+          job_number: j.job_number,
+          quantity: j.quantity,
+          gmp_number: j.gmps?.gmp_number ?? "Unknown",
+          board_name: j.gmps?.board_name ?? null,
+          subtotal,
+        };
+      });
+
+    return NextResponse.json(invoicableJobs);
+  }
 
   let query = supabase
     .from("jobs")

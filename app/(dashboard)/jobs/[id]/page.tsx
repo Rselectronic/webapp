@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Clock, Package, Plus } from "lucide-react";
+import { ArrowLeft, Clock, FileText, Package, Plus, Printer } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
 import { JobActions } from "@/components/jobs/job-actions";
+import { ShippingActions } from "@/components/shipping/shipping-actions";
+import { NCRCreateDialog } from "@/components/ncr/ncr-create-dialog";
+import { PoPricingSection } from "@/components/jobs/po-pricing-section";
 
 interface JobCustomer {
   code: string;
@@ -19,6 +22,8 @@ interface JobGmp {
 
 interface JobQuote {
   quote_number: string;
+  pricing: { tiers?: { board_qty: number; subtotal: number }[] } | null;
+  quantities: Record<string, number> | null;
 }
 
 interface StatusLogEntry {
@@ -59,7 +64,7 @@ export default async function JobDetailPage({
     supabase
       .from("jobs")
       .select(
-        "*, customers(code, company_name), gmps(gmp_number, board_name), quotes(quote_number)"
+        "*, customers(code, company_name), gmps(gmp_number, board_name), quotes(quote_number, pricing, quantities)"
       )
       .eq("id", id)
       .single(),
@@ -119,6 +124,7 @@ export default async function JobDetailPage({
         </div>
 
         <div className="flex gap-2">
+          <NCRCreateDialog jobId={id} customerId={job.customer_id} />
           <JobActions jobId={id} currentStatus={job.status} />
           {canCreateProcurement && (
             <Link href={`/procurement/new?job_id=${id}`}>
@@ -213,6 +219,27 @@ export default async function JobDetailPage({
           </CardContent>
         </Card>
       )}
+
+      {/* PO Pricing Validation */}
+      <PoPricingSection
+        jobId={id}
+        jobQuantity={job.quantity}
+        quoteId={job.quote_id ?? null}
+        quotePricing={quote?.pricing ?? null}
+        quoteQuantities={quote?.quantities ?? null}
+        metadata={
+          (job.metadata as { po_price?: number; [key: string]: unknown } | null) ??
+          null
+        }
+      />
+
+      {/* Shipping Section */}
+      <ShippingActions
+        jobId={id}
+        jobNumber={job.job_number}
+        currentStatus={job.status}
+        metadata={(job.metadata ?? {}) as Record<string, unknown>}
+      />
 
       {/* Status Timeline + Production Events side by side */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -314,6 +341,63 @@ export default async function JobDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Production Documents */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Printer className="h-4 w-4" />
+            Production Documents
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-sm text-gray-500">
+            Download print-ready documents for the production floor.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <a
+              href={`/api/jobs/${id}/production-docs?type=job-card`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <FileText className="h-4 w-4 text-blue-600" />
+                Job Card
+              </Button>
+            </a>
+            <a
+              href={`/api/jobs/${id}/production-docs?type=traveller`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <FileText className="h-4 w-4 text-green-600" />
+                Production Traveller
+              </Button>
+            </a>
+            <a
+              href={`/api/jobs/${id}/production-docs?type=print-bom`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <FileText className="h-4 w-4 text-purple-600" />
+                Print Copy BOM
+              </Button>
+            </a>
+            <a
+              href={`/api/jobs/${id}/production-docs?type=reception`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <FileText className="h-4 w-4 text-orange-600" />
+                Reception File
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

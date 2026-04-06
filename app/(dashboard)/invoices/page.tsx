@@ -12,7 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/format";
+import { CreateInvoiceDialog } from "@/components/invoices/create-invoice-dialog";
+import { formatCurrency, formatDate } from "@/lib/utils/format";
 
 const STATUSES = ["all", "draft", "sent", "paid", "overdue"] as const;
 
@@ -37,6 +38,15 @@ export default async function InvoicesPage({
   const params = await searchParams;
   const activeStatus = params.status ?? "all";
   const supabase = await createClient();
+
+  // Fetch active customers for the Create Invoice dialog
+  const { data: customersList } = await supabase
+    .from("customers")
+    .select("id, code, company_name")
+    .eq("is_active", true)
+    .order("code");
+
+  const customers = (customersList ?? []) as { id: string; code: string; company_name: string }[];
 
   const { data: invoices, error } = await supabase
     .from("invoices")
@@ -126,12 +136,15 @@ export default async function InvoicesPage({
             {filtered.length} invoice{filtered.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <a href="/api/export?table=invoices" download>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export CSV
-          </Button>
-        </a>
+        <div className="flex gap-2">
+          <CreateInvoiceDialog customers={customers} />
+          <a href="/api/export?table=invoices" download>
+            <Button variant="outline" size="sm">
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </a>
+        </div>
       </div>
 
       {/* Aging KPI Cards */}

@@ -52,14 +52,48 @@ export async function GET(req: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/invoices — Create an invoice from a job
+// POST /api/invoices — Create an invoice from one or more jobs
 // ---------------------------------------------------------------------------
+// Accepts either:
+//   { job_id: string }                — single-job invoice (legacy)
+//   { job_ids: string[], customer_id: string } — multi-job consolidated invoice
+// Common optional fields: freight, discount, notes
 
 interface CreateInvoiceBody {
-  job_id: string;
+  job_id?: string;
+  job_ids?: string[];
+  customer_id?: string;
   freight?: number;
   discount?: number;
   notes?: string;
+}
+
+interface JobWithQuote {
+  id: string;
+  job_number: string;
+  quantity: number;
+  customer_id: string;
+  gmp_id: string;
+  gmps: { gmp_number: string; board_name: string | null } | null;
+  quotes: {
+    pricing: { tiers?: { board_qty: number; subtotal: number; per_unit?: number }[] };
+    quantities: Record<string, number>;
+  } | null;
+}
+
+function getJobSubtotal(job: JobWithQuote): number {
+  const tiers = job.quotes?.pricing?.tiers;
+  if (!tiers?.length) return 0;
+  const matched = tiers.find((t) => t.board_qty === job.quantity) ?? tiers[0];
+  return matched.subtotal;
+}
+
+function getJobPerUnit(job: JobWithQuote): number {
+  const tiers = job.quotes?.pricing?.tiers;
+  if (!tiers?.length) return 0;
+  const matched = tiers.find((t) => t.board_qty === job.quantity) ?? tiers[0];
+  if (matched.per_unit != null) return matched.per_unit;
+  return job.quantity > 0 ? matched.subtotal / job.quantity : 0;
 }
 
 export async function POST(req: NextRequest) {
@@ -73,49 +107,70 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json()) as CreateInvoiceBody;
-  const { job_id, freight = 0, discount = 0, notes } = body;
+  const { freight = 0, discount = 0, notes } = body;
 
-  if (!job_id) {
+  // Normalize to an array of job IDs
+  const jobIds: string[] = body.job_ids ?? (body.job_id ? [body.job_id] : []);
+
+  if (jobIds.length === 0) {
     return NextResponse.json(
-      { error: "Missing required field: job_id" },
+      { error: "Missing required field: job_id or job_ids" },
       { status: 400 }
     );
   }
 
-  // Fetch job with quote pricing
-  const { data: job, error: jobError } = await supabase
+  // Fetch all jobs with quote pricing + GMP info
+  const { data: jobs, error: jobsError } = await supabase
     .from("jobs")
-    .select("*, quotes(pricing, quantities)")
-    .eq("id", job_id)
-    .single();
+    .select("id, job_number, quantity, customer_id, gmp_id, gmps(gmp_number, board_name), quotes(pricing, quantities)")
+    .in("id", jobIds);
 
-  if (jobError || !job) {
-    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  if (jobsError || !jobs || jobs.length === 0) {
+    return NextResponse.json({ error: "No valid jobs found" }, { status: 404 });
   }
 
-  const quote = job.quotes as unknown as {
-    pricing: { tiers?: { board_qty: number; subtotal: number }[] };
-    quantities: { qty_1: number; qty_2: number; qty_3: number; qty_4: number };
-  } | null;
+  const typedJobs = jobs as unknown as JobWithQuote[];
 
-  if (!quote?.pricing?.tiers?.length) {
+  // Verify all jobs belong to the same customer
+  const customerIds = [...new Set(typedJobs.map((j) => j.customer_id))];
+  if (customerIds.length > 1) {
     return NextResponse.json(
-      { error: "Job has no associated quote pricing" },
+      { error: "All jobs must belong to the same customer" },
+      { status: 400 }
+    );
+  }
+  const customerId = body.customer_id ?? customerIds[0];
+
+  // Verify all jobs have quote pricing
+  const jobsWithoutPricing = typedJobs.filter(
+    (j) => !j.quotes?.pricing?.tiers?.length
+  );
+  if (jobsWithoutPricing.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Jobs missing quote pricing: ${jobsWithoutPricing.map((j) => j.job_number).join(", ")}`,
+      },
       { status: 400 }
     );
   }
 
-  // Find matching tier for the job quantity
-  const jobQty = job.quantity as number;
-  const matchedTier =
-    quote.pricing.tiers.find((t) => t.board_qty === jobQty) ??
-    quote.pricing.tiers[0];
-
-  const subtotal = matchedTier.subtotal;
+  // Calculate combined subtotal
+  const subtotal = typedJobs.reduce((sum, j) => sum + getJobSubtotal(j), 0);
   const tpsGst = Math.round(subtotal * 0.05 * 100) / 100;
   const tvqQst = Math.round(subtotal * 0.09975 * 100) / 100;
   const total =
     Math.round((subtotal + tpsGst + tvqQst + freight - discount) * 100) / 100;
+
+  // Build line_items metadata for multi-job invoices
+  const lineItems = typedJobs.map((j) => ({
+    job_id: j.id,
+    job_number: j.job_number,
+    gmp_number: j.gmps?.gmp_number ?? "Unknown",
+    board_name: j.gmps?.board_name ?? null,
+    quantity: j.quantity,
+    per_unit: Math.round(getJobPerUnit(j) * 100) / 100,
+    subtotal: Math.round(getJobSubtotal(j) * 100) / 100,
+  }));
 
   // Generate invoice number: INV-YYMM-NNN
   const now = new Date();
@@ -136,12 +191,15 @@ export async function POST(req: NextRequest) {
   dueDateObj.setDate(dueDateObj.getDate() + 30);
   const dueDate = dueDateObj.toISOString().split("T")[0];
 
+  // Use the first job as the primary job_id (DB column is NOT NULL)
+  const primaryJobId = typedJobs[0].id;
+
   const { data: invoice, error: insertError } = await supabase
     .from("invoices")
     .insert({
       invoice_number: invoiceNumber,
-      job_id,
-      customer_id: job.customer_id,
+      job_id: primaryJobId,
+      customer_id: customerId,
       subtotal,
       discount,
       tps_gst: tpsGst,
@@ -163,5 +221,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json(invoice, { status: 201 });
+  // Store line_items in a separate update (metadata pattern via notes or
+  // we can store in the invoice record). We use JSONB notes approach —
+  // but the invoices table doesn't have a metadata column. Store line_items
+  // info as structured JSON in the notes field prefix, OR better: update
+  // the invoice with a supplementary query to store line_items.
+  // For now, we embed line_items into the invoice response and store a
+  // reference comment in notes if multi-job.
+  if (typedJobs.length > 1) {
+    const jobList = lineItems.map((li) => `${li.job_number} (${li.gmp_number})`).join(", ");
+    const consolidatedNotes = notes
+      ? `${notes}\n\nConsolidated invoice for jobs: ${jobList}`
+      : `Consolidated invoice for jobs: ${jobList}`;
+
+    await supabase
+      .from("invoices")
+      .update({ notes: consolidatedNotes })
+      .eq("id", invoice.id);
+
+    invoice.notes = consolidatedNotes;
+  }
+
+  return NextResponse.json(
+    { ...invoice, line_items: lineItems },
+    { status: 201 }
+  );
 }

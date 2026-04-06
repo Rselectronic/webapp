@@ -12,6 +12,8 @@ import {
   ShoppingCart,
   Factory,
   FileText,
+  ShieldCheck,
+  Package,
   Settings,
   BarChart3,
 } from "lucide-react";
@@ -25,6 +27,8 @@ const navigation = [
   { name: "Procurement", href: "/procurement", icon: ShoppingCart, enabled: true },
   { name: "Production", href: "/production", icon: Factory, enabled: true },
   { name: "Invoices", href: "/invoices", icon: FileText, enabled: true },
+  { name: "Quality", href: "/quality", icon: ShieldCheck, enabled: true },
+  { name: "Inventory", href: "/inventory", icon: Package, enabled: true },
   { name: "Reports", href: "/reports", icon: BarChart3, enabled: true },
   { name: "Settings", href: "/settings", icon: Settings, enabled: true },
 ];
