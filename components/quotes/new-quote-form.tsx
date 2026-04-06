@@ -69,7 +69,7 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
       const res = await fetch(`/api/boms?customer_id=${id}`);
       if (res.ok) {
         const data = await res.json();
-        setBoms(data.boms ?? []);
+        setBoms(Array.isArray(data) ? data : data.boms ?? []);
       }
     } catch {
       setError("Failed to load BOMs for this customer.");
@@ -125,7 +125,7 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
       }
 
       const data = await res.json();
-      setPreview(data);
+      setPreview(data.pricing ?? data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pricing calculation failed");
     } finally {
