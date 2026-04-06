@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { streamText, stepCountIs, convertToModelMessages } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { classifyWithAI } from "@/lib/mcode/ai-classifier";
@@ -14,9 +14,18 @@ const anthropic = createAnthropic({
 });
 
 export async function POST(req: Request) {
-  const { messages: uiMessages } = await req.json();
+  const body = await req.json();
   const supabase = createAdminClient();
-  const messages = convertToModelMessages(uiMessages);
+
+  // Convert UI messages (parts-based) to model messages (content-based)
+  // UI format: { role, parts: [{ type: "text", text: "..." }] }
+  // Model format: { role, content: "..." }
+  const messages = (body.messages ?? []).map((m: { role: string; parts?: { type: string; text: string }[]; content?: string }) => ({
+    role: m.role as "user" | "assistant",
+    content: m.parts
+      ? m.parts.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join("\n")
+      : (m.content ?? ""),
+  }));
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
