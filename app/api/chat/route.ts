@@ -75,6 +75,18 @@ Types: CP (standard SMT ~59%), IP (large SMT ~15%), TH (through-hole ~12%), CPEX
 - BG (Background) feeder stock at /inventory — common passives on SMT feeders
 - Track additions/subtractions with full log history
 - Low stock and out-of-stock alerts
+- BG parts are auto-deducted when procurement is created
+
+### 8. PRICING
+- Real-time pricing from DigiKey, Mouser, and LCSC (all 3 queried in parallel)
+- 7-day cache with auto-refresh
+- Best price selection across all suppliers
+- You can look up any MPN price with the getPricing tool
+
+### 9. PROFITABILITY
+- Compare quoted price vs actual procurement cost per job
+- Margin and margin % calculation
+- Reports page shows profitability table at /reports
 
 ## HOW TO RESPOND
 - If user asks "how do I..." → guide them step by step with page links (/quotes, /jobs, etc.)
@@ -622,6 +634,31 @@ export async function POST(req: Request) {
           if (error) return { error: error.message };
 
           return { success: true, job_number, event_type, timestamp: new Date().toISOString() };
+        },
+      },
+      getJobProfitability: {
+        description: "Get profitability analysis for a job — quoted total vs actual procurement cost, margin, margin %",
+        inputSchema: z.object({ job_number: z.string().describe("Job number like JB-2604-CVNS-001") }),
+        execute: async ({ job_number }: { job_number: string }) => {
+          const { data: job } = await supabase.from("jobs").select("id").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+          const res = await fetch(new URL(`/api/jobs/${job.id}/profitability`, req.url).toString(), {
+            headers: { Cookie: req.headers.get("cookie") ?? "" },
+          });
+          if (!res.ok) return { error: `Failed (${res.status})` };
+          return await res.json();
+        },
+      },
+
+      getPricing: {
+        description: "Get real-time pricing for a component MPN from DigiKey, Mouser, and LCSC. Returns best price and all supplier prices.",
+        inputSchema: z.object({ mpn: z.string().describe("Manufacturer Part Number to price") }),
+        execute: async ({ mpn }: { mpn: string }) => {
+          const res = await fetch(new URL(`/api/pricing/${encodeURIComponent(mpn)}`, req.url).toString(), {
+            headers: { Cookie: req.headers.get("cookie") ?? "" },
+          });
+          if (!res.ok) return { error: "Not found at any supplier" };
+          return await res.json();
         },
       },
     },

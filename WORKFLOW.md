@@ -378,11 +378,64 @@ The floating chat button (bottom-right corner) opens the **RS Assistant**.
 | createProcurement | Action | Create PROC for a job |
 | generateSerials | Action | Generate per-board serial numbers |
 | logProductionEvent | Action | Log shop floor events |
+| getJobProfitability | Query | Quoted vs actual cost, margin per job |
+| getPricing | Query | Real-time pricing from DigiKey + Mouser + LCSC |
 | getWorkflowGuide | Guide | Step-by-step process instructions |
 
 ---
 
-## 11. Settings & Configuration
+## 11. Component Pricing (3-Supplier Comparison)
+
+The system queries **DigiKey, Mouser, and LCSC** in parallel for real-time pricing.
+
+### How It Works
+1. When you create a quote or procurement, the pricing API fetches prices from all 3 suppliers
+2. Results are cached for 7 days in the `api_pricing_cache` table
+3. The **best price** (lowest unit cost) is auto-selected
+4. During procurement, each component line is auto-assigned to the cheapest supplier
+
+### API Endpoint
+- `GET /api/pricing/{mpn}` — returns prices from all 3 suppliers
+- Response includes: `best_price`, `best_source`, and per-supplier breakdown
+
+### Supplier Details
+| Supplier | Auth | API |
+|----------|------|-----|
+| DigiKey | 2-leg OAuth (client_credentials) | V4 keyword search |
+| Mouser | API key | V1 keyword search |
+| LCSC | SHA1-signed (key + secret) | Product search |
+
+---
+
+## 12. Profitability & Reports (`/reports`)
+
+### Job Profitability
+Track **quoted price vs actual procurement cost** for each job:
+- **Quoted Total**: from the quote pricing for the accepted quantity tier
+- **Actual Cost**: SUM of (unit_price × qty_ordered) from procurement lines
+- **Gross Margin**: Quoted Total - Actual Cost
+- **Margin %**: (Gross Margin / Quoted Total) × 100
+
+### Reports Page
+The `/reports` page shows:
+- Revenue by customer (total invoiced)
+- Monthly activity (quotes, jobs, invoices)
+- **Profitability table**: Job #, Customer, Quoted, Actual, Margin, Margin %
+- Summary KPIs: Total Quoted, Total Actual, Total Margin, Avg Margin %
+
+### AI Access
+Ask the chatbot: "What's the profitability for job JB-2604-CVNS-001?"
+
+---
+
+## 13. Settings & Configuration
+
+### Overage Table
+Components are ordered with extras to account for attrition. The overage is **absolute** (not percentage):
+- CP: 10 extra at qty 1-59, 30 at qty 60-99, 35 at qty 100-199, etc.
+- 0402/0201: 50 extra at qty 1-59 (tiny parts need more spares)
+- TH: 1 extra at qty 1-9 (through-hole has low attrition)
+- Full table viewable in the overage_table database table
 
 ### Pricing Settings (`/settings/pricing`)
 - Component markup (default 20%)
