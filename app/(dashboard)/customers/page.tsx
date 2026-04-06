@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { CreateCustomerDialog } from "@/components/customers/create-customer-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,12 +55,15 @@ export default async function CustomersPage({
             {customers?.length ?? 0} customer{customers?.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <a href="/api/export?table=customers" download>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export CSV
-          </Button>
-        </a>
+        <div className="flex items-center gap-2">
+          <CreateCustomerDialog />
+          <a href="/api/export?table=customers" download>
+            <Button variant="outline" size="sm">
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </a>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
