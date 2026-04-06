@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import { BomTable } from "@/components/bom/bom-table";
+import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { formatDateTime } from "@/lib/utils/format";
 
 export default async function BomDetailPage({
@@ -97,6 +98,18 @@ export default async function BomDetailPage({
           </Card>
         ))}
       </div>
+
+      {/* AI Classify Button */}
+      {lines && lines.length > 0 && (
+        <AIClassifyButton
+          bomId={id}
+          unclassifiedCount={
+            lines.filter(
+              (l) => !l.m_code && !l.is_pcb && !l.is_dni
+            ).length
+          }
+        />
+      )}
 
       {/* BOM table */}
       {lines && lines.length > 0 ? (
