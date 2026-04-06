@@ -1,6 +1,5 @@
-// @ts-nocheck — AI SDK v6 tool() types are overly strict with execute param inference
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { streamText, stepCountIs, tool } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { classifyWithAI } from "@/lib/mcode/ai-classifier";
@@ -9,185 +8,129 @@ const anthropic = createAnthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
+const SYSTEM_PROMPT = `You are the AI assistant for RS PCB Assembly (R.S. Électronique Inc.), a contract electronics manufacturer in Montreal. You help the CEO (Anas Patel) manage quotes, jobs, BOMs, procurement, and invoices.
+
+Use tools to query the database. Always use real data — never guess.
+
+Context: $2.5M/year, 11+ customers (Lanka/Knorr-Bremse, GoLabo, VO2 Master, SBQuantum, Canadian Space Agency). M-Codes: CP, IP, TH, CPEXP, 0402, 0201, MANSMT, MEC, Accs, CABLE, DEV B. Taxes: GST 5%, QST 9.975%.
+
+Be concise. Use tables when appropriate.`;
+
 export async function POST(req: Request) {
   const body = await req.json();
   const supabase = createAdminClient();
 
-  // Convert UI messages (parts-based) to model messages (content-based)
-  // UI format: { role, parts: [{ type: "text", text: "..." }] }
-  // Model format: { role, content: "..." }
-  const messages = (body.messages ?? []).map((m: { role: string; parts?: { type: string; text: string }[]; content?: string }) => ({
-    role: m.role as "user" | "assistant",
-    content: m.parts
-      ? m.parts.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join("\n")
-      : (m.content ?? ""),
-  }));
+  // Convert UIMessages (parts-based) to simple role+content
+  const messages = (body.messages ?? []).map(
+    (m: { role: string; parts?: Array<{ type: string; text: string }>; content?: string }) => ({
+      role: m.role as "user" | "assistant",
+      content: m.parts
+        ? m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")
+        : (m.content ?? ""),
+    })
+  );
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
-    system: `You are the AI assistant for RS PCB Assembly (R.S. Électronique Inc.), a contract electronics manufacturer in Montreal, Canada. You help the CEO (Anas Patel) and operations team manage quotes, jobs, BOMs, procurement, and invoices.
-
-You have tools to query the database directly. Use them to answer questions about customers, quotes, jobs, invoices, components, and BOMs. Always query real data — never guess.
-
-Company context:
-- $2.5M/year revenue, 5-6 employees, 11+ active customers
-- Assembles PCBs for customers like Lanka/Knorr-Bremse, GoLabo, VO2 Master, SBQuantum, Canadian Space Agency
-- Uses M-Code classification system: CP (chip package), IP (IC package), TH (through-hole), CPEXP (expanded), 0402, 0201, MANSMT, MEC, Accs, CABLE, DEV B
-- Taxes: TPS/GST 5%, TVQ/QST 9.975%
-- Quote format: QT-YYMM-NNN, Job format: JB-YYMM-CODE-NNN, Invoice format: INV-YYMM-NNN
-
-Be concise and direct. Format currency as CAD. Use tables for data when appropriate.`,
+    system: SYSTEM_PROMPT,
     messages,
     tools: {
-      listCustomers: tool({
-        description: "List all active customers with their codes and contact info",
-        parameters: z.object({ filter: z.string().optional().describe("Optional filter keyword") }),
-        execute: async (_args) => {
+      listCustomers: {
+        description: "List all active customers",
+        inputSchema: z.object({ search: z.string().optional().describe("Optional search filter") }),
+        execute: async () => {
           const { data } = await supabase
             .from("customers")
-            .select("code, company_name, contact_name, contact_email, payment_terms, is_active")
+            .select("code, company_name, contact_name, contact_email, payment_terms")
+            .eq("is_active", true)
             .order("code");
           return { customers: data ?? [] };
         },
-      }),
-      getCustomer: tool({
-        description: "Get detailed info about a specific customer by code (e.g. TLAN, LABO, CSA)",
-        parameters: z.object({ code: z.string().describe("Customer code like TLAN, LABO, CSA") }),
-        execute: async ({ code }) => {
+      },
+      getCustomer: {
+        description: "Get detailed customer info by code (TLAN, LABO, CSA, etc)",
+        inputSchema: z.object({ code: z.string().describe("Customer code") }),
+        execute: async ({ code }: { code: string }) => {
           const { data: customer } = await supabase
-            .from("customers")
-            .select("*")
-            .eq("code", code.toUpperCase())
-            .single();
-          if (!customer) return { error: "Customer not found" };
-
-          const [quotes, jobs, invoices] = await Promise.all([
-            supabase.from("quotes").select("id, quote_number, status, created_at").eq("customer_id", customer.id).order("created_at", { ascending: false }).limit(5),
-            supabase.from("jobs").select("id, job_number, status, quantity, created_at").eq("customer_id", customer.id).order("created_at", { ascending: false }).limit(5),
-            supabase.from("invoices").select("id, invoice_number, status, total, created_at").eq("customer_id", customer.id).order("created_at", { ascending: false }).limit(5),
+            .from("customers").select("*").eq("code", code.toUpperCase()).single();
+          if (!customer) return { error: "Not found" };
+          const [q, j, i] = await Promise.all([
+            supabase.from("quotes").select("quote_number, status, created_at").eq("customer_id", customer.id).order("created_at", { ascending: false }).limit(5),
+            supabase.from("jobs").select("job_number, status, quantity, created_at").eq("customer_id", customer.id).order("created_at", { ascending: false }).limit(5),
+            supabase.from("invoices").select("invoice_number, status, total, created_at").eq("customer_id", customer.id).order("created_at", { ascending: false }).limit(5),
           ]);
-          return { customer, recent_quotes: quotes.data ?? [], recent_jobs: jobs.data ?? [], recent_invoices: invoices.data ?? [] };
+          return { customer, quotes: q.data ?? [], jobs: j.data ?? [], invoices: i.data ?? [] };
         },
-      }),
-      businessOverview: tool({
-        description: "Get a high-level snapshot of the business: active customers, open quotes, active jobs, outstanding invoices",
-        parameters: z.object({ detail: z.string().optional().describe("Level of detail") }),
-        execute: async (_args) => {
-          const [customers, quotes, jobs, invoices] = await Promise.all([
+      },
+      businessOverview: {
+        description: "Get business snapshot: customers, quotes, jobs, invoices",
+        inputSchema: z.object({ detail: z.string().optional().describe("Detail level") }),
+        execute: async () => {
+          const [c, q, j, inv] = await Promise.all([
             supabase.from("customers").select("id", { count: "exact", head: true }).eq("is_active", true),
-            supabase.from("quotes").select("id, quote_number, status, created_at").in("status", ["draft", "review", "sent"]).order("created_at", { ascending: false }),
-            supabase.from("jobs").select("id, job_number, status, quantity, created_at").not("status", "in", '("delivered","invoiced","archived")').order("created_at", { ascending: false }),
-            supabase.from("invoices").select("id, invoice_number, status, total, issued_date, due_date").in("status", ["sent", "overdue"]),
+            supabase.from("quotes").select("quote_number, status").in("status", ["draft", "review", "sent"]),
+            supabase.from("jobs").select("job_number, status, quantity").not("status", "in", '("delivered","invoiced","archived")'),
+            supabase.from("invoices").select("invoice_number, status, total").in("status", ["sent", "overdue"]),
           ]);
-          const outstanding = (invoices.data ?? []).reduce((sum: number, inv: Record<string, unknown>) => sum + (Number(inv.total) || 0), 0);
-          return {
-            active_customers: customers.count ?? 0,
-            open_quotes: (quotes.data ?? []).length,
-            active_jobs: (jobs.data ?? []).length,
-            outstanding_invoices: `$${outstanding.toFixed(2)} CAD`,
-            quotes: quotes.data ?? [],
-            jobs: jobs.data ?? [],
-            unpaid_invoices: invoices.data ?? [],
-          };
+          const outstanding = (inv.data ?? []).reduce((s, i) => s + (Number(i.total) || 0), 0);
+          return { active_customers: c.count ?? 0, open_quotes: q.data?.length ?? 0, active_jobs: j.data?.length ?? 0, outstanding: `$${outstanding.toFixed(2)}`, quotes: q.data, jobs: j.data, invoices: inv.data };
         },
-      }),
-      listQuotes: tool({
-        description: "List quotes with optional status filter",
-        parameters: z.object({ status: z.string().optional().describe("Filter by status: draft, review, sent, accepted, rejected, expired") }),
-        execute: async ({ status }) => {
-          let query = supabase.from("quotes").select("quote_number, status, created_at, customers(code, company_name), gmps(gmp_number)").order("created_at", { ascending: false }).limit(20);
+      },
+      listQuotes: {
+        description: "List quotes, optionally filtered by status",
+        inputSchema: z.object({ status: z.string().optional().describe("Status filter") }),
+        execute: async ({ status }: { status?: string }) => {
+          let query = supabase.from("quotes").select("quote_number, status, created_at, customers(code, company_name)").order("created_at", { ascending: false }).limit(20);
           if (status) query = query.eq("status", status);
           const { data } = await query;
           return { quotes: data ?? [] };
         },
-      }),
-      listJobs: tool({
-        description: "List jobs with optional status filter",
-        parameters: z.object({ status: z.string().optional().describe("Filter by status: created, procurement, production, shipping, delivered, invoiced") }),
-        execute: async ({ status }) => {
-          let query = supabase.from("jobs").select("job_number, status, quantity, assembly_type, created_at, customers(code, company_name), gmps(gmp_number)").order("created_at", { ascending: false }).limit(20);
+      },
+      listJobs: {
+        description: "List jobs, optionally filtered by status",
+        inputSchema: z.object({ status: z.string().optional().describe("Status filter") }),
+        execute: async ({ status }: { status?: string }) => {
+          let query = supabase.from("jobs").select("job_number, status, quantity, created_at, customers(code)").order("created_at", { ascending: false }).limit(20);
           if (status) query = query.eq("status", status);
           const { data } = await query;
           return { jobs: data ?? [] };
         },
-      }),
-      listInvoices: tool({
-        description: "List invoices with aging info",
-        parameters: z.object({ status: z.string().optional().describe("Filter: draft, sent, paid, overdue") }),
-        execute: async ({ status }) => {
-          let query = supabase.from("invoices").select("invoice_number, status, total, issued_date, due_date, paid_date, customers(code, company_name)").order("created_at", { ascending: false }).limit(20);
+      },
+      listInvoices: {
+        description: "List invoices with aging",
+        inputSchema: z.object({ status: z.string().optional().describe("Status filter") }),
+        execute: async ({ status }: { status?: string }) => {
+          let query = supabase.from("invoices").select("invoice_number, status, total, issued_date, due_date, customers(code)").order("created_at", { ascending: false }).limit(20);
           if (status) query = query.eq("status", status);
           const { data } = await query;
           return { invoices: data ?? [] };
         },
-      }),
-      searchComponents: tool({
-        description: "Search the component library by MPN or description",
-        parameters: z.object({ query: z.string().describe("MPN or description to search for") }),
-        execute: async ({ query }) => {
-          const { data } = await supabase
-            .from("components")
-            .select("mpn, manufacturer, description, m_code, m_code_source, package_case")
-            .or(`mpn.ilike.%${query}%,description.ilike.%${query}%`)
-            .limit(10);
-          return { components: data ?? [] };
-        },
-      }),
-      classifyComponent: tool({
-        description: "Classify a component into an M-Code using the 3-layer pipeline (DB, Rules, AI)",
-        parameters: z.object({
+      },
+      classifyComponent: {
+        description: "Classify a component M-Code using AI (DB → Rules → Claude)",
+        inputSchema: z.object({
           mpn: z.string().describe("Manufacturer Part Number"),
           description: z.string().describe("Component description"),
-          manufacturer: z.string().optional().describe("Manufacturer name"),
+          manufacturer: z.string().describe("Manufacturer name"),
         }),
-        execute: async ({ mpn, description, manufacturer }) => {
-          const result = await classifyWithAI(mpn, description, manufacturer ?? "");
-          if (result) return result;
-          return { m_code: null, confidence: 0, reasoning: "Could not classify" };
+        execute: async ({ mpn, description, manufacturer }: { mpn: string; description: string; manufacturer: string }) => {
+          const result = await classifyWithAI(mpn, description, manufacturer);
+          return result ?? { m_code: null, confidence: 0, reasoning: "Could not classify" };
         },
-      }),
-      searchAll: tool({
-        description: "Search across customers, quotes, jobs, invoices, and components",
-        parameters: z.object({ query: z.string().describe("Search term") }),
-        execute: async ({ query }) => {
-          const [customers, quotes, jobs, invoices] = await Promise.all([
-            supabase.from("customers").select("id, code, company_name").or(`code.ilike.%${query}%,company_name.ilike.%${query}%`).limit(5),
-            supabase.from("quotes").select("id, quote_number, status").ilike("quote_number", `%${query}%`).limit(5),
-            supabase.from("jobs").select("id, job_number, status").ilike("job_number", `%${query}%`).limit(5),
-            supabase.from("invoices").select("id, invoice_number, status, total").ilike("invoice_number", `%${query}%`).limit(5),
+      },
+      searchAll: {
+        description: "Search across customers, quotes, jobs, invoices",
+        inputSchema: z.object({ query: z.string().describe("Search term") }),
+        execute: async ({ query }: { query: string }) => {
+          const [c, q, j, i] = await Promise.all([
+            supabase.from("customers").select("code, company_name").or(`code.ilike.%${query}%,company_name.ilike.%${query}%`).limit(5),
+            supabase.from("quotes").select("quote_number, status").ilike("quote_number", `%${query}%`).limit(5),
+            supabase.from("jobs").select("job_number, status").ilike("job_number", `%${query}%`).limit(5),
+            supabase.from("invoices").select("invoice_number, status, total").ilike("invoice_number", `%${query}%`).limit(5),
           ]);
-          return {
-            customers: customers.data ?? [],
-            quotes: quotes.data ?? [],
-            jobs: jobs.data ?? [],
-            invoices: invoices.data ?? [],
-          };
+          return { customers: c.data, quotes: q.data, jobs: j.data, invoices: i.data };
         },
-      }),
-      getBomSummary: tool({
-        description: "Get summary of a parsed BOM including component count and M-Code breakdown",
-        parameters: z.object({ bom_id: z.string().describe("BOM ID") }),
-        execute: async ({ bom_id }) => {
-          const [bom, lines] = await Promise.all([
-            supabase.from("boms").select("*, customers(code, company_name), gmps(gmp_number)").eq("id", bom_id).single(),
-            supabase.from("bom_lines").select("m_code, m_code_source, is_pcb").eq("bom_id", bom_id),
-          ]);
-          const bomLines = lines.data ?? [];
-          const mcodeBreakdown: Record<string, number> = {};
-          let classified = 0;
-          let unclassified = 0;
-          for (const line of bomLines) {
-            if (line.is_pcb) continue;
-            if (line.m_code) {
-              classified++;
-              mcodeBreakdown[line.m_code] = (mcodeBreakdown[line.m_code] ?? 0) + 1;
-            } else {
-              unclassified++;
-            }
-          }
-          return { bom: bom.data, total_lines: bomLines.length, classified, unclassified, mcode_breakdown: mcodeBreakdown };
-        },
-      }),
+      },
     },
     stopWhen: stepCountIs(5),
   });
