@@ -181,6 +181,9 @@ export async function POST(req: NextRequest) {
     qty_ordered: 0,
     qty_received: 0,
     order_status: "pending" as const,
+    is_bg: false,
+    supplier: null as string | null,
+    unit_price: null as number | null,
   }));
 
   // Insert procurement record
@@ -201,6 +204,65 @@ export async function POST(req: NextRequest) {
   if (procError)
     return NextResponse.json({ error: procError.message }, { status: 500 });
 
+  // --- BG Stock Auto-Deduction ---
+  // Check which MPNs exist in bg_stock and mark them as BG parts
+  const uniqueMpns = [...new Set(procLines.map((l) => l.mpn).filter(Boolean))];
+  const { data: bgStockItems } = uniqueMpns.length > 0
+    ? await supabase
+        .from("bg_stock")
+        .select("id, mpn, current_qty")
+        .in("mpn", uniqueMpns)
+    : { data: [] };
+
+  const bgStockMap = new Map(
+    (bgStockItems ?? []).map((item) => [item.mpn, item])
+  );
+
+  for (const line of procLines) {
+    const bgItem = bgStockMap.get(line.mpn);
+    if (bgItem && bgItem.current_qty > 0) {
+      line.is_bg = true;
+    }
+  }
+
+  // --- Supplier Allocation (Best Price Routing) ---
+  // Look up cached prices from api_pricing_cache for all MPNs
+  const { data: cachedPrices } = uniqueMpns.length > 0
+    ? await supabase
+        .from("api_pricing_cache")
+        .select("source, mpn, unit_price")
+        .in("mpn", uniqueMpns)
+        .not("unit_price", "is", null)
+        .gte("expires_at", new Date().toISOString())
+    : { data: [] };
+
+  // Build a map: mpn -> { supplier, unit_price } (cheapest)
+  const bestPriceMap = new Map<string, { supplier: string; unit_price: number }>();
+  for (const cached of cachedPrices ?? []) {
+    if (cached.unit_price == null) continue;
+    const existing = bestPriceMap.get(cached.mpn);
+    if (!existing || cached.unit_price < existing.unit_price) {
+      // Capitalize source name for display: "digikey" -> "DigiKey", "mouser" -> "Mouser", "lcsc" -> "LCSC"
+      const supplierName =
+        cached.source === "digikey" ? "DigiKey" :
+        cached.source === "mouser" ? "Mouser" :
+        cached.source === "lcsc" ? "LCSC" :
+        cached.source;
+      bestPriceMap.set(cached.mpn, {
+        supplier: supplierName,
+        unit_price: Number(cached.unit_price),
+      });
+    }
+  }
+
+  for (const line of procLines) {
+    const best = bestPriceMap.get(line.mpn);
+    if (best) {
+      line.supplier = best.supplier;
+      line.unit_price = best.unit_price;
+    }
+  }
+
   // Insert procurement lines
   const linesWithProcId = procLines.map((line) => ({
     ...line,
@@ -215,6 +277,39 @@ export async function POST(req: NextRequest) {
     // Rollback: remove the procurement record
     await supabase.from("procurements").delete().eq("id", procurement.id);
     return NextResponse.json({ error: linesError.message }, { status: 500 });
+  }
+
+  // --- BG Stock Deductions (after lines are confirmed inserted) ---
+  const bgDeductions: Array<{ bgStockId: string; mpn: string; qtyDeducted: number }> = [];
+  for (const line of procLines) {
+    if (!line.is_bg) continue;
+    const bgItem = bgStockMap.get(line.mpn);
+    if (!bgItem) continue;
+
+    const deductQty = Math.min(line.qty_needed, bgItem.current_qty);
+    if (deductQty <= 0) continue;
+
+    const newQty = bgItem.current_qty - deductQty;
+
+    await supabase
+      .from("bg_stock")
+      .update({ current_qty: newQty, updated_at: new Date().toISOString() })
+      .eq("id", bgItem.id);
+
+    await supabase.from("bg_stock_log").insert({
+      bg_stock_id: bgItem.id,
+      change_type: "subtraction",
+      quantity_change: -deductQty,
+      quantity_after: newQty,
+      reference_id: procurement.id,
+      reference_type: "procurement",
+      notes: `Auto-deducted for procurement ${procCode}`,
+      created_by: user.id,
+    });
+
+    // Update in-memory map so subsequent lines for same MPN see reduced stock
+    bgItem.current_qty = newQty;
+    bgDeductions.push({ bgStockId: bgItem.id, mpn: line.mpn, qtyDeducted: deductQty });
   }
 
   // Update job status to "procurement" if currently "created"
@@ -233,5 +328,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json(procurement);
+  return NextResponse.json({
+    ...procurement,
+    bg_deductions: bgDeductions,
+    supplier_allocations: procLines.filter((l) => l.supplier).length,
+  });
 }

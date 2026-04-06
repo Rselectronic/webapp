@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils/format";
+import { getProfitabilitySummary } from "@/lib/pricing/profitability";
 
 interface InvoiceRow {
   total: number;
@@ -41,12 +42,13 @@ export default async function ReportsPage() {
   if (profile?.role !== "ceo") redirect("/");
 
   // Fetch all data in parallel
-  const [invoicesRes, jobsRes, quotesRes] = await Promise.all([
+  const [invoicesRes, jobsRes, quotesRes, profitability] = await Promise.all([
     supabase
       .from("invoices")
       .select("total, status, customer_id, customers(code, company_name)"),
     supabase.from("jobs").select("status"),
     supabase.from("quotes").select("created_at"),
+    getProfitabilitySummary(supabase),
   ]);
 
   const invoices = (invoicesRes.data ?? []) as unknown as InvoiceRow[];
@@ -306,6 +308,109 @@ export default async function ReportsPage() {
               </TableRow>
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      {/* Profitability Summary */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Job Profitability (Quoted vs Actual)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Summary KPIs */}
+          <div className="mb-4 grid gap-4 sm:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-gray-500">Total Quoted</p>
+              <p className="text-lg font-bold font-mono">
+                {formatCurrency(profitability.total_quoted)}
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-gray-500">Total Actual Cost</p>
+              <p className="text-lg font-bold font-mono">
+                {formatCurrency(profitability.total_actual)}
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-gray-500">Total Margin</p>
+              <p
+                className={`text-lg font-bold font-mono ${
+                  profitability.total_margin >= 0
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                {formatCurrency(profitability.total_margin)}
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-gray-500">Avg Margin %</p>
+              <p
+                className={`text-lg font-bold font-mono ${
+                  profitability.avg_margin_pct >= 0
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                {profitability.avg_margin_pct}%
+              </p>
+            </div>
+          </div>
+
+          {profitability.jobs.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No jobs with quotes to analyze yet.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Job #</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead className="text-right">Quoted Total</TableHead>
+                  <TableHead className="text-right">Actual Cost</TableHead>
+                  <TableHead className="text-right">Margin</TableHead>
+                  <TableHead className="text-right">Margin %</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {profitability.jobs.map((j) => (
+                  <TableRow key={j.job_id}>
+                    <TableCell className="font-medium">
+                      {j.job_number}
+                    </TableCell>
+                    <TableCell>
+                      {j.customer_code} - {j.customer_name}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(j.quoted_total)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(
+                        j.actual_component_cost + j.actual_pcb_cost
+                      )}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right font-mono ${
+                        j.gross_margin >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {formatCurrency(j.gross_margin)}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right font-mono ${
+                        j.margin_pct >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {j.margin_pct}%
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
