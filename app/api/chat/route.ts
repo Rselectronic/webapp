@@ -11,7 +11,14 @@ const anthropic = createAnthropic({
 const SYSTEM_PROMPT = `You are the AI assistant for RS PCB Assembly (R.S. Électronique Inc.), a $2.5M/year contract electronics manufacturer in Montreal (5-6 people). You help the team manage the full PCBA lifecycle.
 
 ## YOUR ROLE
-You are both a DATA ASSISTANT (query real data) and a WORKFLOW GUIDE (teach users how to use the system step by step). Always use tools to get real data — never guess numbers.
+You are both a DATA ASSISTANT and an ACTION AGENT. You can:
+1. QUERY real data (customers, jobs, BOMs, quotes, invoices, NCRs, inventory)
+2. TAKE ACTIONS (update job status, classify components, create procurement, generate serial numbers, log production events)
+3. GUIDE users step-by-step through workflows
+
+Always use tools — never guess. When the user asks you to DO something, use the action tools directly. When they ask about data, query it. Provide clickable page links like /jobs/[id] so they can navigate.
+
+IMPORTANT: When you have a job number or BOM, use getJobDetail or getBomLines to get the FULL data before answering. Don't tell the user to "go look" — YOU look it up and show them.
 
 ## COMPANY CONTEXT
 - CEO: Anas Patel (full access)
@@ -366,8 +373,259 @@ export async function POST(req: Request) {
           return guides[process] ?? guides["overview"];
         },
       },
+
+      // ==========================================
+      // DEEP DATA ACCESS TOOLS
+      // ==========================================
+
+      getJobDetail: {
+        description: "Get full job details including BOM components, procurement status, production events, and serial numbers",
+        inputSchema: z.object({ job_number: z.string().describe("Job number like JB-2604-CVNS-001") }),
+        execute: async ({ job_number }: { job_number: string }) => {
+          const { data: job } = await supabase
+            .from("jobs")
+            .select("*, customers(code, company_name), gmps(gmp_number, board_name), quotes(quote_number, pricing), boms(id, file_name, component_count)")
+            .eq("job_number", job_number)
+            .single();
+          if (!job) return { error: "Job not found" };
+
+          // Get BOM lines
+          const bomId = (job.boms as unknown as { id: string } | null)?.id;
+          let bomLines: unknown[] = [];
+          if (bomId) {
+            const { data } = await supabase
+              .from("bom_lines")
+              .select("line_number, quantity, reference_designator, cpc, description, mpn, manufacturer, m_code, m_code_confidence, m_code_source, is_pcb, is_dni")
+              .eq("bom_id", bomId)
+              .order("quantity", { ascending: false });
+            bomLines = data ?? [];
+          }
+
+          // Get procurement status
+          const { data: procs } = await supabase
+            .from("procurements")
+            .select("proc_code, status, total_lines, lines_ordered, lines_received")
+            .eq("job_id", job.id);
+
+          // Get production events
+          const { data: events } = await supabase
+            .from("production_events")
+            .select("event_type, notes, created_at")
+            .eq("job_id", job.id)
+            .order("created_at", { ascending: true });
+
+          // Get serial numbers
+          const { data: serials } = await supabase
+            .from("serial_numbers")
+            .select("serial_number, status")
+            .eq("job_id", job.id)
+            .order("board_number");
+
+          const unclassified = bomLines.filter((l: any) => !l.m_code && !l.is_pcb && !l.is_dni);
+
+          return {
+            job: { id: job.id, job_number: job.job_number, status: job.status, quantity: job.quantity, assembly_type: job.assembly_type, po_number: job.po_number },
+            customer: job.customers,
+            gmp: job.gmps,
+            quote: job.quotes,
+            bom: { component_count: bomLines.length, unclassified_count: unclassified.length, lines: bomLines.slice(0, 50) },
+            procurement: procs ?? [],
+            production_events: events ?? [],
+            serial_numbers: { count: serials?.length ?? 0, generated: (serials?.length ?? 0) > 0 },
+            links: {
+              job_page: `/jobs/${job.id}`,
+              bom_page: bomId ? `/bom/${bomId}` : null,
+              quote_page: job.quote_id ? `/quotes/${job.quote_id}` : null,
+            },
+          };
+        },
+      },
+
+      getBomLines: {
+        description: "Get all BOM component lines for a specific BOM, with M-Code status. Use this to see what components need classification.",
+        inputSchema: z.object({ bom_id: z.string().describe("BOM UUID") }),
+        execute: async ({ bom_id }: { bom_id: string }) => {
+          const { data: bom } = await supabase
+            .from("boms")
+            .select("id, file_name, status, component_count, customers(code), gmps(gmp_number)")
+            .eq("id", bom_id)
+            .single();
+          if (!bom) return { error: "BOM not found" };
+
+          const { data: lines } = await supabase
+            .from("bom_lines")
+            .select("id, line_number, quantity, reference_designator, cpc, description, mpn, manufacturer, m_code, m_code_confidence, m_code_source, is_pcb, is_dni")
+            .eq("bom_id", bom_id)
+            .order("quantity", { ascending: false });
+
+          const allLines = lines ?? [];
+          const classified = allLines.filter((l: any) => l.m_code);
+          const unclassified = allLines.filter((l: any) => !l.m_code && !l.is_pcb && !l.is_dni);
+
+          return {
+            bom,
+            summary: { total: allLines.length, classified: classified.length, unclassified: unclassified.length },
+            classified_lines: classified.slice(0, 30),
+            unclassified_lines: unclassified.slice(0, 30),
+            link: `/bom/${bom_id}`,
+          };
+        },
+      },
+
+      // ==========================================
+      // ACTION TOOLS (write operations)
+      // ==========================================
+
+      updateJobStatus: {
+        description: "Update a job's status. Valid transitions: created→procurement, procurement→parts_ordered→parts_received→production→inspection→shipping→delivered→invoiced",
+        inputSchema: z.object({
+          job_number: z.string().describe("Job number"),
+          new_status: z.string().describe("New status value"),
+          notes: z.string().optional().describe("Optional note about the status change"),
+        }),
+        execute: async ({ job_number, new_status, notes }: { job_number: string; new_status: string; notes?: string }) => {
+          const { data: job } = await supabase.from("jobs").select("id, status").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+
+          const { error } = await supabase.from("jobs").update({ status: new_status, updated_at: new Date().toISOString() }).eq("id", job.id);
+          if (error) return { error: error.message };
+
+          await supabase.from("job_status_log").insert({ job_id: job.id, old_status: job.status, new_status, notes: notes ?? `Status changed via AI assistant` });
+
+          return { success: true, job_number, old_status: job.status, new_status, link: `/jobs/${job.id}` };
+        },
+      },
+
+      classifyBomLine: {
+        description: "Classify a single BOM line's M-Code and save it. Use this to fix unclassified components.",
+        inputSchema: z.object({
+          bom_line_id: z.string().describe("BOM line UUID"),
+          m_code: z.string().describe("M-Code to assign: CP, IP, TH, CPEXP, 0402, 0201, MANSMT, MEC, Accs, CABLE, DEV"),
+        }),
+        execute: async ({ bom_line_id, m_code }: { bom_line_id: string; m_code: string }) => {
+          const { error } = await supabase
+            .from("bom_lines")
+            .update({ m_code, m_code_source: "manual", m_code_confidence: 1.0, })
+            .eq("id", bom_line_id);
+          if (error) return { error: error.message };
+          return { success: true, bom_line_id, m_code_assigned: m_code };
+        },
+      },
+
+      classifyBomBatch: {
+        description: "Auto-classify all unclassified BOM lines for a BOM using AI. Returns how many were classified.",
+        inputSchema: z.object({ bom_id: z.string().describe("BOM UUID to classify") }),
+        execute: async ({ bom_id }: { bom_id: string }) => {
+          const { data: lines } = await supabase
+            .from("bom_lines")
+            .select("id, mpn, description, manufacturer, m_code, is_pcb, is_dni")
+            .eq("bom_id", bom_id)
+            .is("m_code", null);
+
+          const unclassified = (lines ?? []).filter((l: any) => !l.is_pcb && !l.is_dni && l.mpn);
+          let classified = 0;
+          const results: { mpn: string; m_code: string | null; confidence: number }[] = [];
+
+          for (const line of unclassified.slice(0, 50)) {
+            const result = await classifyWithAI(line.mpn, line.description ?? "", line.manufacturer ?? "");
+            if (result?.m_code && result.confidence >= 0.7) {
+              await supabase.from("bom_lines").update({
+                m_code: result.m_code,
+                m_code_source: "ai",
+                m_code_confidence: result.confidence,
+              }).eq("id", line.id);
+              classified++;
+              results.push({ mpn: line.mpn, m_code: result.m_code, confidence: result.confidence });
+            } else {
+              results.push({ mpn: line.mpn, m_code: null, confidence: result?.confidence ?? 0 });
+            }
+          }
+
+          return {
+            total_unclassified: unclassified.length,
+            classified_count: classified,
+            still_needs_review: unclassified.length - classified,
+            results: results.slice(0, 20),
+            link: `/bom/${bom_id}`,
+          };
+        },
+      },
+
+      createProcurement: {
+        description: "Create a procurement (PROC) for a job. Auto-populates component lines from BOM with overage.",
+        inputSchema: z.object({ job_number: z.string().describe("Job number to create procurement for") }),
+        execute: async ({ job_number }: { job_number: string }) => {
+          const { data: job } = await supabase.from("jobs").select("id, customer_id, bom_id, quantity, assembly_type, customers(code)").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+
+          // Call the procurements API internally
+          const customerCode = (job.customers as unknown as { code: string })?.code ?? "UNK";
+          const res = await fetch(new URL("/api/procurements", req.url).toString(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Cookie": req.headers.get("cookie") ?? "" },
+            body: JSON.stringify({ job_id: job.id, customer_code: customerCode }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: err.error ?? `Failed (${res.status})` };
+          }
+
+          const proc = await res.json();
+          return { success: true, proc_code: proc.proc_code, job_number, link: `/procurement/${proc.id}` };
+        },
+      },
+
+      generateSerials: {
+        description: "Generate serial numbers for all boards in a job",
+        inputSchema: z.object({ job_number: z.string().describe("Job number") }),
+        execute: async ({ job_number }: { job_number: string }) => {
+          const { data: job } = await supabase.from("jobs").select("id, quantity").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+
+          // Check if serials already exist
+          const { count } = await supabase.from("serial_numbers").select("id", { count: "exact", head: true }).eq("job_id", job.id);
+          if ((count ?? 0) > 0) return { error: `Serial numbers already generated (${count} exist)` };
+
+          const serials = Array.from({ length: job.quantity }, (_, i) => ({
+            job_id: job.id,
+            serial_number: `${job_number}-${String(i + 1).padStart(3, "0")}`,
+            board_number: i + 1,
+          }));
+
+          const { error } = await supabase.from("serial_numbers").insert(serials);
+          if (error) return { error: error.message };
+
+          return { success: true, job_number, count: job.quantity, first: serials[0].serial_number, last: serials[serials.length - 1].serial_number };
+        },
+      },
+
+      logProductionEvent: {
+        description: "Log a production event for a job (setup, smt, reflow, aoi, etc.)",
+        inputSchema: z.object({
+          job_number: z.string().describe("Job number"),
+          event_type: z.enum([
+            "materials_received", "setup_started", "smt_top_start", "smt_top_end",
+            "smt_bottom_start", "smt_bottom_end", "reflow_start", "reflow_end",
+            "aoi_start", "aoi_passed", "aoi_failed", "through_hole_start", "through_hole_end",
+            "touchup", "washing", "packing", "ready_to_ship"
+          ]).describe("Event type"),
+          notes: z.string().optional().describe("Optional notes"),
+        }),
+        execute: async ({ job_number, event_type, notes }: { job_number: string; event_type: string; notes?: string }) => {
+          const { data: job } = await supabase.from("jobs").select("id").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+
+          const { error } = await supabase.from("production_events").insert({
+            job_id: job.id, event_type, notes,
+          });
+          if (error) return { error: error.message };
+
+          return { success: true, job_number, event_type, timestamp: new Date().toISOString() };
+        },
+      },
     },
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(8),
   });
 
   return result.toUIMessageStreamResponse();
