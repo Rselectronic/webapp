@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils/format";
 import { KpiCard } from "@/components/kpi-card";
 import { ActiveWorkflows, type ActiveWorkflowItem } from "@/components/workflow/active-workflows";
+import { DashboardTabs } from "@/components/dashboard/dashboard-tabs";
 import {
   AlertTriangle,
   Briefcase,
@@ -272,15 +273,8 @@ export default async function DashboardPage() {
     }
   );
 
-  return (
+  const overviewContent = (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-        <p className="text-gray-500">
-          Welcome to the RS PCB Assembly management system.
-        </p>
-      </div>
-
       {/* Primary KPIs */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -337,23 +331,10 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Active Workflows */}
+      {/* Recent Activity */}
       <div className="rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
         <div className="border-b px-6 py-4 dark:border-gray-800">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Active Workflows
-          </h3>
-          <p className="text-sm text-gray-500">
-            Track jobs through the full lifecycle: BOM to Invoice
-          </p>
-        </div>
-        <ActiveWorkflows workflows={workflows} />
-      </div>
-
-      {/* Recent Activity */}
-      <div className="rounded-lg border bg-white">
-        <div className="border-b px-6 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">
             Recent Activity
           </h3>
         </div>
@@ -365,17 +346,17 @@ export default async function DashboardPage() {
             </p>
           </div>
         ) : (
-          <ul className="divide-y">
+          <ul className="divide-y dark:divide-gray-800">
             {recentActivity.map((item) => (
               <li
                 key={`${item.type}-${item.id}`}
                 className="flex items-center gap-4 px-6 py-3"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-50">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-50 dark:bg-gray-900">
                   {activityIcon(item.type)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                     {item.type === "quote" && `Quote ${item.label}`}
                     {item.type === "job" && `Job ${item.label}`}
                     {item.type === "invoice" && `Invoice ${item.label}`}
@@ -400,6 +381,37 @@ export default async function DashboardPage() {
           </ul>
         )}
       </div>
+    </div>
+  );
+
+  const workflowsContent = (
+    <div className="rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
+      <div className="border-b px-6 py-4 dark:border-gray-800">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          Active Workflows
+        </h3>
+        <p className="text-sm text-gray-500">
+          Track jobs through the full lifecycle: BOM &rarr; Classify &rarr; Quote &rarr; Job &rarr; Procurement &rarr; Production &rarr; Ship &rarr; Invoice
+        </p>
+      </div>
+      <ActiveWorkflows workflows={workflows} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h2>
+        <p className="text-gray-500">
+          Welcome to the RS PCB Assembly management system.
+        </p>
+      </div>
+
+      <DashboardTabs
+        overviewContent={overviewContent}
+        workflowsContent={workflowsContent}
+        workflowCount={workflows.length}
+      />
     </div>
   );
 }
