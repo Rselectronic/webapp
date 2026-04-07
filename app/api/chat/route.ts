@@ -112,6 +112,10 @@ export async function POST(req: Request) {
   const body = await req.json();
   const supabase = createAdminClient();
 
+  // Extract conversation_id and file context if provided
+  const conversationId: string | null = body.conversationId ?? null;
+  const fileContext: string | null = body.fileContext ?? null;
+
   // Convert UIMessages (parts-based) to simple role+content
   const messages = (body.messages ?? []).map(
     (m: { role: string; parts?: Array<{ type: string; text: string }>; content?: string }) => ({
@@ -122,9 +126,14 @@ export async function POST(req: Request) {
     })
   );
 
+  // If there's file context (parsed BOM preview), prepend it to system prompt
+  const systemPrompt = fileContext
+    ? `${SYSTEM_PROMPT}\n\n## UPLOADED FILE CONTEXT\nThe user has uploaded a file in this conversation. Here is the parsed content:\n\n${fileContext}\n\nUse this data when answering questions about the file. If it looks like a BOM, help identify components and M-Codes.`
+    : SYSTEM_PROMPT;
+
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages,
     tools: {
       listCustomers: {
@@ -679,9 +688,111 @@ export async function POST(req: Request) {
           return await res.json();
         },
       },
+
+      correctMCode: {
+        description: "Correct an M-Code classification based on user feedback. Updates both the BOM line AND the master components table so the system learns. Use when the user says something like 'C1 should be CP not IP' or 'that MPN is actually TH'.",
+        inputSchema: z.object({
+          mpn: z.string().describe("Manufacturer Part Number"),
+          correct_m_code: z.string().describe("The correct M-Code: CP, IP, TH, CPEXP, 0402, 0201, MANSMT, MEC, Accs, CABLE, DEV"),
+          reason: z.string().optional().describe("Why this correction is being made"),
+        }),
+        execute: async ({ mpn, correct_m_code, reason }: { mpn: string; correct_m_code: string; reason?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can correct M-Codes." };
+
+          // 1. Update all BOM lines with this MPN
+          const { data: updatedLines, error: lineErr } = await supabase
+            .from("bom_lines")
+            .update({
+              m_code: correct_m_code,
+              m_code_source: "manual",
+              m_code_confidence: 1.0,
+            })
+            .eq("mpn", mpn)
+            .select("id, bom_id");
+
+          if (lineErr) return { error: lineErr.message };
+
+          // 2. Upsert into components table (learning loop)
+          const { error: compErr } = await supabase
+            .from("components")
+            .upsert(
+              {
+                mpn,
+                m_code: correct_m_code,
+                m_code_source: "manual",
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "mpn,manufacturer", ignoreDuplicates: false }
+            );
+
+          // Also try without manufacturer constraint (update any matching MPN)
+          await supabase
+            .from("components")
+            .update({
+              m_code: correct_m_code,
+              m_code_source: "manual",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("mpn", mpn);
+
+          return {
+            success: true,
+            mpn,
+            new_m_code: correct_m_code,
+            bom_lines_updated: updatedLines?.length ?? 0,
+            components_updated: !compErr,
+            reason: reason ?? "User correction via chat",
+            note: "This correction will be used for future auto-classification of this MPN.",
+          };
+        },
+      },
     },
     stopWhen: stepCountIs(8),
   });
+
+  // --- PERSIST MESSAGES TO DB (fire-and-forget) ---
+  if (conversationId) {
+    // Save the last user message
+    const lastUserMsg = messages[messages.length - 1];
+    if (lastUserMsg?.role === "user") {
+      supabase
+        .from("chat_messages")
+        .insert({
+          conversation_id: conversationId,
+          role: "user",
+          content: lastUserMsg.content,
+          metadata: body.attachments ? { attachments: body.attachments } : {},
+        })
+        .then(() => {});
+    }
+
+    // Collect the streamed response and save it after completion
+    const response = result.toUIMessageStreamResponse();
+
+    // Save assistant response in the background after stream completes
+    result.text.then((fullText) => {
+      if (fullText) {
+        supabase
+          .from("chat_messages")
+          .insert({
+            conversation_id: conversationId,
+            role: "assistant",
+            content: fullText,
+            metadata: {},
+          })
+          .then(() => {
+            // Update conversation timestamp
+            supabase
+              .from("chat_conversations")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("id", conversationId)
+              .then(() => {});
+          });
+      }
+    });
+
+    return response;
+  }
 
   return result.toUIMessageStreamResponse();
 }
