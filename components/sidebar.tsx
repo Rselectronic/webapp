@@ -19,6 +19,7 @@ import {
   BarChart3,
   PanelLeftClose,
   PanelLeftOpen,
+  Truck,
 } from "lucide-react";
 
 const navigation = [
@@ -29,6 +30,7 @@ const navigation = [
   { name: "Jobs", href: "/jobs", icon: Briefcase },
   { name: "Procurement", href: "/procurement", icon: ShoppingCart },
   { name: "Production", href: "/production", icon: Factory },
+  { name: "Shipping", href: "/shipping", icon: Truck },
   { name: "Invoices", href: "/invoices", icon: FileText },
   { name: "Quality", href: "/quality", icon: ShieldCheck },
   { name: "Inventory", href: "/inventory", icon: Package },

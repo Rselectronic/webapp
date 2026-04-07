@@ -79,11 +79,19 @@ export default async function ProcurementPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Procurement</h2>
-        <p className="text-gray-500">
-          {rows.length} procurement{rows.length !== 1 ? "s" : ""}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Procurement</h2>
+          <p className="text-gray-500">
+            {rows.length} procurement{rows.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <Link
+          href="/procurement/stencils"
+          className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground"
+        >
+          PCB &amp; Stencil Orders
+        </Link>
       </div>
 
       {/* Status filter tabs */}
