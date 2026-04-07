@@ -72,7 +72,7 @@ export function PricingTable({ tiers, warnings }: PricingTableProps) {
         </table>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         {tiers.map((t) => (
           <Card key={t.board_qty} className="text-center">
             <CardHeader className="pb-1 pt-3">

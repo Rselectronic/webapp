@@ -46,7 +46,7 @@ export interface PricingTier {
 
 export interface QuoteInput {
   lines: PricingLine[];
-  quantities: [number, number, number, number];
+  quantities: number[];
   pcb_unit_price: number;
   nre_charge: number;
   shipping_flat: number;

@@ -15,7 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PricingTable } from "@/components/quotes/pricing-table";
 import type { PricingTier } from "@/lib/pricing/types";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Plus, X } from "lucide-react";
 
 interface Customer {
   id: string;
@@ -46,9 +46,7 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
   const [customerId, setCustomerId] = useState("");
   const [boms, setBoms] = useState<Bom[]>([]);
   const [bomId, setBomId] = useState("");
-  const [quantities, setQuantities] = useState<
-    [string, string, string, string]
-  >(["50", "100", "250", "500"]);
+  const [quantities, setQuantities] = useState<string[]>(["50", "100", "250", "500"]);
   const [pcbPrice, setPcbPrice] = useState("");
   const [nre, setNre] = useState("350");
   const [shipping, setShipping] = useState("200");
@@ -84,21 +82,27 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
 
   const updateQuantity = (index: number, value: string) => {
     setQuantities((prev) => {
-      const next = [...prev] as [string, string, string, string];
+      const next = [...prev];
       next[index] = value;
       return next;
     });
   };
 
+  const addQuantity = () => {
+    setQuantities((prev) => [...prev, ""]);
+    setPreview(null);
+  };
+
+  const removeQuantity = (index: number) => {
+    if (quantities.length <= 1) return;
+    setQuantities((prev) => prev.filter((_, i) => i !== index));
+    setPreview(null);
+  };
+
   const selectedBom = boms.find((b) => b.id === bomId);
 
-  const parsedQuantities = quantities.map((q) => parseInt(q, 10) || 0) as [
-    number,
-    number,
-    number,
-    number,
-  ];
-  const validQuantities = parsedQuantities.every((q) => q > 0);
+  const parsedQuantities = quantities.map((q) => parseInt(q, 10) || 0);
+  const validQuantities = parsedQuantities.length > 0 && parsedQuantities.every((q) => q > 0);
 
   const handleCalculate = async () => {
     if (!bomId || !validQuantities) return;
@@ -234,20 +238,44 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label className="mb-2 block">Board Quantities (4 tiers)</Label>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label>Board Quantities ({quantities.length} tier{quantities.length !== 1 ? "s" : ""})</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addQuantity}
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  Add Tier
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {quantities.map((q, i) => (
-                  <div key={i}>
+                  <div key={i} className="relative">
                     <Label className="mb-1 block text-xs text-gray-500">
                       Tier {i + 1}
                     </Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={q}
-                      onChange={(e) => updateQuantity(i, e.target.value)}
-                      placeholder={`Qty ${i + 1}`}
-                    />
+                    <div className="flex gap-1">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={q}
+                        onChange={(e) => updateQuantity(i, e.target.value)}
+                        placeholder={`Qty ${i + 1}`}
+                      />
+                      {quantities.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 w-9 p-0 shrink-0 text-gray-400 hover:text-red-500"
+                          onClick={() => removeQuantity(i)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

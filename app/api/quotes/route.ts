@@ -52,7 +52,7 @@ interface CreateQuoteBody {
   bom_id: string;
   gmp_id: string;
   customer_id: string;
-  quantities: [number, number, number, number];
+  quantities: number[];
   pcb_unit_price: number;
   nre_charge: number;
   shipping_flat: number;
@@ -86,12 +86,12 @@ export async function POST(req: NextRequest) {
     !gmp_id ||
     !customer_id ||
     !Array.isArray(quantities) ||
-    quantities.length !== 4
+    quantities.length < 1
   ) {
     return NextResponse.json(
       {
         error:
-          "Missing required fields: bom_id, gmp_id, customer_id, quantities (array of 4 numbers)",
+          "Missing required fields: bom_id, gmp_id, customer_id, quantities (array of 1+ numbers)",
       },
       { status: 400 }
     );
@@ -208,12 +208,9 @@ export async function POST(req: NextRequest) {
       gmp_id,
       bom_id,
       status: "draft",
-      quantities: {
-        qty_1: quantities[0],
-        qty_2: quantities[1],
-        qty_3: quantities[2],
-        qty_4: quantities[3],
-      },
+      quantities: Object.fromEntries(
+        quantities.map((q, i) => [`qty_${i + 1}`, q])
+      ),
       pricing: { tiers: pricing.tiers, warnings: pricing.warnings },
       component_markup: settings.component_markup_pct ?? 20,
       pcb_cost_per_unit: pcb_unit_price,

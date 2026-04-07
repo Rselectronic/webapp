@@ -9,7 +9,7 @@ import type { PricingLine, OverageTier, PricingSettings } from "@/lib/pricing/ty
 
 interface PreviewBody {
   bom_id: string;
-  quantities: [number, number, number, number];
+  quantities: number[];
   pcb_unit_price: number;
   nre_charge: number;
   shipping_flat: number;
@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
   if (
     !bom_id ||
     !Array.isArray(quantities) ||
-    quantities.length !== 4
+    quantities.length < 1
   ) {
     return NextResponse.json(
-      { error: "Missing required fields: bom_id, quantities (array of 4 numbers)" },
+      { error: "Missing required fields: bom_id, quantities (array of 1+ numbers)" },
       { status: 400 }
     );
   }
