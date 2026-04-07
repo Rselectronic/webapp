@@ -24,6 +24,7 @@ import {
   Settings,
   BarChart3,
   Menu,
+  Truck,
 } from "lucide-react";
 
 const navigation = [
@@ -34,6 +35,7 @@ const navigation = [
   { name: "Jobs", href: "/jobs", icon: Briefcase, enabled: true },
   { name: "Procurement", href: "/procurement", icon: ShoppingCart, enabled: true },
   { name: "Production", href: "/production", icon: Factory, enabled: true },
+  { name: "Shipping", href: "/shipping", icon: Truck, enabled: true },
   { name: "Invoices", href: "/invoices", icon: FileText, enabled: true },
   { name: "Reports", href: "/reports", icon: BarChart3, enabled: true },
   { name: "Settings", href: "/settings", icon: Settings, enabled: true },

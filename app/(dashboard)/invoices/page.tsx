@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, Clock, AlertTriangle, AlertCircle, Download } from "lucide-react";
+import { DollarSign, Clock, AlertTriangle, AlertCircle, Download, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,6 +138,12 @@ export default async function InvoicesPage({
         </div>
         <div className="flex gap-2">
           <CreateInvoiceDialog customers={customers} />
+          <Link href="/invoices/payments">
+            <Button variant="outline" size="sm">
+              <CreditCard className="mr-2 h-4 w-4" />
+              Payment History
+            </Button>
+          </Link>
           <a href="/api/export?table=invoices" download>
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />

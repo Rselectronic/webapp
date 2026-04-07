@@ -7,12 +7,14 @@ import {
   CreditCard,
   Download,
   FileText,
+  History,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
+import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/format";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 
@@ -253,30 +255,8 @@ export default async function InvoiceDetailPage({
         </CardContent>
       </Card>
 
-      {/* Payment Info (if paid) */}
-      {invoice.status === "paid" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Payment Received</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <p className="text-sm">
-              <span className="text-gray-500">Date: </span>
-              <span className="font-medium">
-                {invoice.paid_date ? formatDate(invoice.paid_date) : "—"}
-              </span>
-            </p>
-            {invoice.payment_method && (
-              <p className="text-sm">
-                <span className="text-gray-500">Method: </span>
-                <span className="font-medium capitalize">
-                  {invoice.payment_method}
-                </span>
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Payments Section */}
+      <PaymentsSection invoiceId={id} invoiceNumber={invoice.invoice_number} total={total} currentStatus={effectiveStatus} />
 
       {/* Notes */}
       {invoice.notes && (
@@ -298,5 +278,101 @@ export default async function InvoiceDetailPage({
         <span>Updated: {formatDateTime(invoice.updated_at)}</span>
       </div>
     </div>
+  );
+}
+
+const METHOD_LABELS: Record<string, string> = {
+  cheque: "Cheque",
+  wire: "Wire Transfer",
+  eft: "EFT",
+  credit_card: "Credit Card",
+};
+
+async function PaymentsSection({
+  invoiceId,
+  invoiceNumber,
+  total,
+  currentStatus,
+}: {
+  invoiceId: string;
+  invoiceNumber: string;
+  total: number;
+  currentStatus: string;
+}) {
+  const supabase = await createClient();
+
+  const { data: payments } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .order("payment_date", { ascending: false });
+
+  const allPayments = payments ?? [];
+  const totalPaid = allPayments.reduce(
+    (sum, p) => sum + Number(p.amount),
+    0
+  );
+  const outstanding = total - totalPaid;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-5 w-5" />
+          Payments
+          {allPayments.length > 0 && (
+            <span className="text-sm font-normal text-gray-500">
+              ({formatCurrency(totalPaid)} of {formatCurrency(total)} paid
+              {outstanding > 0 ? ` — ${formatCurrency(outstanding)} outstanding` : ""})
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {allPayments.length > 0 ? (
+          <div className="space-y-2">
+            {allPayments.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="font-mono font-medium text-green-700">
+                    {formatCurrency(Number(p.amount))}
+                  </span>
+                  <span className="text-gray-500">
+                    {formatDate(p.payment_date)}
+                  </span>
+                  <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                    {METHOD_LABELS[p.payment_method] ?? p.payment_method}
+                  </span>
+                  {p.reference_number && (
+                    <span className="font-mono text-xs text-gray-400">
+                      Ref: {p.reference_number}
+                    </span>
+                  )}
+                </div>
+                {p.notes && (
+                  <span className="max-w-xs truncate text-xs text-gray-400">
+                    {p.notes}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">No payments recorded yet.</p>
+        )}
+
+        {currentStatus !== "paid" && currentStatus !== "cancelled" && (
+          <RecordPaymentForm
+            invoiceId={invoiceId}
+            invoiceNumber={invoiceNumber}
+            invoiceTotal={total}
+            totalPaid={totalPaid}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
