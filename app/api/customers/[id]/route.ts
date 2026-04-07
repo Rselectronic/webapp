@@ -25,18 +25,34 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const { bom_config } = body;
+  const {
+    bom_config, contacts, billing_addresses, shipping_addresses,
+    company_name, payment_terms, notes, is_active,
+  } = body;
 
-  if (bom_config === undefined) {
-    return NextResponse.json(
-      { error: "bom_config is required" },
-      { status: 400 }
-    );
+  // Build update payload — only include fields that were sent
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (bom_config !== undefined) updates.bom_config = bom_config;
+  if (contacts !== undefined) {
+    updates.contacts = contacts;
+    // Keep legacy columns in sync with primary contact
+    const primary = contacts.find((c: Record<string, unknown>) => c.is_primary) ?? contacts[0];
+    if (primary) {
+      updates.contact_name = primary.name || null;
+      updates.contact_email = primary.email || null;
+      updates.contact_phone = primary.phone || null;
+    }
   }
+  if (billing_addresses !== undefined) updates.billing_addresses = billing_addresses;
+  if (shipping_addresses !== undefined) updates.shipping_addresses = shipping_addresses;
+  if (company_name !== undefined) updates.company_name = company_name;
+  if (payment_terms !== undefined) updates.payment_terms = payment_terms;
+  if (notes !== undefined) updates.notes = notes;
+  if (is_active !== undefined) updates.is_active = is_active;
 
   const { error } = await supabase
     .from("customers")
-    .update({ bom_config, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq("id", id);
 
   if (error) {
