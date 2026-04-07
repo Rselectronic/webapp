@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils/format";
 import { KpiCard } from "@/components/kpi-card";
+import { ActiveWorkflows, type ActiveWorkflowItem } from "@/components/workflow/active-workflows";
 import {
   AlertTriangle,
   Briefcase,
@@ -96,6 +97,7 @@ export default async function DashboardPage() {
     recentQuotes,
     recentJobs,
     recentInvoices,
+    activeWorkflowJobs,
   ] = await Promise.all([
     // Primary KPIs
     supabase
@@ -146,6 +148,15 @@ export default async function DashboardPage() {
       .from("invoices")
       .select("id, invoice_number, status, total, created_at, customers(code)")
       .order("created_at", { ascending: false })
+      .limit(5),
+    // Active workflows — recent jobs not archived, with linked entities
+    supabase
+      .from("jobs")
+      .select(
+        "id, job_number, status, bom_id, quote_id, customer_id, customers(code, company_name), gmps(gmp_number)"
+      )
+      .not("status", "in", '("archived")')
+      .order("updated_at", { ascending: false })
       .limit(5),
   ]);
 
@@ -239,6 +250,28 @@ export default async function DashboardPage() {
   );
   const recentActivity = activity.slice(0, 10);
 
+  // Build active workflow items from jobs
+  const workflows: ActiveWorkflowItem[] = (activeWorkflowJobs.data ?? []).map(
+    (j) => {
+      const jCust = j.customers as unknown as {
+        code: string;
+        company_name: string;
+      } | null;
+      const jGmp = j.gmps as unknown as { gmp_number: string } | null;
+      return {
+        title: `${jCust?.code ?? "?"} / ${jGmp?.gmp_number ?? j.job_number}`,
+        entities: {
+          bomId: j.bom_id ?? undefined,
+          bomStatus: "parsed" as const,
+          quoteId: j.quote_id ?? undefined,
+          quoteStatus: j.quote_id ? "accepted" : undefined,
+          jobId: j.id,
+          jobStatus: j.status,
+        },
+      };
+    }
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -302,6 +335,19 @@ export default async function DashboardPage() {
           description="Past due date"
           icon={AlertTriangle}
         />
+      </div>
+
+      {/* Active Workflows */}
+      <div className="rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
+        <div className="border-b px-6 py-4 dark:border-gray-800">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Active Workflows
+          </h3>
+          <p className="text-sm text-gray-500">
+            Track jobs through the full lifecycle: BOM to Invoice
+          </p>
+        </div>
+        <ActiveWorkflows workflows={workflows} />
       </div>
 
       {/* Recent Activity */}

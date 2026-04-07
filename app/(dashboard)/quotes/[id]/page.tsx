@@ -22,6 +22,7 @@ import {
   formatDate,
   formatDateTime,
 } from "@/lib/utils/format";
+import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import type { PricingTier } from "@/lib/pricing/types";
 
 interface QuoteDetailCustomer {
@@ -54,13 +55,22 @@ export default async function QuoteDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("quotes")
-    .select(
-      "*, customers(code, company_name, contact_name, contact_email), gmps(gmp_number, board_name), boms(file_name, revision)"
-    )
-    .eq("id", id)
-    .single();
+  const [{ data, error }, { data: linkedJob }] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select(
+        "*, customers(code, company_name, contact_name, contact_email), gmps(gmp_number, board_name), boms(file_name, revision)"
+      )
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("jobs")
+      .select("id, status")
+      .eq("quote_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   if (error || !data) {
     notFound();
@@ -86,6 +96,19 @@ export default async function QuoteDetailPage({
           Back to Quotes
         </Button>
       </Link>
+
+      {/* Workflow Banner */}
+      <WorkflowBanner
+        currentPageStep="quote"
+        entities={{
+          bomId: quote.bom_id,
+          bomStatus: "parsed",
+          quoteId: id,
+          quoteStatus: quote.status,
+          jobId: linkedJob?.id ?? undefined,
+          jobStatus: linkedJob?.status ?? undefined,
+        }}
+      />
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

@@ -16,6 +16,7 @@ import {
 import { formatDateTime } from "@/lib/utils/format";
 import { ReceiveButton } from "@/components/procurement/receive-button";
 import { CreatePOButton } from "@/components/procurement/create-po-button";
+import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -50,6 +51,9 @@ const LINE_STATUS_LABELS: Record<string, string> = {
 interface ProcJob {
   job_number: string;
   quantity: number;
+  status: string;
+  bom_id: string | null;
+  quote_id: string | null;
   customers: { code: string; company_name: string } | null;
   gmps: { gmp_number: string } | null;
 }
@@ -80,7 +84,7 @@ export default async function ProcurementDetailPage({
   const { data: proc, error } = await supabase
     .from("procurements")
     .select(
-      "*, jobs(job_number, quantity, customers(code, company_name), gmps(gmp_number))"
+      "*, jobs(job_number, quantity, status, bom_id, quote_id, customers(code, company_name), gmps(gmp_number))"
     )
     .eq("id", id)
     .single();
@@ -89,17 +93,25 @@ export default async function ProcurementDetailPage({
     notFound();
   }
 
-  const { data: lines } = await supabase
-    .from("procurement_lines")
-    .select("*")
-    .eq("procurement_id", id)
-    .order("created_at", { ascending: true });
-
-  const { data: supplierPOs } = await supabase
-    .from("supplier_pos")
-    .select("*")
-    .eq("procurement_id", id)
-    .order("created_at", { ascending: false });
+  const [{ data: lines }, { data: supplierPOs }, { data: linkedInvoice }] = await Promise.all([
+    supabase
+      .from("procurement_lines")
+      .select("*")
+      .eq("procurement_id", id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("supplier_pos")
+      .select("*")
+      .eq("procurement_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("invoices")
+      .select("id, status")
+      .eq("job_id", proc.job_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   const job = proc.jobs as unknown as ProcJob | null;
   const customer = job?.customers as unknown as {
@@ -123,6 +135,23 @@ export default async function ProcurementDetailPage({
           Back to Procurement
         </Button>
       </Link>
+
+      {/* Workflow Banner */}
+      <WorkflowBanner
+        currentPageStep="procurement"
+        entities={{
+          bomId: job?.bom_id ?? undefined,
+          bomStatus: "parsed",
+          quoteId: job?.quote_id ?? undefined,
+          quoteStatus: "accepted",
+          jobId: proc.job_id,
+          jobStatus: job?.status ?? "procurement",
+          procurementId: id,
+          procurementStatus: proc.status,
+          invoiceId: linkedInvoice?.id ?? undefined,
+          invoiceStatus: linkedInvoice?.status ?? undefined,
+        }}
+      />
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

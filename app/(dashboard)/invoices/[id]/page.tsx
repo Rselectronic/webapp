@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/format";
+import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 
 interface InvoiceCustomer {
   code: string;
@@ -25,6 +26,8 @@ interface InvoiceCustomer {
 interface InvoiceJob {
   job_number: string;
   gmp_id: string;
+  bom_id: string | null;
+  quote_id: string | null;
   gmps: { gmp_number: string; board_name: string | null } | null;
 }
 
@@ -39,7 +42,7 @@ export default async function InvoiceDetailPage({
   const { data, error } = await supabase
     .from("invoices")
     .select(
-      "*, customers(code, company_name, contact_name, payment_terms), jobs(job_number, gmp_id, gmps(gmp_number, board_name))"
+      "*, customers(code, company_name, contact_name, payment_terms), jobs(job_number, gmp_id, bom_id, quote_id, gmps(gmp_number, board_name))"
     )
     .eq("id", id)
     .single();
@@ -82,6 +85,21 @@ export default async function InvoiceDetailPage({
           Back to Invoices
         </Button>
       </Link>
+
+      {/* Workflow Banner */}
+      <WorkflowBanner
+        currentPageStep="invoice"
+        entities={{
+          bomId: job?.bom_id ?? undefined,
+          bomStatus: "parsed",
+          quoteId: job?.quote_id ?? undefined,
+          quoteStatus: "accepted",
+          jobId: invoice.job_id,
+          jobStatus: "invoiced",
+          invoiceId: id,
+          invoiceStatus: effectiveStatus,
+        }}
+      />
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

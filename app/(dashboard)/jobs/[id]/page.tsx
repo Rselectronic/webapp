@@ -9,6 +9,7 @@ import { JobActions } from "@/components/jobs/job-actions";
 import { ShippingActions } from "@/components/shipping/shipping-actions";
 import { NCRCreateDialog } from "@/components/ncr/ncr-create-dialog";
 import { PoPricingSection } from "@/components/jobs/po-pricing-section";
+import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 
 interface JobCustomer {
   code: string;
@@ -60,7 +61,7 @@ export default async function JobDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [jobResult, statusLogResult, productionResult] = await Promise.all([
+  const [jobResult, statusLogResult, productionResult, procResult, invResult] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -78,6 +79,20 @@ export default async function JobDetailPage({
       .select("id, event_type, notes, created_at, users:operator_id(full_name)")
       .eq("job_id", id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("procurements")
+      .select("id, status")
+      .eq("job_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("invoices")
+      .select("id, status")
+      .eq("job_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (jobResult.error || !jobResult.data) {
@@ -104,6 +119,29 @@ export default async function JobDetailPage({
           Back to Jobs
         </Button>
       </Link>
+
+      {/* Workflow Banner */}
+      <WorkflowBanner
+        currentPageStep={
+          job.status === "shipping" || job.status === "delivered"
+            ? "shipping"
+            : job.status === "production" || job.status === "inspection"
+              ? "production"
+              : "job"
+        }
+        entities={{
+          bomId: job.bom_id,
+          bomStatus: "parsed",
+          quoteId: job.quote_id ?? undefined,
+          quoteStatus: "accepted",
+          jobId: id,
+          jobStatus: job.status,
+          procurementId: procResult.data?.id ?? undefined,
+          procurementStatus: procResult.data?.status ?? undefined,
+          invoiceId: invResult.data?.id ?? undefined,
+          invoiceStatus: invResult.data?.status ?? undefined,
+        }}
+      />
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

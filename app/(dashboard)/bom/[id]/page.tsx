@@ -9,6 +9,7 @@ import {
 import { ArrowLeft } from "lucide-react";
 import { BomTable } from "@/components/bom/bom-table";
 import { AIClassifyButton } from "@/components/bom/ai-classify-button";
+import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import { formatDateTime } from "@/lib/utils/format";
 
 export default async function BomDetailPage({
@@ -33,12 +34,21 @@ export default async function BomDetailPage({
     .eq("bom_id", id)
     .order("line_number", { ascending: true });
 
-  // Revision history for this GMP
-  const { data: revisions } = await supabase
-    .from("boms")
-    .select("id, file_name, revision, status, created_at")
-    .eq("gmp_id", bom.gmp_id)
-    .order("created_at", { ascending: false });
+  // Revision history + linked quote for workflow banner — both in parallel
+  const [{ data: revisions }, { data: linkedQuote }] = await Promise.all([
+    supabase
+      .from("boms")
+      .select("id, file_name, revision, status, created_at")
+      .eq("gmp_id", bom.gmp_id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("quotes")
+      .select("id, status")
+      .eq("bom_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   const parseResult = bom.parse_result as Record<string, unknown> | null;
   const classSummary = (parseResult?.classification_summary ?? {}) as Record<string, number>;
@@ -63,6 +73,17 @@ export default async function BomDetailPage({
           <Button variant="outline" size="sm">Upload New</Button>
         </Link>
       </div>
+
+      {/* Workflow Banner */}
+      <WorkflowBanner
+        currentPageStep={bom.status === "parsed" ? "classify" : "bom_upload"}
+        entities={{
+          bomId: id,
+          bomStatus: bom.status,
+          quoteId: linkedQuote?.id ?? undefined,
+          quoteStatus: linkedQuote?.status ?? undefined,
+        }}
+      />
 
       <div className="flex items-start justify-between">
         <div>
