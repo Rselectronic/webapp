@@ -72,8 +72,10 @@ export default async function BomListPage() {
                 </TableHeader>
                 <TableBody>
                   {boms.map((bom) => {
-                    const customer = bom.customers as unknown as Record<string, string> | null;
-                    const gmp = bom.gmps as unknown as Record<string, string> | null;
+                    const rawCustomer = bom.customers as unknown;
+                    const customer = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer) as Record<string, string> | null;
+                    const rawGmp = bom.gmps as unknown;
+                    const gmp = (Array.isArray(rawGmp) ? rawGmp[0] : rawGmp) as Record<string, string> | null;
                     const statusVariant =
                       bom.status === "parsed"
                         ? "default"
