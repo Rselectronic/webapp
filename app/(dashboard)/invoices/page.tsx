@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { DollarSign, Clock, AlertTriangle, AlertCircle, Download } from "lucide-react";
+import { DollarSign, Clock, AlertTriangle, AlertCircle, Download, FileText } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -129,7 +130,7 @@ export default async function InvoicesPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Invoices</h2>
           <p className="text-gray-500">
@@ -236,19 +237,13 @@ export default async function InvoicesPage({
           configured.
         </div>
       ) : filtered.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-center text-lg">
-              No invoices found
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-center text-gray-500">
-            Invoices are created from the job detail page once a job is ready to
-            be invoiced.
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FileText}
+          title="No invoices found"
+          description={activeStatus !== "all" ? `No invoices with status "${activeStatus}". Try a different filter.` : "Invoices are created from the job detail page once a job is ready to be invoiced."}
+        />
       ) : (
-        <div className="rounded-lg border bg-white">
+        <div className="table-responsive rounded-lg border bg-white">
           <Table>
             <TableHeader>
               <TableRow>

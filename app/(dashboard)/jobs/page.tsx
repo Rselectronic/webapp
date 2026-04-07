@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { LayoutGrid, List, Download } from "lucide-react";
+import { LayoutGrid, List, Download, Briefcase } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { JobKanban } from "@/components/jobs/job-kanban";
 import { JobStatusBadge } from "@/components/jobs/job-status-badge";
 
@@ -89,13 +90,19 @@ export default async function JobsPage({
       )}
 
       {jobs.length === 0 && !error ? (
-        <div className="rounded-md border border-dashed p-8 text-center text-gray-500">
-          No jobs yet. Create a job from an accepted quote.
-        </div>
+        <EmptyState
+          icon={Briefcase}
+          title="No jobs yet"
+          description="Jobs are created when a quote is accepted. Start by creating and sending a quote to a customer."
+        >
+          <Link href="/quotes/new">
+            <Button variant="outline">Create a Quote</Button>
+          </Link>
+        </EmptyState>
       ) : activeView === "kanban" ? (
         <JobKanban jobs={jobs} />
       ) : (
-        <div className="overflow-x-auto rounded-md border">
+        <div className="table-responsive overflow-x-auto rounded-md border">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
