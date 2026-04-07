@@ -37,6 +37,10 @@ yarn-error.log*
 # VBA source files (contain API keys)
 All vba codes/
 
+# MCP server build artifacts
+erp-rs-mcp/dist/
+erp-rs-mcp/node_modules/
+
 # vercel
 .vercel
 
