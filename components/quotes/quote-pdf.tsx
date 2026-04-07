@@ -183,17 +183,26 @@ const styles = StyleSheet.create({
     color: "#475569",
     lineHeight: 1.5,
   },
-  /* ── Validity ── */
-  validityBlock: {
-    marginTop: 8,
-    paddingTop: 10,
+  /* ── Terms & Conditions ── */
+  termsBlock: {
+    marginTop: 16,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#cbd5e1",
   },
-  validityText: {
-    fontSize: 8,
+  termsTitle: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+    color: "#0f172a",
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  termsText: {
+    fontSize: 7.5,
     color: "#64748b",
-    lineHeight: 1.5,
+    lineHeight: 1.6,
+    marginBottom: 2,
   },
   /* ── Footer ── */
   footer: {
@@ -288,7 +297,10 @@ export function QuotePDF({
               +1 (438) 833-8477 · info@rspcbassembly.com
             </Text>
             <Text style={styles.companyDetail}>
-              GST: 840134829 · QST: 1214617001
+              www.rspcbassembly.com
+            </Text>
+            <Text style={styles.companyDetail}>
+              GST/TPS: 840134829 · QST/TVQ: 1214617001
             </Text>
           </View>
           <View>
@@ -400,13 +412,29 @@ export function QuotePDF({
           </View>
         ) : null}
 
-        {/* ── Validity Notice ── */}
-        <View style={styles.validityBlock}>
-          <Text style={styles.validityText}>
-            This quotation is valid for {validityDays} days from the date of
-            issue. Prices are in CAD and exclude TPS/GST (5%) and TVQ/QST
-            (9.975%). Lead times are subject to component availability at
-            the time of order.
+        {/* ── Terms & Conditions ── */}
+        <View style={styles.termsBlock}>
+          <Text style={styles.termsTitle}>Terms &amp; Conditions</Text>
+          <Text style={styles.termsText}>
+            1. This quotation is valid for {validityDays} days from the date of issue.
+          </Text>
+          <Text style={styles.termsText}>
+            2. All prices are in CAD and exclude TPS/GST (5%) and TVQ/QST (9.975%).
+          </Text>
+          <Text style={styles.termsText}>
+            3. Lead times are subject to component availability at the time of order confirmation.
+          </Text>
+          <Text style={styles.termsText}>
+            4. Payment terms: Net 30 from date of invoice unless otherwise agreed.
+          </Text>
+          <Text style={styles.termsText}>
+            5. NRE charges apply to first-time boards only and cover stencil, programming, and setup.
+          </Text>
+          <Text style={styles.termsText}>
+            6. Customer-supplied components are subject to incoming inspection. Defective parts may result in additional charges.
+          </Text>
+          <Text style={styles.termsText}>
+            7. Quantities delivered may vary by +/-5% per IPC standards unless exact quantity is specified.
           </Text>
         </View>
 

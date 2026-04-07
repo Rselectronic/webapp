@@ -6,7 +6,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Upload } from "lucide-react";
+import { Upload, FileSpreadsheet } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatDateTime } from "@/lib/utils/format";
 
 export default async function BomListPage() {
@@ -38,14 +39,18 @@ export default async function BomListPage() {
       </div>
 
       {(!boms || boms.length === 0) ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <p className="text-gray-500 mb-4">No BOMs uploaded yet.</p>
-            <Link href="/bom/upload">
-              <Button variant="outline">Upload your first BOM</Button>
-            </Link>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FileSpreadsheet}
+          title="No BOMs uploaded yet"
+          description="Upload a Bill of Materials to start parsing components and classifying M-Codes."
+        >
+          <Link href="/bom/upload">
+            <Button>
+              <Upload className="mr-2 h-4 w-4" />
+              Upload your first BOM
+            </Button>
+          </Link>
+        </EmptyState>
       ) : (
         <Card>
           <CardHeader className="pb-2">

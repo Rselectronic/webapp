@@ -13,6 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Users } from "lucide-react";
 
 interface SearchParams {
   search?: string;
@@ -49,7 +51,7 @@ export default async function CustomersPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Customers</h2>
           <p className="text-gray-500">
@@ -61,19 +63,20 @@ export default async function CustomersPage({
           <a href="/api/export?table=customers" download>
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              <span className="hidden sm:inline">Export CSV</span>
+              <span className="sm:hidden">CSV</span>
             </Button>
           </a>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         <form className="flex items-center gap-2">
           <Input
             name="search"
             placeholder="Search customers..."
             defaultValue={params.search ?? ""}
-            className="w-64"
+            className="w-full sm:w-64"
           />
           <input type="hidden" name="status" value={params.status ?? ""} />
           <Button type="submit" variant="secondary" size="sm">
@@ -102,7 +105,7 @@ export default async function CustomersPage({
           Failed to load customers. Make sure your Supabase connection is configured.
         </div>
       ) : (
-        <div className="rounded-lg border bg-white">
+        <div className="table-responsive rounded-lg border bg-white">
           <Table>
             <TableHeader>
               <TableRow>
@@ -143,8 +146,15 @@ export default async function CustomersPage({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-                    No customers found.
+                  <TableCell colSpan={6} className="py-0">
+                    <EmptyState
+                      icon={Users}
+                      title="No customers found"
+                      description={params.search ? `No results for "${params.search}". Try a different search term.` : "Add your first customer to get started."}
+                      className="border-0"
+                    >
+                      <CreateCustomerDialog />
+                    </EmptyState>
                   </TableCell>
                 </TableRow>
               )}

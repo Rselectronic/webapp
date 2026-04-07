@@ -10,6 +10,7 @@ import { ArrowLeft } from "lucide-react";
 import { BomTable } from "@/components/bom/bom-table";
 import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
+import { MCodeChart } from "@/components/bom/mcode-chart";
 import { formatDateTime } from "@/lib/utils/format";
 
 export default async function BomDetailPage({
@@ -119,6 +120,33 @@ export default async function BomDetailPage({
           </Card>
         ))}
       </div>
+
+      {/* M-Code Distribution Chart */}
+      {lines && lines.length > 0 && (() => {
+        const mcodeDistribution: Record<string, number> = {};
+        for (const line of lines) {
+          if (line.is_pcb || line.is_dni) continue;
+          const code = line.m_code ?? "Unclassified";
+          mcodeDistribution[code] = (mcodeDistribution[code] ?? 0) + 1;
+        }
+        const hasClassified = Object.keys(mcodeDistribution).some(
+          (k) => k !== "Unclassified"
+        );
+        if (!hasClassified) return null;
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">M-Code Distribution</CardTitle>
+              <CardDescription>
+                Classification breakdown of {lines.filter((l) => !l.is_pcb && !l.is_dni).length} components
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MCodeChart distribution={mcodeDistribution} />
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* AI Classify Button */}
       {lines && lines.length > 0 && (

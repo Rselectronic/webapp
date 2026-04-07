@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, Calculator } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -44,7 +44,7 @@ export default async function QuotesPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Quotes</h2>
           <p className="text-gray-500">
@@ -68,7 +68,7 @@ export default async function QuotesPage({
       </div>
 
       {/* Status filter tabs */}
-      <div className="flex gap-1">
+      <div className="flex gap-1 overflow-x-auto pb-1">
         {STATUSES.map((s) => (
           <Link
             key={s}
@@ -91,22 +91,21 @@ export default async function QuotesPage({
         </div>
       ) : !quotes || quotes.length === 0 ? (
         /* Empty state */
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-center text-lg">No quotes found</CardTitle>
-          </CardHeader>
-          <CardContent className="flex justify-center">
-            <Link href="/quotes/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Create your first quote
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Calculator}
+          title="No quotes found"
+          description={activeStatus !== "all" ? `No quotes with status "${activeStatus}". Try a different filter.` : "Create your first quote from a parsed BOM."}
+        >
+          <Link href="/quotes/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create your first quote
+            </Button>
+          </Link>
+        </EmptyState>
       ) : (
         /* Quote table */
-        <div className="rounded-lg border bg-white">
+        <div className="table-responsive rounded-lg border bg-white">
           <Table>
             <TableHeader>
               <TableRow>
