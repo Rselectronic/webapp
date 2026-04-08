@@ -111,6 +111,7 @@ export async function POST(
         m_code: result.m_code,
         m_code_confidence: result.confidence,
         m_code_source: result.source,
+        m_code_reasoning: result.rule_id ?? null,
       })
       .eq("id", toClassify[i].id);
 

@@ -21,6 +21,7 @@ interface BomLine {
   m_code: string | null;
   m_code_confidence: number | null;
   m_code_source: string | null;
+  m_code_reasoning: string | null;
 }
 
 interface BomTableProps {
@@ -40,7 +41,7 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
 
     await supabase
       .from("bom_lines")
-      .update({ m_code: mcode, m_code_confidence: 1.0, m_code_source: "manual" })
+      .update({ m_code: mcode, m_code_confidence: 1.0, m_code_source: "manual", m_code_reasoning: "Manual override" })
       .eq("id", lineId);
 
     // Learning loop — save to components table for future auto-classification
@@ -61,7 +62,7 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
     setLines((prev) =>
       prev.map((l) =>
         l.id === lineId
-          ? { ...l, m_code: mcode, m_code_confidence: 1.0, m_code_source: "manual" }
+          ? { ...l, m_code: mcode, m_code_confidence: 1.0, m_code_source: "manual", m_code_reasoning: "Manual override" }
           : l
       )
     );
@@ -90,6 +91,8 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
               <TableHead className="w-36">MPN</TableHead>
               <TableHead className="w-28">Manufacturer</TableHead>
               <TableHead className="w-28">M-Code</TableHead>
+              <TableHead className="w-44">Reasoning</TableHead>
+              <TableHead className="w-20">Confidence</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -127,6 +130,55 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                       source={line.m_code_source}
                       onSelect={(mcode) => handleMcodeChange(line.id, mcode)}
                     />
+                  )}
+                </TableCell>
+                {/* Reasoning */}
+                <TableCell>
+                  {line.is_pcb ? null : (
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                        line.m_code_source === "database" ? "bg-purple-100 text-purple-700"
+                          : line.m_code_source === "rules" ? "bg-cyan-100 text-cyan-700"
+                          : line.m_code_source === "api" ? "bg-orange-100 text-orange-700"
+                          : line.m_code_source === "manual" ? "bg-green-100 text-green-700"
+                          : "bg-gray-100 text-gray-500"
+                      }`}>
+                        {line.m_code_source === "database" ? "DB"
+                          : line.m_code_source === "rules" ? "Rule"
+                          : line.m_code_source === "api" ? "AI"
+                          : line.m_code_source === "manual" ? "Manual"
+                          : "—"}
+                      </span>
+                      <span className="text-xs text-gray-500 max-w-32 truncate" title={line.m_code_reasoning ?? undefined}>
+                        {line.m_code_reasoning
+                          ? line.m_code_reasoning.replace("KEYWORD: ", "").replace(/^PAR-/, "R-")
+                          : ""}
+                      </span>
+                    </div>
+                  )}
+                </TableCell>
+                {/* Confidence */}
+                <TableCell>
+                  {line.is_pcb || line.m_code_confidence == null ? null : (
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-2 w-12 rounded-full bg-gray-200 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            line.m_code_confidence >= 0.9 ? "bg-green-500"
+                              : line.m_code_confidence >= 0.7 ? "bg-yellow-500"
+                              : "bg-red-500"
+                          }`}
+                          style={{ width: `${Math.round(line.m_code_confidence * 100)}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs font-mono font-semibold ${
+                        line.m_code_confidence >= 0.9 ? "text-green-700"
+                          : line.m_code_confidence >= 0.7 ? "text-yellow-700"
+                          : "text-red-700"
+                      }`}>
+                        {Math.round(line.m_code_confidence * 100)}%
+                      </span>
+                    </div>
                   )}
                 </TableCell>
               </TableRow>
