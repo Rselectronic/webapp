@@ -143,18 +143,32 @@
 
 **Deployed:** Vercel production, commit `efdc75f`
 
-**End state:** 27 tables, 48 API routes, 30 pages, ~57 components, ~26K lines TypeScript. Zero native dependencies.
+**Even later in Session 3 — M-code reasoning, pricing APIs, data reset:**
+
+- **M-code Reasoning + Confidence on BOM detail page:**
+  - Added `m_code_reasoning` column to `bom_lines` (migration 022) and `quote_batch_lines` (migration 021)
+  - Classify routes now store `rule_id` as reasoning (e.g. "KEYWORD: SOT-23", "PAR-07")
+  - BOM table shows: source label (DB/Rule/AI/Manual) + matched keyword/rule + confidence bar (green/yellow/red)
+  - Same reasoning shown in batch workflow table
+- **Pricing calls DigiKey/Mouser/LCSC directly:**
+  - Removed fragile self-referencing HTTP fetch with cookie forwarding
+  - Run Pricing step now imports supplier API clients directly
+  - Queries all 3 suppliers in parallel, picks cheapest, caches for 7 days
+- **Full data reset:** Deleted all BOMs, bom_lines, quotes, jobs, invoices, procurements, production events — clean slate for fresh testing
+
+**Deployed:** Vercel production, commit `a1e1c9a`
+
+**End state:** 27 tables, 48 API routes, 30 pages, ~57 components, ~26K lines TypeScript. Zero native dependencies. Clean database (customers + GMPs + rules + keywords remain, all transactional data wiped).
 
 ---
 
 ## Known Issues / Tech Debt
 
 ### Must Fix Soon
-- [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — the batch workflow uses the DB rules but the BOM detail page classifier uses in-code rules. Need to consolidate to DB-only.
+- [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — classifier uses in-code rules. Need to consolidate to DB-only.
 
 ### Nice to Have
 - [ ] Copy button on M-code override cells (Anas requested)
-- [ ] Batch list page could show progress bars per batch
 - [ ] Guided workflow wizard (stepper component showing BOM → Classify → Quote → Job → PROC → Ship → Invoice)
 - [ ] Email integration (send quotes/invoices)
 - [ ] AI chat memory persistence
