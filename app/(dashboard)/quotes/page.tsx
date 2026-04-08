@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Download, Calculator } from "lucide-react";
+import { Plus, Download, Calculator, Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -52,6 +52,12 @@ export default async function QuotesPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/quotes/batches">
+            <Button variant="outline" size="sm">
+              <Layers className="mr-2 h-4 w-4" />
+              Batches
+            </Button>
+          </Link>
           <a href="/api/export?table=quotes" download>
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />

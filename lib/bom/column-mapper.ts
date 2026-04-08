@@ -3,8 +3,8 @@ import type { BomConfig, ColumnMapping, RawRow } from "./types";
 // Exact-match keywords (checked first)
 const EXACT_KEYWORDS: Record<keyof ColumnMapping, string[]> = {
   qty: ["qty", "quantity", "qté", "quantity for 1 board", "quantity / board", "requested quantity 1"],
-  designator: ["designator", "designation", "ref des", "ref. des.", "reference designator", "refdes", "r des.", "position sur circuit", "part reference", "index"],
-  mpn: ["mpn", "manufacturer part number", "manufacturer_pn", "mfr#", "manufacturer part", "part number", "mfg p/n", "manufacturer p/n"],
+  designator: ["designator", "designation", "ref des", "ref. des.", "reference designator", "refdes", "ref_des", "r des.", "position sur circuit", "part reference", "references", "index"],
+  mpn: ["mpn", "manufacturer part number", "manufacturer_pn", "mfr#", "manufacturer part", "part number", "partnumber", "mfg p/n", "manufacturer p/n", "part_number", "manufacturer part number 1"],
   manufacturer: ["manufacturer", "mfg name", "manufacturier", "mfr name", "manufacturer name", "manufacturer 1"],
   description: ["description", "desc", "part description", "value", "name", "schematic value"],
   cpc: ["cpc", "erp_pn", "isc p/n", "legend p/n", "fiso#"],
@@ -24,18 +24,24 @@ export function resolveColumnMapping(
   config: BomConfig,
   headers: string[]
 ): ColumnMapping {
-  // Case 1: Fixed column order (no headers, e.g. Lanka)
+  // Case 1: Fixed column order (no headers, e.g. Lanka — header_none=true)
   if (config.columns_fixed) {
     const mapping: Partial<ColumnMapping> = {};
+    const validFields = ["qty", "designator", "cpc", "description", "mpn", "manufacturer"];
     config.columns_fixed.forEach((field, index) => {
-      if (field in EXACT_KEYWORDS || field === "cpc" || field === "description") {
+      if (validFields.includes(field)) {
         (mapping as Record<string, number>)[field] = index;
       }
     });
     return mapping as ColumnMapping;
   }
 
-  // Case 2: Explicit column name mapping
+  // Case 2: Forced column names (ISC 2100-0142 — override detected headers with known names)
+  if (config.forced_columns) {
+    return autoDetectColumns(config.forced_columns);
+  }
+
+  // Case 3: Explicit column name mapping
   if (config.columns && config.columns !== "auto_detect") {
     const mapping: Partial<ColumnMapping> = {};
     const normalizedHeaders = headers.map((h) => h.toLowerCase().trim());
@@ -48,7 +54,7 @@ export function resolveColumnMapping(
     return mapping as ColumnMapping;
   }
 
-  // Case 3: Auto-detect
+  // Case 4: Auto-detect
   return autoDetectColumns(headers);
 }
 
@@ -81,10 +87,17 @@ export function autoDetectColumns(headers: string[]): ColumnMapping {
     }
   }
 
-  if (mapping.qty === undefined || mapping.mpn === undefined) {
+  // qty + mpn required for standard BOMs; designator + mpn for no_qty BOMs
+  if (mapping.mpn === undefined) {
     const headerPreview = headers.slice(0, 20).join(", ");
     throw new Error(
-      `Could not auto-detect required columns (need at least qty + mpn). Found: ${JSON.stringify(mapping)}. Headers (first 20): [${headerPreview}]`
+      `Could not auto-detect required columns (need at least mpn). Found: ${JSON.stringify(mapping)}. Headers (first 20): [${headerPreview}]`
+    );
+  }
+  if (mapping.qty === undefined && mapping.designator === undefined) {
+    const headerPreview = headers.slice(0, 20).join(", ");
+    throw new Error(
+      `Could not auto-detect required columns (need qty or designator). Found: ${JSON.stringify(mapping)}. Headers (first 20): [${headerPreview}]`
     );
   }
 

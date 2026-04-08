@@ -5,24 +5,33 @@ import { classifyWithAI } from "./ai-classifier";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * 3-Layer M-Code classification pipeline.
- * Layer 1: Database lookup by MPN
- * Layer 2: Rule engine (PAR rules)
- * Layer 3: Claude AI classification
+ * 4-Layer M-Code classification pipeline.
+ *
+ * Priority order (from Anas, 2026-04-08):
+ *   Layer 1: Database lookup by MPN (components table — includes manual overrides)
+ *   Layer 1b: Keyword lookup (240+ common terms — package names, mounting types)
+ *   Layer 2: Rule engine (PAR rules)
+ *   Layer 3: Claude AI classification
+ *
+ * Manual overrides save to components table, so Layer 1 catches them next time.
  */
 export async function classifyComponent(
   input: ClassificationInput,
   supabase: SupabaseClient
 ): Promise<ClassificationResult> {
-  // Layer 1: Database lookup
+  // Layer 1: Database lookup (components table — includes prior manual overrides)
   if (input.mpn) {
     const dbResult = await lookupInDatabase(input.mpn, supabase);
     if (dbResult) return dbResult;
   }
 
-  // Layer 2: Rule engine
+  // Layer 1b: Keyword lookup (240+ common terms from mcode_keyword_lookup table)
+  const keywordResult = await lookupByKeyword(input, supabase);
+  if (keywordResult) return keywordResult;
+
+  // Layer 2: Rule engine (PAR rules)
   const ruleResult = classifyByRules(input);
-  if (ruleResult) {
+  if (ruleResult && ruleResult.m_code) {
     return {
       m_code: ruleResult.m_code,
       confidence: 0.85,
@@ -67,6 +76,94 @@ async function lookupInDatabase(
     return { m_code: data.m_code, confidence: 0.95, source: "database" };
   }
   return null;
+}
+
+/**
+ * Layer 1b: Keyword lookup against the 240+ common terms table.
+ * Checks CPC, description, and package_case against known keywords.
+ * Case-insensitive matching.
+ */
+async function lookupByKeyword(
+  input: ClassificationInput,
+  supabase: SupabaseClient
+): Promise<ClassificationResult | null> {
+  // Fetch all active keywords (cached per-request by Supabase client)
+  const { data: keywords } = await supabase
+    .from("mcode_keyword_lookup")
+    .select("keyword, assigned_m_code, match_field, match_type, priority")
+    .eq("is_active", true)
+    .order("priority", { ascending: true });
+
+  if (!keywords || keywords.length === 0) return null;
+
+  // Build search text from all available fields
+  const searchFields: Record<string, string> = {
+    cpc: (input.cpc ?? "").toLowerCase(),
+    description: (input.description ?? "").toLowerCase(),
+    package_case: (input.package_case ?? "").toLowerCase(),
+  };
+  const allText = Object.values(searchFields).join(" ");
+
+  for (const kw of keywords) {
+    const needle = kw.keyword.toLowerCase();
+    let haystack: string;
+
+    if (kw.match_field === "any") {
+      haystack = allText;
+    } else {
+      haystack = searchFields[kw.match_field] ?? "";
+    }
+
+    if (!haystack) continue;
+
+    let matched = false;
+    if (kw.match_type === "exact") {
+      // Check each field individually for exact match
+      matched = Object.values(searchFields).some((v) => v === needle);
+    } else {
+      // "contains" or "word_boundary"
+      matched = haystack.includes(needle);
+    }
+
+    if (matched) {
+      return {
+        m_code: kw.assigned_m_code as MCode,
+        confidence: 0.90,
+        source: "database",
+        rule_id: `KEYWORD: ${kw.keyword}`,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Save a manual M-code override to the components table.
+ * This is the learning loop — once a human assigns an M-code to an MPN,
+ * Layer 1 (database lookup) catches it automatically for all future BOMs.
+ */
+export async function saveManualOverride(
+  mpn: string,
+  mCode: string,
+  description: string | null,
+  manufacturer: string | null,
+  supabase: SupabaseClient
+): Promise<void> {
+  // Upsert into components table — if MPN already exists, update the M-code
+  await supabase
+    .from("components")
+    .upsert(
+      {
+        mpn,
+        m_code: mCode,
+        m_code_source: "manual",
+        description: description ?? undefined,
+        manufacturer: manufacturer ?? undefined,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "mpn,manufacturer" }
+    );
 }
 
 export async function classifyBomLines(

@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Mail, Phone, User, MapPin } from "lucide-react";
+import { ArrowLeft, Mail, Phone, User, MapPin, CircuitBoard, Plus, FileText } from "lucide-react";
 import { formatPhone, formatDate, formatCurrency } from "@/lib/utils/format";
 
 export default async function CustomerDetailPage({
@@ -41,7 +41,7 @@ export default async function CustomerDetailPage({
   const billingAddresses = (customer.billing_addresses as AddressItem[] | null) ?? [];
   const shippingAddresses = (customer.shipping_addresses as AddressItem[] | null) ?? [];
 
-  const [quotesResult, jobsResult, invoicesResult] = await Promise.all([
+  const [quotesResult, jobsResult, invoicesResult, gmpsResult, bomsResult] = await Promise.all([
     supabase
       .from("quotes")
       .select("id, quote_number, status, created_at, gmps(gmp_number)")
@@ -60,6 +60,16 @@ export default async function CustomerDetailPage({
       .eq("customer_id", id)
       .order("created_at", { ascending: false })
       .limit(10),
+    supabase
+      .from("gmps")
+      .select("id, gmp_number, board_name, revision, is_active, created_at")
+      .eq("customer_id", id)
+      .order("gmp_number", { ascending: true }),
+    supabase
+      .from("boms")
+      .select("id, gmp_id, file_name, revision, status, component_count, created_at")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false }),
   ]);
 
   type QuoteRow = {
@@ -84,9 +94,37 @@ export default async function CustomerDetailPage({
     created_at: string;
   };
 
+  type GmpRow = {
+    id: string;
+    gmp_number: string;
+    board_name: string | null;
+    revision: string | null;
+    is_active: boolean;
+    created_at: string;
+  };
+  type BomRow = {
+    id: string;
+    gmp_id: string;
+    file_name: string;
+    revision: string | null;
+    status: string;
+    component_count: number;
+    created_at: string;
+  };
+
   const quotes = (quotesResult.data ?? []) as unknown as QuoteRow[];
   const jobs = (jobsResult.data ?? []) as unknown as JobRow[];
   const invoices = (invoicesResult.data ?? []) as unknown as InvoiceRow[];
+  const gmps = (gmpsResult.data ?? []) as unknown as GmpRow[];
+  const allBoms = (bomsResult.data ?? []) as unknown as BomRow[];
+
+  // Group BOMs by GMP
+  const bomsByGmp = new Map<string, BomRow[]>();
+  for (const bom of allBoms) {
+    const existing = bomsByGmp.get(bom.gmp_id) ?? [];
+    existing.push(bom);
+    bomsByGmp.set(bom.gmp_id, existing);
+  }
 
   return (
     <div className="space-y-6">
@@ -248,6 +286,105 @@ export default async function CustomerDetailPage({
             <p className="text-sm text-gray-500">
               No BOM configuration set. Auto-detection will be used.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Boards / GMPs */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <CircuitBoard className="h-5 w-5" />
+                Boards / GMPs ({gmps.length})
+              </CardTitle>
+              <CardDescription>
+                All board designs for this customer, with their BOM files
+              </CardDescription>
+            </div>
+            <Link href={`/bom/upload?customer=${id}`}>
+              <Button size="sm">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Board
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {gmps.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No boards yet. Upload a BOM to create the first board.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {gmps.map((gmp) => {
+                const gmpBoms = bomsByGmp.get(gmp.id) ?? [];
+                return (
+                  <div key={gmp.id} className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm font-bold text-blue-600">
+                          {gmp.gmp_number}
+                        </span>
+                        {gmp.board_name && (
+                          <span className="text-sm text-gray-600">{gmp.board_name}</span>
+                        )}
+                        {gmp.revision && (
+                          <span className="text-xs text-gray-400">Rev {gmp.revision}</span>
+                        )}
+                        <Badge variant={gmp.is_active ? "default" : "secondary"} className="text-xs">
+                          {gmp.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                      <Link href={`/bom/upload?customer=${id}&gmp=${gmp.id}`}>
+                        <Button variant="outline" size="sm">
+                          <Plus className="mr-1 h-3 w-3" />
+                          Upload BOM
+                        </Button>
+                      </Link>
+                    </div>
+
+                    {gmpBoms.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {gmpBoms.map((bom) => (
+                          <Link
+                            key={bom.id}
+                            href={`/bom/${bom.id}`}
+                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-gray-50"
+                          >
+                            <FileText className="h-4 w-4 text-gray-400" />
+                            <span className="flex-1 font-mono text-xs">{bom.file_name}</span>
+                            {bom.revision && (
+                              <span className="text-xs text-gray-400">Rev {bom.revision}</span>
+                            )}
+                            <Badge
+                              variant="secondary"
+                              className={`text-xs ${
+                                bom.status === "parsed"
+                                  ? "bg-green-100 text-green-700"
+                                  : bom.status === "error"
+                                    ? "bg-red-100 text-red-700"
+                                    : ""
+                              }`}
+                            >
+                              {bom.status}
+                            </Badge>
+                            <span className="font-mono text-xs text-gray-400">
+                              {bom.component_count} parts
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+
+                    {gmpBoms.length === 0 && (
+                      <p className="mt-2 text-xs text-gray-400">No BOMs uploaded yet</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>

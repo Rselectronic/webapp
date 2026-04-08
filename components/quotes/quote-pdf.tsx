@@ -9,8 +9,8 @@ import {
 } from "@react-pdf/renderer";
 import type { PricingTier } from "@/lib/pricing/types";
 
-function fmt(n: number): string {
-  return "$" + n.toFixed(2);
+function fmt(n: number | null | undefined): string {
+  return "$" + (n ?? 0).toFixed(2);
 }
 
 function fmtDate(iso?: string | null): string {

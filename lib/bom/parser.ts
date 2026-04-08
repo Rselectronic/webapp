@@ -13,23 +13,40 @@ function naturalSort(a: string, b: string): number {
 }
 
 /**
+ * Count individual designators from a comma/space-separated string.
+ * Used when no_qty=true (ISC 2100-0185-3: no quantity column, count designators).
+ *
+ * "C1, C2, C3" → 3
+ * "R1 R2 R3 R4" → 4
+ * "U1" → 1
+ */
+function countDesignators(designatorStr: string): number {
+  if (!designatorStr) return 1;
+  // Split on comma, semicolon, or whitespace
+  const parts = designatorStr.split(/[,;\s]+/).filter(Boolean);
+  return parts.length || 1;
+}
+
+/**
  * Parse a BOM according to the 9 CP IP generation rules:
  *
  * 1. Fiducial Exclusion — skip designators matching ^FID\d+$
  * 2. PCB at Top — pin PCB row (designator matches ^PCB[A-Z0-9\-]*$)
  * 3. DNI Exclusion — skip rows with qty=0 & blank MPN, or DNI/DNP/DNL keywords
  * 4. No Title Row — output starts with data directly
- * 5. Log Sheet — every row's fate is tracked
+ * 5. Log Sheet — every row's fate is tracked (PCB, AUTO-PCB, FIDUCIAL, DNI, N.M., INCLUDED, MERGED, HEADER, EMPTY)
  * 6. Designator-Only PCB Detection — never match PCB by description
  * 7. MPN Merge — same MPN → combine quantities, merge designators (natural sort)
- * 8. Auto-PCB from Gerber — deferred (web upload context)
+ * 8. Auto-PCB from Gerber — in web context, generates synthetic PCB row from filename if no PCB row found
  * 9. Sort — quantity DESC, then first designator ASC (natural sort); PCB pinned top
  */
 export function parseBom(
   rows: RawRow[],
   mapping: ColumnMapping,
   headers: string[],
-  config: BomConfig
+  config: BomConfig,
+  /** Optional: BOM filename, used for Auto-PCB fallback (Rule 8) when no PCB row found */
+  bomFileName?: string
 ): ParseResult {
   const log: ParseLogEntry[] = [];
   const included: ParsedLine[] = [];
@@ -41,8 +58,10 @@ export function parseBom(
     included: 0,
     fiducials_skipped: 0,
     dni_skipped: 0,
+    not_mounted_skipped: 0,
     merged: 0,
     section_headers_skipped: 0,
+    auto_pcb: false,
   };
 
   for (let i = 0; i < rows.length; i++) {
@@ -53,7 +72,14 @@ export function parseBom(
     const description = getField(row, mapping, "description", headers);
     const manufacturer = getField(row, mapping, "manufacturer", headers);
     let cpc = getField(row, mapping, "cpc", headers);
-    const qty = parseInt(qtyStr, 10) || 0;
+
+    // Quantity: either from the qty column, or count designators if no_qty mode
+    let qty: number;
+    if (config.no_qty) {
+      qty = countDesignators(designator);
+    } else {
+      qty = parseInt(qtyStr, 10) || 0;
+    }
 
     // Skip empty rows
     if (!designator && !mpn && !description && qty === 0) {
@@ -62,8 +88,8 @@ export function parseBom(
     }
 
     // Section Header Filter — designator has spaces but no digits
+    // Always apply this check (not just when section_filter is explicitly true)
     if (
-      config.section_filter &&
       designator &&
       designator.includes(" ") &&
       !/\d/.test(designator)
@@ -85,19 +111,21 @@ export function parseBom(
       const mountVal = String(row[mountCol] ?? "").trim().toUpperCase();
       if (mountVal && mountExclude.some((v) => mountVal === v.toUpperCase())) {
         log.push({ raw_row_index: i, action: "NOT_MOUNTED", detail: mountVal });
+        stats.not_mounted_skipped++;
         continue;
       }
     }
 
-    // Rule 1: Fiducial Exclusion
-    if (/^FID\d+$/i.test(designator)) {
+    // Rule 1: Fiducial Exclusion — first designator matches FID + digits
+    const firstDesignator = designator.split(/[,;\s]/)[0]?.trim() ?? "";
+    if (/^FID\d+$/i.test(firstDesignator)) {
       log.push({ raw_row_index: i, action: "FIDUCIAL" });
       stats.fiducials_skipped++;
       continue;
     }
 
     // Rule 2 & 6: PCB Detection (designator ONLY — never by description)
-    if (/^PCB[A-Z0-9\-]*$/i.test(designator)) {
+    if (/^PCB[A-Z0-9\-]*$/i.test(firstDesignator)) {
       pcbRow = {
         line_number: 0,
         quantity: qty || 1,
@@ -116,8 +144,9 @@ export function parseBom(
     // Rule 3: DNI Exclusion
     const dniPatterns =
       /\b(DNI|DNP|DNL|DO NOT INSTALL|DO NOT PLACE|DO NOT POPULATE)\b/i;
+    const isQtyZeroBlankMpn = !config.no_qty && qty === 0 && !mpn;
     if (
-      (qty === 0 && !mpn) ||
+      isQtyZeroBlankMpn ||
       dniPatterns.test(description) ||
       dniPatterns.test(designator)
     ) {
@@ -126,8 +155,10 @@ export function parseBom(
       continue;
     }
 
-    // CPC Fallback — use MPN when CPC is empty
-    if (!cpc) cpc = mpn;
+    // CPC Fallback — use MPN when CPC is empty/N/A
+    if (!cpc || cpc.toUpperCase() === "N/A" || cpc.toUpperCase() === "NA") {
+      cpc = mpn;
+    }
 
     included.push({
       line_number: lineCounter++,
@@ -147,6 +178,28 @@ export function parseBom(
   // Rule 7: MPN Merge — same MPN → combine rows
   const merged = mergeSameMpn(included, log, stats);
 
+  // Rule 8: Auto-PCB from filename — if no PCB row found in BOM, derive from file name
+  if (!pcbRow && bomFileName) {
+    const pcbName = extractPcbNameFromFile(bomFileName);
+    if (pcbName) {
+      pcbRow = {
+        line_number: 0,
+        quantity: 1,
+        reference_designator: "PCB1",
+        cpc: pcbName,
+        description: pcbName,
+        mpn: pcbName,
+        manufacturer: "",
+        is_pcb: true,
+        is_dni: false,
+      };
+      stats.auto_pcb = true;
+      log.push({ raw_row_index: -1, action: "AUTO-PCB", detail: `Derived from filename: ${bomFileName}` });
+    } else {
+      log.push({ raw_row_index: -1, action: "AUTO-PCB-FAIL", detail: `Could not derive PCB name from: ${bomFileName}` });
+    }
+  }
+
   // Rule 9: Sort — quantity DESC, then first designator ASC (natural sort)
   merged.sort((a, b) => {
     if (b.quantity !== a.quantity) return b.quantity - a.quantity;
@@ -159,6 +212,24 @@ export function parseBom(
   });
 
   return { lines: merged, log, pcb_row: pcbRow, stats };
+}
+
+/**
+ * Extract a PCB name from a BOM filename.
+ * Strips common prefixes (BOM_, CP_IP_, Gerber_PCB_), file extensions, and date suffixes.
+ *
+ * "BOM_TL265-5040-000-T_RevB.xlsx" → "TL265-5040-000-T"
+ * "CP_IP_2100-0074-2-P.xlsx" → "2100-0074-2-P"
+ */
+function extractPcbNameFromFile(filename: string): string | null {
+  let name = filename
+    .replace(/\.(xlsx|xls|csv|zip)$/i, "")    // strip extension
+    .replace(/^(BOM[_\s-]*|CP[_\s-]*IP[_\s-]*)/i, "")  // strip BOM_ or CP_IP_ prefix
+    .replace(/[_\s-]*(Rev[A-Z0-9]*|v\d+)$/i, "")  // strip revision suffix
+    .replace(/[_\s-]*\d{6,8}$/i, "")  // strip date suffix (YYYYMMDD or YYMMDD)
+    .trim();
+
+  return name.length >= 3 ? name : null;
 }
 
 /** Merge rows sharing the same MPN: sum quantities, combine designators. */

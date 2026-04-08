@@ -1,6 +1,6 @@
 # RS PCB Assembly — Full Project Report
 
-> Generated: April 6, 2026
+> Generated: April 7, 2026 (updated)
 > For: Context transfer to Claude Code sessions
 
 ---
@@ -26,12 +26,13 @@
 | Deployment | Vercel (target) |
 
 ### Stats
-- **22,918 lines of TypeScript**
-- **221 source files**
-- **73 commits**
-- **27 pages**, **40 API routes**, **62 components**
-- **23 database tables**, **12 migrations**
-- **22 AI chatbot tools**
+- **28,087 lines of TypeScript**
+- **191 source files**
+- **93 commits**
+- **31 pages**, **48 API routes**, **81 components**
+- **28 database tables**, **18 migrations**
+- **25 AI chatbot tools**
+- **20 MCP server tools**
 
 ---
 
@@ -51,12 +52,12 @@ LCSC_API_SECRET=<lcsc-api-secret>
 
 ---
 
-## 3. DATABASE SCHEMA (23 Tables)
+## 3. DATABASE SCHEMA (28 Tables)
 
 | Table | Purpose |
 |-------|---------|
 | users | Extends Supabase auth (3 roles: ceo, operations_manager, shop_floor) |
-| customers | Customer master data (code, company_name, bom_config JSONB) |
+| customers | Customer master data (code, company_name, bom_config JSONB, multi-contact/address) |
 | gmps | Global Manufacturing Packages (board definitions per customer) |
 | boms | Uploaded BOM files (file path, parsing status) |
 | bom_lines | Parsed component lines (MPN, manufacturer, M-Code) |
@@ -64,7 +65,7 @@ LCSC_API_SECRET=<lcsc-api-secret>
 | api_pricing_cache | Price cache from DigiKey/Mouser/LCSC (7-day TTL) |
 | m_code_rules | 43 PAR classification rules (Layer 2 engine) |
 | overage_table | Material overage per M-Code per quantity tier (absolute extras) |
-| quotes | Quote records (4 quantity tiers, pricing JSONB) |
+| quotes | Quote records (N quantity tiers, pricing JSONB) |
 | jobs | Production jobs (status lifecycle, assembly type) |
 | job_status_log | Immutable audit trail for job status changes |
 | procurements | Purchase orders (PROC batch code, line tracking) |
@@ -78,10 +79,17 @@ LCSC_API_SECRET=<lcsc-api-secret>
 | serial_numbers | Per-board serial numbers linked to jobs |
 | bg_stock | BG feeder stock levels (common passives) |
 | bg_stock_log | Stock transaction history (additions/subtractions) |
+| chat_conversations | Persistent AI chat sessions per user |
+| chat_messages | Individual chat messages (user + assistant) |
+| chat_attachments | File attachments uploaded to chat |
+| email_templates | Configurable email templates (quote, invoice, shipping, procurement, general) |
+| shipments | Shipment tracking (carrier, tracking number, status lifecycle) |
+| fabrication_orders | PCB/stencil fabrication orders from suppliers |
+| payments | Payment records linked to invoices (cheque, wire, EFT, credit card) |
 
 ---
 
-## 4. API ROUTES (40 endpoints)
+## 4. API ROUTES (48 endpoints)
 
 ### Auth
 - `POST /api/auth/callback` — Supabase OAuth callback
@@ -96,8 +104,11 @@ LCSC_API_SECRET=<lcsc-api-secret>
 - `POST /api/customers` — Create customer
 - `GET /api/customers/[id]` — Customer detail
 
+### GMPs
+- `GET /api/gmps` — List GMPs (filter by customer)
+
 ### Quotes
-- `GET/POST /api/quotes` — List/create quotes
+- `GET/POST /api/quotes` — List/create quotes (supports N quantity tiers)
 - `POST /api/quotes/preview` — Calculate pricing preview
 - `GET/PATCH /api/quotes/[id]` — Get/update quote
 - `GET /api/quotes/[id]/pdf` — Generate quote PDF
@@ -115,55 +126,75 @@ LCSC_API_SECRET=<lcsc-api-secret>
 - `GET/POST /api/procurements` — List/create procurement
 - `GET/PATCH /api/procurements/[id]` — Get/update procurement
 - `GET/POST /api/supplier-pos` — Supplier PO management
+- `GET/PATCH /api/supplier-pos/[id]` — Get/update supplier PO
 - `GET /api/supplier-pos/[id]/pdf` — Supplier PO PDF
 
-### Invoices
+### Invoices & Payments
 - `GET/POST /api/invoices` — List/create (supports multi-PO consolidation)
 - `GET/PATCH /api/invoices/[id]` — Get/update invoice
 - `GET /api/invoices/[id]/pdf` — Generate invoice PDF
+- `GET/POST /api/payments` — Payment records (linked to invoices)
 
 ### Production & Quality
 - `POST /api/production` — Log production events
 - `GET/POST /api/ncr` — NCR list/create
 - `GET/PATCH /api/ncr/[id]` — NCR detail/update
 
+### Shipping & Fabrication
+- `GET/POST /api/shipments` — Shipment tracking (carrier, tracking, status)
+- `GET/POST /api/fabrication-orders` — PCB/stencil fabrication orders
+
 ### Inventory & Pricing
 - `GET/POST /api/bg-stock` — BG feeder stock
+- `GET/PATCH /api/bg-stock/[id]` — Get/update stock item
 - `POST /api/bg-stock/[id]/adjust` — Stock adjustment
 - `GET /api/pricing/[mpn]` — 3-supplier pricing (DigiKey+Mouser+LCSC)
 
-### AI & Search
-- `POST /api/chat` — AI chatbot (22 tools, role-gated)
-- `GET /api/search` — Universal search
+### AI Chat (persistent conversations + file upload)
+- `POST /api/chat` — AI chatbot (25 tools, role-gated)
+- `GET/POST /api/chat/conversations` — List/create conversations
+- `GET/DELETE /api/chat/conversations/[id]` — Get/delete conversation
+- `GET/POST /api/chat/conversations/[id]/messages` — Message history
+- `POST /api/chat/upload` — File upload for chat attachments
+
+### MCP & Search
+- `POST /api/mcp` — MCP endpoint (Model Context Protocol)
 - `POST /api/mcp/classify` — AI M-Code classification
 - `GET /api/mcp/overview` — Classification stats
+- `GET /api/search` — Universal search
 - `GET /api/export` — CSV export
+
+### Settings
 - `GET/PATCH /api/settings` — App settings
+- `GET/POST /api/email-templates` — Email template management
 
 ---
 
-## 5. PAGES (27 routes)
+## 5. PAGES (31 routes)
 
 | Page | URL | Purpose |
 |------|-----|---------|
 | Login | `/login` | Email/password auth |
-| Dashboard | `/` | 8 KPIs + activity feed |
+| Dashboard | `/` | 8 KPIs + activity feed + Active Workflows tab |
 | Customers | `/customers` | List + search + "New Customer" dialog |
-| Customer Detail | `/customers/[id]` | Contact, order history |
+| Customer Detail | `/customers/[id]` | Multi-contact, multi-address, order history |
 | BOMs | `/bom` | BOM list |
 | BOM Upload | `/bom/upload` | Upload Excel/CSV |
 | BOM Detail | `/bom/[id]` | Component table + AI Classify button |
 | Quotes | `/quotes` | List with status filters |
-| New Quote | `/quotes/new` | BOM select, 4 tiers, pricing calc |
+| New Quote | `/quotes/new` | BOM select, N tiers (no 4-tier limit), pricing calc |
 | Quote Detail | `/quotes/[id]` | Pricing table, PDF, approval |
-| Jobs | `/jobs` | Kanban + Table views |
+| Jobs | `/jobs` | Kanban (drag-and-drop) + Table views |
 | Job Detail | `/jobs/[id]` | PO validation, shipping, production docs, NCR, serials |
 | Procurement | `/procurement` | PO list with status tabs |
 | Procurement Detail | `/procurement/[id]` | Line items, receiving |
+| Stencils | `/procurement/stencils` | Stencil/fabrication order management |
 | Production | `/production` | Real-time dashboard |
 | Production Log | `/production/log` | Event logger (shop floor) |
 | Invoices | `/invoices` | Aging report + multi-PO create |
 | Invoice Detail | `/invoices/[id]` | PDF, payment tracking |
+| Payments | `/invoices/payments` | Payment history + recording |
+| Shipping | `/shipping` | Shipment tracking dashboard |
 | Quality | `/quality` | NCR list with KPIs |
 | NCR Detail | `/quality/[id]` | CAAF form, status workflow |
 | Inventory | `/inventory` | BG feeder stock dashboard |
@@ -172,6 +203,7 @@ LCSC_API_SECRET=<lcsc-api-secret>
 | Pricing Settings | `/settings/pricing` | Markup rates |
 | M-Code Rules | `/settings/m-codes` | 43 PAR rules |
 | Customer BOM Config | `/settings/customers` | Per-customer column mapping |
+| Email Templates | `/settings/email-templates` | Template editor (5 categories) |
 | Audit Log | `/settings/audit` | Change history |
 
 ---
@@ -180,7 +212,7 @@ LCSC_API_SECRET=<lcsc-api-secret>
 
 | # | Engine | File(s) |
 |---|--------|---------|
-| 1 | Pricing Engine (4-tier calculation) | `lib/pricing/engine.ts` |
+| 1 | Pricing Engine (N-tier calculation) | `lib/pricing/engine.ts` |
 | 2 | M-Code Classifier (43 PAR rules + AI) | `lib/mcode/rules.ts`, `classifier.ts`, `ai-classifier.ts` |
 | 3 | BOM Parser (9 rules from cp_ip_v3.py) | `lib/bom/parser.ts`, `column-mapper.ts` |
 | 4 | Overage Calculator (absolute extras) | `lib/pricing/overage.ts` |
@@ -214,13 +246,15 @@ LCSC_API_SECRET=<lcsc-api-secret>
 
 ---
 
-## 8. AI CHATBOT (22 tools)
+## 8. AI CHATBOT (25 tools + persistent memory)
+
+Conversations are persistent with file upload support. Chat history stored in `chat_conversations`, `chat_messages`, and `chat_attachments` tables.
 
 ### Query Tools (read-only)
 listCustomers, getCustomer, businessOverview, listQuotes, listJobs, listInvoices, listNCRs, getBGStock, getJobDetail, getBomLines, getJobSerials, searchAll, getJobProfitability, getPricing, getWorkflowGuide
 
 ### Action Tools (CEO/Operations Manager only)
-updateJobStatus, classifyBomLine, classifyBomBatch, createProcurement, generateSerials
+updateJobStatus, classifyBomLine, classifyBomBatch, createProcurement, generateSerials, correctMCode
 
 ### All Roles
 logProductionEvent, classifyComponent
@@ -242,7 +276,7 @@ RLS policies enforce this at the database level. The AI chatbot additionally gat
 ## 10. SECURITY MEASURES
 
 - Supabase Auth with cookie-based sessions (@supabase/ssr)
-- Row Level Security on all 23 tables
+- Row Level Security on all 28 tables
 - Auth middleware on all routes (redirect unauthenticated)
 - Chat API: explicit auth + role check before admin client
 - PostgREST filter injection protection (input sanitization on .or() calls)
@@ -252,10 +286,25 @@ RLS policies enforce this at the database level. The AI chatbot additionally gat
 
 ---
 
-## 11. GIT HISTORY (73 commits)
+## 11. GIT HISTORY (93 commits)
 
-### Session: April 6, 2026 (this session)
+### Session: April 7, 2026 (latest)
 ```
+9e083ae feat: multiple contacts and addresses per customer
+4ebc9ba feat: remove 4-tier quantity restriction — quotes now support any number of tiers
+46117b2 fix: BOM list — handle array/object join responses for customer and GMP data
+34cf8ef feat: move Active Workflows to separate dashboard tab
+05b0790 chore: renumber migrations 013-017 to resolve duplicate numbering
+4de61a3 feat: UI polish — M-Code chart, quote PDF refinement, Kanban DnD, mobile responsive, loading states
+93aec11 feat: close SOP gaps — email templates, shipping tracker, fabrication orders, payment monitor
+71c31d6 feat: AI chat memory + file upload — persistent conversations with attachment support
+ba56736 feat: guided workflow stepper — visual step-by-step navigation across BOM→Quote→Job→Ship→Invoice
+41a52b8 feat: MCP server — expose RS ERP to any AI via Model Context Protocol
+```
+
+### Session: April 6, 2026
+```
+72810fb docs: full project report — complete inventory of every file, table, API, engine, and config
 01805f0 chore: gitignore VBA source files (contain API keys)
 d0837e4 security: fix 3 vulnerabilities — auth bypass, filter injection, stack trace leak
 24cd9ee fix: migration 012 — use correct m_code_rules column names
@@ -302,12 +351,124 @@ QST/TVQ: 1214617001 (9.975%)
 
 ---
 
-## 13. KEY REFERENCE FILES
+## 13. MCP SERVER (erp-rs-mcp/)
 
+Standalone MCP (Model Context Protocol) server exposing 20 tools across 9 domains. Allows any AI (Claude Desktop, OpenClaw, etc.) to query and interact with the full RS ERP system.
+
+### Tool Domains
+| Domain | Tools | Purpose |
+|--------|-------|---------|
+| Overview | rs_business_overview | High-level business snapshot |
+| Customers | rs_list_customers, rs_get_customer | Customer lookup + order history |
+| BOMs | rs_get_bom, rs_search_components, rs_classify_component | BOM data + M-Code classification |
+| Quotes | rs_list_quotes, rs_get_quote, rs_create_quote, rs_approve_quote | Quote lifecycle |
+| Jobs | rs_list_jobs, rs_get_job, rs_update_job_status | Job tracking |
+| Procurement | rs_get_procurement, rs_list_backorders | PROC status + backorders |
+| Production | rs_get_production_status, rs_log_production_event | Shop floor events |
+| Invoices | rs_list_invoices, rs_get_aging_report, rs_get_profitability | Financials |
+| Search | rs_search | Universal cross-entity search |
+
+### Auth
+JWT-based via Supabase tokens. Tool access filtered by user role (ceo/operations_manager/shop_floor).
+
+---
+
+## 14. NEW FEATURES (since April 6)
+
+### Flexible Quantity Tiers
+Quotes now support **any number of quantity tiers** (not limited to 4). The pricing engine dynamically calculates per-tier breakdowns for however many tiers are entered.
+
+### Multiple Contacts & Addresses per Customer
+Customers support JSONB arrays of contacts (name, email, phone, role, is_primary) and separate billing/shipping address arrays (label, is_default). Migrated from single contact/address fields.
+
+### Active Workflows Dashboard Tab
+Dashboard now has a separate tab showing active workflows across the system — in-progress quotes, jobs in procurement, etc.
+
+### Guided Workflow Stepper
+Visual step-by-step navigation component (`workflow-stepper.tsx`) guiding users through the full BOM → Quote → Job → Ship → Invoice lifecycle.
+
+### Email Templates System
+5 configurable email template categories (quote, invoice, shipping, procurement, general) with variable substitution ({{customer_name}}, {{job_number}}, etc.). Managed at `/settings/email-templates`.
+
+### Shipping Tracker
+Full shipment tracking with carrier support (FedEx, Purolator, UPS, Canada Post), tracking numbers, and status lifecycle (pending → shipped → in_transit → delivered). Page at `/shipping`.
+
+### Fabrication Orders
+PCB/stencil fabrication order tracking from suppliers. Tracks supplier reference, quantities, costs, and status (ordered → in_production → shipped → received). Page at `/procurement/stencils`.
+
+### Payment Monitor
+Payment records linked to invoices with method tracking (cheque, wire, EFT, credit card). CEO-only access. Page at `/invoices/payments`.
+
+### AI Chat Memory + File Upload
+Chat conversations are now persistent across sessions. Users can upload files as attachments. Full conversation history with message threading.
+
+### UI Polish
+- M-Code distribution chart on BOM detail
+- Quote PDF refinements
+- Kanban drag-and-drop on Jobs board
+- Mobile responsive layouts
+- Loading states across all pages
+
+---
+
+## 15. MERGE-SPLIT WORKFLOW PATTERN (Critical Architecture)
+
+The core business logic is a **merge-split pattern** that happens TWICE in every order lifecycle. This is the #1 thing developers get wrong — treating each board as independent.
+
+### How It Works
+1. **START SEPARATE** — Each board (GMP) has its own BOM data
+2. **MERGE** — Multiple boards combine so M-codes are assigned once, API pricing runs once, procurement calculates once (saves API calls + enables bulk pricing)
+3. **SPLIT BACK** — Data pushes back to individual boards for per-board quotes, per-board tracking
+
+### Two Merge-Split Cycles
+| Cycle | Trigger | Merge For | Split For |
+|-------|---------|-----------|-----------|
+| **Quoting** | RFQ received | Deduplicate MPNs, assign M-codes, fetch pricing across all boards | Individual quote PDFs per GMP |
+| **Procurement** | PO received | Order all material together via Proc Batch Code | Individual production tracking per board |
+
+### Human Checkpoints (Non-Negotiable)
+The 11-button MasterSheet sequence has mandatory human stops:
+- **After M-Code assignment** — Human reviews and overrides edge cases
+- **After extras calculation** — Human verifies quantities before API calls
+- **After API pricing** — Human reviews prices before committing to quotes
+
+### Proc Batch Code Format
+```
+YYMMDD CUSTOMER-TYPE###
+Example: 260407 ISC-TB001
+
+T = Turnkey, A = Assy Only, C = Consignment, P = PCB Only, D = Components Only, M = PCB & Components
+B = Batch (multiple boards), S = Single board
+```
+This is a **physical folder label** — not a database ID. Humans read it on the shop floor.
+
+### Current Implementation Gap
+The web app currently processes BOMs one at a time. The merge-split pattern with cross-BOM component deduplication and shared pricing resolution is **not yet implemented** — this is the next major architectural milestone. See `BUILD_PROMPT.md` Part 2 for full requirements.
+
+---
+
+## 16. NON-NEGOTIABLE REQUIREMENTS
+
+1. Every stage transition requires **explicit human action** — no auto-advancing
+2. Every data transformation must be **visible** — M-codes, extras, pricing shown before commitment
+3. Merge-split pattern must be a **first-class data model concept** (Quote Batch + Proc Batch entities)
+4. API calls are **expensive and intentional** — never speculative, always human-triggered
+5. BG stock deduction happens at **proc file generation**, not order placement
+6. Reception file generation triggers **4 outputs + status update** in one action
+7. Customer BOM configs must be **extensible without code changes**
+8. **Dual API runs by design** — quoting uses BOM qty, procurement uses ORDER qty (BOM + M-code-based extras)
+
+---
+
+## 17. KEY REFERENCE FILES
+
+- `BUILD_PROMPT.md` — **START HERE** — Complete business logic spec with merge-split workflow, 10 "what AI gets wrong" rules, 5-phase lifecycle, non-negotiable requirements
 - `CLAUDE.md` — Full development brief (69KB, database schema, M-Code rules, pricing formulas, customer configs)
 - `WORKFLOW.md` — Step-by-step workflow guide for all processes
 - `PROJECT_REPORT.md` — This file
-- `supabase/migrations/` — 12 migration files defining full database schema
+- `supabase/migrations/` — 18 migration files defining full database schema
+- `erp-rs-mcp/` — MCP server (20 tools, 9 domains)
 - `lib/mcode/rules.ts` — 43 M-Code classification rules
 - `lib/pricing/engine.ts` — Pricing calculation engine
 - `lib/bom/parser.ts` — BOM parser (9 CP IP rules)
+- `All vba codes/` — Source VBA from all 11 Excel workbooks (source of truth for business logic)

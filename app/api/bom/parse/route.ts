@@ -2,9 +2,70 @@ import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { parseBom } from "@/lib/bom/parser";
 import { resolveColumnMapping } from "@/lib/bom/column-mapper";
-import { classifyBomLines } from "@/lib/mcode/classifier";
 import type { BomConfig, RawRow } from "@/lib/bom/types";
 import * as XLSX from "xlsx";
+
+/**
+ * Parse a raw CSV/TSV string into rows of string arrays.
+ * Handles quoted fields with embedded separators and newlines.
+ */
+function parseCsvText(text: string, separator: string = ","): string[][] {
+  const rows: string[][] = [];
+  let current: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        field += '"';
+        i++; // skip escaped quote
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === separator) {
+        current.push(field);
+        field = "";
+      } else if (ch === "\n" || (ch === "\r" && next === "\n")) {
+        current.push(field);
+        field = "";
+        if (current.some((c) => c.trim())) rows.push(current);
+        current = [];
+        if (ch === "\r") i++; // skip \n after \r
+      } else {
+        field += ch;
+      }
+    }
+  }
+  // Last field/row
+  current.push(field);
+  if (current.some((c) => c.trim())) rows.push(current);
+
+  return rows;
+}
+
+/**
+ * Decode a file buffer into a string, handling different encodings.
+ * Supports utf-8 (default), utf-16 (RTINGS), and latin1/iso-8859-1.
+ */
+function decodeBuffer(buffer: ArrayBuffer, encoding: string = "utf-8"): string {
+  const normalizedEncoding = encoding.toLowerCase().replace(/[_-]/g, "");
+  if (normalizedEncoding === "utf16" || normalizedEncoding === "utf16le" || normalizedEncoding === "utf16be") {
+    return new TextDecoder("utf-16le").decode(buffer);
+  }
+  if (normalizedEncoding === "latin1" || normalizedEncoding === "iso88591") {
+    return new TextDecoder("latin1").decode(buffer);
+  }
+  return new TextDecoder("utf-8").decode(buffer);
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -43,12 +104,29 @@ export async function POST(request: Request) {
 
   try {
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const allRows: (string | number | null)[][] = XLSX.utils.sheet_to_json(
-      sheet,
-      { header: 1, raw: false }
-    );
+    const fileName = file.name;
+    const fileExt = fileName.split(".").pop()?.toLowerCase() ?? "";
+
+    // Determine if this is a CSV file (by config or extension)
+    const isCsv =
+      bomConfig.format === "csv" ||
+      fileExt === "csv" ||
+      fileExt === "tsv";
+
+    let allRows: (string | number | null)[][];
+
+    if (isCsv) {
+      // --- CSV/TSV path: decode with configured encoding, split with configured separator ---
+      const encoding = bomConfig.encoding ?? "utf-8";
+      const separator = bomConfig.separator === "\\t" || bomConfig.separator === "\t" ? "\t" : (bomConfig.separator ?? ",");
+      const text = decodeBuffer(buffer, encoding);
+      allRows = parseCsvText(text, separator);
+    } else {
+      // --- Excel path: use SheetJS ---
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+    }
 
     if (allRows.length === 0) {
       return NextResponse.json({ error: "File is empty" }, { status: 400 });
@@ -58,10 +136,18 @@ export async function POST(request: Request) {
     let headers: string[];
     let dataStartIndex: number;
 
-    if (bomConfig.columns_fixed) {
-      headers = bomConfig.columns_fixed;
+    if (bomConfig.header_none || bomConfig.columns_fixed) {
+      // No header row (e.g. Lanka) — columns_fixed defines the field order
+      // Use generic column names as "headers" for the RawRow keys
+      const maxCols = Math.max(...allRows.map((r) => r.length));
+      headers = Array.from({ length: maxCols }, (_, i) => `col_${i}`);
       dataStartIndex = 0;
+    } else if (bomConfig.forced_columns) {
+      // Forced column override (ISC 2100-0142) — use forced names as headers
+      headers = bomConfig.forced_columns;
+      dataStartIndex = 1; // skip whatever row 0 is (it's the real header, but we override it)
     } else if (bomConfig.header_row !== null && bomConfig.header_row !== undefined) {
+      // Explicit header row index
       const headerRowIndex = bomConfig.header_row;
       if (allRows.length <= headerRowIndex) {
         return NextResponse.json({ error: "header_row exceeds file length" }, { status: 400 });
@@ -73,7 +159,8 @@ export async function POST(request: Request) {
       const knownHeaders = [
         "qty", "quantity", "designator", "mpn", "manufacturer part number",
         "description", "reference", "part number", "manufacturer", "value",
-        "ref des", "refdes", "manufacturer part", "qté",
+        "ref des", "refdes", "manufacturer part", "qté", "position sur circuit",
+        "# manufacturier", "partnumber", "manufacturer p/n",
       ];
       let foundRow = -1;
       for (let i = 0; i < Math.min(allRows.length, 20); i++) {
@@ -105,10 +192,10 @@ export async function POST(request: Request) {
 
     // Resolve column mapping and parse
     const mapping = resolveColumnMapping(bomConfig, headers);
-    const parseResult = parseBom(rawRows, mapping, headers, bomConfig);
+    const parseResult = parseBom(rawRows, mapping, headers, bomConfig, fileName);
 
     // Upload file to Supabase Storage (admin bypasses RLS)
-    const filePath = `${customer.code}/${gmpId}/${file.name}`;
+    const filePath = `${customer.code}/${gmpId}/${fileName}`;
     const fileBuffer = new Uint8Array(buffer);
     const { error: uploadError } = await admin.storage.from("boms").upload(filePath, fileBuffer, {
       contentType: file.type || "application/octet-stream",
@@ -125,9 +212,9 @@ export async function POST(request: Request) {
       .insert({
         gmp_id: gmpId,
         customer_id: customerId,
-        file_name: file.name,
+        file_name: fileName,
         file_path: filePath,
-        file_hash: `${file.size}-${file.name}`,
+        file_hash: `${file.size}-${fileName}`,
         status: "parsing",
         created_by: user.id,
       })
@@ -141,19 +228,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Classify all parsed lines
-    const classificationResults = await classifyBomLines(
-      parseResult.lines.map((l) => ({
-        mpn: l.mpn,
-        description: l.description,
-        cpc: l.cpc,
-        manufacturer: l.manufacturer,
-      })),
-      admin
-    );
-
-    // Build bom_lines rows
-    const bomLines = parseResult.lines.map((line, idx) => ({
+    // Build bom_lines rows — RAW parsed data only, NO classification.
+    // M-code assignment happens later as an explicit user action after merge.
+    const bomLines = parseResult.lines.map((line) => ({
       bom_id: bom.id,
       line_number: line.line_number,
       quantity: line.quantity,
@@ -164,9 +241,9 @@ export async function POST(request: Request) {
       manufacturer: line.manufacturer,
       is_pcb: line.is_pcb,
       is_dni: line.is_dni,
-      m_code: classificationResults[idx]?.m_code ?? null,
-      m_code_confidence: classificationResults[idx]?.confidence ?? null,
-      m_code_source: classificationResults[idx]?.source ?? null,
+      m_code: null,
+      m_code_confidence: null,
+      m_code_source: null,
     }));
 
     // Prepend PCB row if found
@@ -183,7 +260,7 @@ export async function POST(request: Request) {
         is_pcb: true,
         is_dni: false,
         m_code: null,
-        m_code_confidence: null as unknown as number,
+        m_code_confidence: null,
         m_code_source: null,
       });
     }
@@ -196,9 +273,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const classifiedCount = classificationResults.filter((r) => r.m_code !== null).length;
-    const unclassifiedCount = classificationResults.filter((r) => r.m_code === null).length;
-
     // Update BOM to parsed
     await admin
       .from("boms")
@@ -207,10 +281,9 @@ export async function POST(request: Request) {
         component_count: parseResult.lines.length,
         parse_result: {
           stats: parseResult.stats,
-          classification_summary: {
-            total: classificationResults.length,
-            classified: classifiedCount,
-            unclassified: unclassifiedCount,
+          log_summary: {
+            total_log_entries: parseResult.log.length,
+            auto_pcb: parseResult.stats.auto_pcb,
           },
         },
       })
@@ -218,11 +291,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       bom_id: bom.id,
-      file_name: file.name,
+      file_name: fileName,
       stats: parseResult.stats,
       component_count: parseResult.lines.length,
-      classified: classifiedCount,
-      unclassified: unclassifiedCount,
+      pcb_found: parseResult.pcb_row !== null,
+      pcb_auto: parseResult.stats.auto_pcb,
+      log_entries: parseResult.log.length,
     });
   } catch (err) {
     console.error("[BOM PARSE] Error:", err);
