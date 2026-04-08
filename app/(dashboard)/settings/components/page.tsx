@@ -428,8 +428,6 @@ export default function ComponentsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>MPN</TableHead>
-                <TableHead className="hidden md:table-cell">Manufacturer</TableHead>
-                <TableHead className="hidden lg:table-cell max-w-[200px]">Description</TableHead>
                 <TableHead className="w-28">M-Code</TableHead>
                 <TableHead className="w-24">Source</TableHead>
                 <TableHead className="w-28 hidden sm:table-cell">Updated</TableHead>
@@ -441,12 +439,6 @@ export default function ComponentsPage() {
                 <TableRow key={comp.id}>
                   <TableCell className="font-mono text-xs font-medium">
                     {comp.mpn}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm text-gray-600">
-                    {comp.manufacturer ?? "--"}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell max-w-[200px] truncate text-sm text-gray-600">
-                    {comp.description ?? "--"}
                   </TableCell>
                   <TableCell>
                     {editingId === comp.id ? (

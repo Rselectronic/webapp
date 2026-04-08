@@ -27,19 +27,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Fetch M-code breakdown stats (unfiltered)
-  const { data: allComponents } = await supabase
+  // Get total count (unfiltered) — use count query, not fetching all rows
+  const { count: totalCount } = await supabase
     .from("components")
-    .select("m_code");
+    .select("id", { count: "exact", head: true });
 
+  // Fetch M-code breakdown using RPC or paginated fetch
+  // Supabase returns max 1000 by default, so use a grouped count approach
   const mCodeCounts: Record<string, number> = {};
-  let totalComponents = 0;
-  if (allComponents) {
-    totalComponents = allComponents.length;
-    for (const c of allComponents) {
+  let fetchOffset = 0;
+  const fetchLimit = 1000;
+  while (true) {
+    const { data: batch } = await supabase
+      .from("components")
+      .select("m_code")
+      .range(fetchOffset, fetchOffset + fetchLimit - 1);
+    if (!batch || batch.length === 0) break;
+    for (const c of batch) {
       const code = c.m_code ?? "Unassigned";
       mCodeCounts[code] = (mCodeCounts[code] ?? 0) + 1;
     }
+    if (batch.length < fetchLimit) break;
+    fetchOffset += fetchLimit;
   }
 
   return NextResponse.json({
@@ -48,7 +57,7 @@ export async function GET(req: NextRequest) {
     page,
     limit,
     stats: {
-      total: totalComponents,
+      total: totalCount ?? 0,
       by_m_code: mCodeCounts,
     },
   });
