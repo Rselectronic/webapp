@@ -84,6 +84,7 @@ export async function POST(
         m_code_confidence: result.confidence ?? null,
         m_code_source: result.source,
         m_code_final: result.m_code, // Will be overridden if human sets m_code_override
+        m_code_reasoning: result.rule_id ?? null,
         needs_review: needsReview,
         updated_at: new Date().toISOString(),
       })

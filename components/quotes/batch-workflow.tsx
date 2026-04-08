@@ -65,6 +65,7 @@ interface BatchLine {
   stock_qty: number | null;
   is_pcb: boolean;
   needs_review: boolean;
+  m_code_reasoning: string | null;
 }
 
 interface LogEntry {
@@ -287,6 +288,7 @@ export function BatchWorkflow({ batch, lines, log }: { batch: Batch; lines: Batc
                   {currentStepIdx >= 2 && (
                     <>
                       <TableHead>M-Code</TableHead>
+                      <TableHead>Reasoning</TableHead>
                       <TableHead>Override</TableHead>
                     </>
                   )}
@@ -358,6 +360,29 @@ export function BatchWorkflow({ batch, lines, log }: { batch: Batch; lines: Batc
                                   {Math.round(line.m_code_confidence * 100)}%
                                 </span>
                               </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {/* Reasoning text */}
+                            <span className="text-xs text-gray-600 max-w-40 truncate" title={line.m_code_reasoning ?? undefined}>
+                              {line.m_code_reasoning
+                                ? line.m_code_reasoning
+                                    .replace("KEYWORD: ", "Keyword: ")
+                                    .replace(/^PAR-(\d+)/, "Rule PAR-$1")
+                                    .replace("AI: ", "AI: ")
+                                : "—"}
+                            </span>
+                            {/* Confidence score */}
+                            {line.m_code_confidence != null && (
+                              <span className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded ${
+                                line.m_code_confidence >= 0.9 ? "bg-green-100 text-green-700"
+                                  : line.m_code_confidence >= 0.7 ? "bg-yellow-100 text-yellow-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}>
+                                {Math.round(line.m_code_confidence * 100)}%
+                              </span>
                             )}
                           </div>
                         </TableCell>
