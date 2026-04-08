@@ -73,7 +73,10 @@ async function lookupInDatabase(
     .maybeSingle();
 
   if (data?.m_code) {
-    return { m_code: data.m_code, confidence: 0.95, source: "database" };
+    const reason = data.m_code_source === "manual"
+      ? `Previously manually classified as ${data.m_code} — MPN "${mpn}" found in components database`
+      : `MPN "${mpn}" found in components database → ${data.m_code}`;
+    return { m_code: data.m_code, confidence: 0.95, source: "database", rule_id: reason };
   }
   return null;
 }
@@ -126,11 +129,30 @@ async function lookupByKeyword(
     }
 
     if (matched) {
+      // Build human-readable reasoning
+      const mCodeNames: Record<string, string> = {
+        "0201": "ultra-tiny passive (0201)",
+        "0402": "small passive (0402)",
+        "CP": "chip package (standard SMT)",
+        "CPEXP": "expanded SMT package",
+        "IP": "IC package (large SMT)",
+        "TH": "through-hole",
+        "MANSMT": "manual SMT (odd-form)",
+        "MEC": "mechanical",
+        "Accs": "accessory",
+        "CABLE": "cable/wiring",
+        "DEV B": "development board",
+        "PCB": "printed circuit board",
+      };
+      const mCodeDesc = mCodeNames[kw.assigned_m_code] ?? kw.assigned_m_code;
+      const matchedIn = kw.match_field === "any" ? "component data" : kw.match_field;
+      const reason = `Found "${kw.keyword}" in ${matchedIn} → ${mCodeDesc}`;
+
       return {
         m_code: kw.assigned_m_code as MCode,
         confidence: 0.90,
         source: "database",
-        rule_id: `KEYWORD: ${kw.keyword}`,
+        rule_id: reason,
       };
     }
   }

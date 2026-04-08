@@ -606,7 +606,7 @@ export function classifyByRules(
         m_code: rule.assigned_m_code,
         confidence: 0.85,
         source: "rules",
-        rule_id: rule.rule_id,
+        rule_id: `${rule.description} (${rule.rule_id})`,
       };
     }
   }
