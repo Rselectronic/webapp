@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calculateQuote } from "@/lib/pricing/engine";
+import { searchPartPrice } from "@/lib/pricing/digikey";
+import { searchMouserPrice } from "@/lib/pricing/mouser";
+import { searchLCSCPrice } from "@/lib/pricing/lcsc";
 import type { PricingLine, OverageTier, PricingSettings } from "@/lib/pricing/types";
 
 // ---------------------------------------------------------------------------
-// POST /api/quotes/preview — Calculate pricing without saving
+// POST /api/quotes/preview — Calculate pricing with live API lookups
 // ---------------------------------------------------------------------------
 
 interface PreviewBody {
@@ -62,8 +65,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // --- Fetch cached prices ---
-  const mpns = [...new Set(bomLines.map((l) => l.mpn).filter(Boolean))];
+  // --- Step 1: Check cached prices ---
+  const mpns = [...new Set(bomLines.map((l) => l.mpn).filter(Boolean))] as string[];
   const { data: priceRows } = await supabase
     .from("api_pricing_cache")
     .select("search_key, unit_price, source")
@@ -84,7 +87,65 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // --- Build PricingLine array ---
+  // --- Step 2: Fetch prices from DigiKey/Mouser/LCSC for uncached MPNs ---
+  const uncachedMpns = mpns.filter((mpn) => !priceMap.has(mpn));
+  let apiCalls = 0;
+  let apiErrors = 0;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Process in batches of 5 to avoid overwhelming APIs
+  for (let i = 0; i < uncachedMpns.length; i += 5) {
+    const batch = uncachedMpns.slice(i, i + 5);
+    const results = await Promise.allSettled(
+      batch.map(async (mpn) => {
+        const [digikey, mouser, lcsc] = await Promise.allSettled([
+          searchPartPrice(mpn),
+          searchMouserPrice(mpn),
+          searchLCSCPrice(mpn),
+        ]);
+        apiCalls++;
+
+        interface Hit { source: string; unit_price: number; supplier_pn: string; stock_qty: number | null; mpn: string; currency: string; }
+        const hits: Hit[] = [];
+
+        if (digikey.status === "fulfilled" && digikey.value) {
+          const r = digikey.value;
+          hits.push({ source: "digikey", unit_price: r.unit_price, supplier_pn: r.digikey_pn, stock_qty: null, mpn: r.mpn, currency: r.currency });
+          await supabase.from("api_pricing_cache").upsert(
+            { source: "digikey", mpn: r.mpn, search_key: mpn, response: r as unknown as Record<string, unknown>, unit_price: r.unit_price, stock_qty: null, currency: r.currency, expires_at: expiresAt },
+            { onConflict: "source,search_key" }
+          );
+        }
+        if (mouser.status === "fulfilled" && mouser.value) {
+          const r = mouser.value;
+          hits.push({ source: "mouser", unit_price: r.unit_price, supplier_pn: r.mouser_pn, stock_qty: r.stock_qty, mpn: r.mpn, currency: r.currency });
+          await supabase.from("api_pricing_cache").upsert(
+            { source: "mouser", mpn: r.mpn, search_key: mpn, response: r as unknown as Record<string, unknown>, unit_price: r.unit_price, stock_qty: r.stock_qty, currency: r.currency, expires_at: expiresAt },
+            { onConflict: "source,search_key" }
+          );
+        }
+        if (lcsc.status === "fulfilled" && lcsc.value) {
+          const r = lcsc.value;
+          hits.push({ source: "lcsc", unit_price: r.unit_price, supplier_pn: r.lcsc_pn, stock_qty: r.stock_qty, mpn: r.mpn, currency: r.currency });
+          await supabase.from("api_pricing_cache").upsert(
+            { source: "lcsc", mpn: r.mpn, search_key: mpn, response: r as unknown as Record<string, unknown>, unit_price: r.unit_price, stock_qty: r.stock_qty, currency: r.currency, expires_at: expiresAt },
+            { onConflict: "source,search_key" }
+          );
+        }
+
+        if (hits.length > 0) {
+          const best = hits.reduce((a, b) => a.unit_price <= b.unit_price ? a : b);
+          priceMap.set(mpn, { unit_price: best.unit_price, source: best.source });
+        }
+      })
+    );
+
+    for (const r of results) {
+      if (r.status === "rejected") apiErrors++;
+    }
+  }
+
+  // --- Step 3: Build PricingLine array ---
   const pricingLines: PricingLine[] = bomLines.map((line) => {
     const cached = line.mpn ? priceMap.get(line.mpn) : undefined;
     return {
@@ -117,7 +178,7 @@ export async function POST(req: NextRequest) {
 
   const settings = (settingsRow?.value ?? {}) as PricingSettings;
 
-  // --- Calculate pricing (no save) ---
+  // --- Calculate pricing ---
   const pricing = calculateQuote({
     lines: pricingLines,
     quantities,
@@ -131,5 +192,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     pricing,
     component_count: pricingLines.length,
+    api_calls: apiCalls,
+    cache_hits: mpns.length - uncachedMpns.length,
+    api_errors: apiErrors,
   });
 }
