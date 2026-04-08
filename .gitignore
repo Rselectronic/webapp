@@ -41,6 +41,9 @@ All vba codes/
 erp-rs-mcp/dist/
 erp-rs-mcp/node_modules/
 
+# claude code
+.claude/
+
 # vercel
 .vercel
 

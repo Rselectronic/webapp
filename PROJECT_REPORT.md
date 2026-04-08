@@ -21,7 +21,7 @@
 | Auth | Supabase Auth (email/password, 3 roles) |
 | Storage | Supabase Storage (S3-compatible) |
 | AI | Claude Sonnet 4 via Anthropic SDK + Vercel AI SDK v6 |
-| PDF | @react-pdf/renderer |
+| PDF | pdf-lib (quote PDF) + @react-pdf/renderer (others — migration pending) |
 | BOM Parsing | xlsx library |
 | Deployment | Vercel (target) |
 
