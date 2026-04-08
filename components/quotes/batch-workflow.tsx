@@ -319,18 +319,47 @@ export function BatchWorkflow({ batch, lines, log }: { batch: Batch; lines: Batc
                     {currentStepIdx >= 2 && (
                       <>
                         <TableCell>
-                          <span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
-                            line.m_code_final
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-red-100 text-red-700"
-                          }`}>
-                            {line.m_code_final ?? "???"}
-                          </span>
-                          {line.m_code_confidence != null && (
-                            <span className="ml-1 text-xs text-gray-400">
-                              {Math.round(line.m_code_confidence * 100)}%
-                            </span>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
+                                line.m_code_final
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}>
+                                {line.m_code_final ?? "???"}
+                              </span>
+                              <span className={`text-[10px] font-medium px-1 py-px rounded ${
+                                line.m_code_source === "database" ? "bg-purple-100 text-purple-700"
+                                  : line.m_code_source === "rules" ? "bg-cyan-100 text-cyan-700"
+                                  : line.m_code_source === "api" ? "bg-orange-100 text-orange-700"
+                                  : line.m_code_source === "manual" ? "bg-green-100 text-green-700"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}>
+                                {line.m_code_source === "database" ? "DB Match"
+                                  : line.m_code_source === "rules" ? "Rule"
+                                  : line.m_code_source === "api" ? "AI"
+                                  : line.m_code_source === "manual" ? "Manual"
+                                  : "Unclassified"}
+                              </span>
+                            </div>
+                            {line.m_code_confidence != null && (
+                              <div className="flex items-center gap-1.5">
+                                <div className="h-1.5 w-16 rounded-full bg-gray-200 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      line.m_code_confidence >= 0.9 ? "bg-green-500"
+                                        : line.m_code_confidence >= 0.7 ? "bg-yellow-500"
+                                        : "bg-red-500"
+                                    }`}
+                                    style={{ width: `${Math.round(line.m_code_confidence * 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-gray-400">
+                                  {Math.round(line.m_code_confidence * 100)}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <MCodeOverrideCell
