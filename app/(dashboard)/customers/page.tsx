@@ -53,7 +53,7 @@ export default async function CustomersPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Customers</h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Customers</h2>
           <p className="text-gray-500">
             {customers?.length ?? 0} customer{customers?.length !== 1 ? "s" : ""}
           </p>
@@ -101,11 +101,11 @@ export default async function CustomersPage({
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
           Failed to load customers. Make sure your Supabase connection is configured.
         </div>
       ) : (
-        <div className="table-responsive rounded-lg border bg-white">
+        <div className="table-responsive rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
           <Table>
             <TableHeader>
               <TableRow>

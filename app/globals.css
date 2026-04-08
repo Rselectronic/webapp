@@ -145,6 +145,15 @@
 /* Dark mode border overrides */
 .dark .border-gray-200 { border-color: oklch(1 0 0 / 10%); }
 .dark .border-gray-300 { border-color: oklch(1 0 0 / 15%); }
+.dark .divide-gray-200 > :not(:last-child) { border-color: oklch(1 0 0 / 10%); }
+
+/* Dark mode hover overrides */
+.dark .hover\:bg-gray-50:hover { background-color: oklch(0.23 0 0); }
+
+/* Dark mode colored alert overrides */
+.dark .border-red-200 { border-color: oklch(0.5 0.15 25 / 40%); }
+.dark .bg-red-50 { background-color: oklch(0.2 0.05 25 / 30%); }
+.dark .text-red-700 { color: oklch(0.75 0.15 25); }
 
 /* Responsive tables: sticky first column on small screens */
 @media (max-width: 767px) {

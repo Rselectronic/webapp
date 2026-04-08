@@ -264,7 +264,7 @@ export default async function ProcurementDetailPage({
           </CardContent>
         </Card>
       ) : (
-        <div className="rounded-lg border bg-white">
+        <div className="rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
           <Table>
             <TableHeader>
               <TableRow>
@@ -347,10 +347,10 @@ export default async function ProcurementDetailPage({
       {/* Supplier POs */}
       {(supplierPOs ?? []).length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Supplier Purchase Orders
           </h3>
-          <div className="rounded-lg border bg-white">
+          <div className="rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
             <Table>
               <TableHeader>
                 <TableRow>

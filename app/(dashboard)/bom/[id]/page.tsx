@@ -88,7 +88,7 @@ export default async function BomDetailPage({
 
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             {gmp?.gmp_number ?? bom.file_name}
             {gmp?.board_name && (
               <span className="ml-2 text-lg font-normal text-gray-500">{gmp.board_name}</span>

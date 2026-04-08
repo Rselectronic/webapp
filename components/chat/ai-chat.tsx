@@ -292,7 +292,7 @@ export function AIChat() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition-colors"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition-colors dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
         aria-label="Open AI Assistant"
       >
         <MessageCircle className="h-6 w-6" />
@@ -302,15 +302,15 @@ export function AIChat() {
 
   // ---------- Open State ----------
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex h-[600px] w-[420px] rounded-2xl border bg-white shadow-2xl overflow-hidden">
+    <div className="fixed bottom-6 right-6 z-50 flex h-[600px] w-[420px] rounded-2xl border bg-white shadow-2xl overflow-hidden dark:border-gray-700 dark:bg-gray-950">
       {/* Conversation Sidebar */}
       {sidebarOpen && (
-        <div className="w-[180px] border-r bg-gray-50 flex flex-col shrink-0">
+        <div className="w-[180px] border-r bg-gray-50 flex flex-col shrink-0 dark:border-gray-700 dark:bg-gray-900">
           <div className="flex items-center justify-between px-2 py-2 border-b">
-            <span className="text-xs font-semibold text-gray-500 uppercase">History</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase dark:text-gray-400">History</span>
             <button
               onClick={createNewConversation}
-              className="rounded p-1 hover:bg-gray-200 text-gray-500"
+              className="rounded p-1 hover:bg-gray-200 text-gray-500 dark:hover:bg-gray-700 dark:text-gray-400"
               title="New chat"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -327,15 +327,15 @@ export function AIChat() {
               conversations.map((conv) => (
                 <div
                   key={conv.id}
-                  className={`group flex items-center gap-1 px-2 py-2 cursor-pointer hover:bg-gray-100 border-b border-gray-100 ${
-                    activeConversationId === conv.id ? "bg-gray-100" : ""
+                  className={`group flex items-center gap-1 px-2 py-2 cursor-pointer hover:bg-gray-100 border-b border-gray-100 dark:hover:bg-gray-800 dark:border-gray-800 ${
+                    activeConversationId === conv.id ? "bg-gray-100 dark:bg-gray-800" : ""
                   }`}
                 >
                   <button
                     className="flex-1 text-left min-w-0"
                     onClick={() => loadConversation(conv.id)}
                   >
-                    <p className="text-xs font-medium text-gray-700 truncate">
+                    <p className="text-xs font-medium text-gray-700 truncate dark:text-gray-200">
                       {conv.title}
                     </p>
                     {conv.last_message && (
@@ -349,7 +349,7 @@ export function AIChat() {
                       e.stopPropagation();
                       deleteConversation(conv.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 rounded p-0.5 hover:bg-gray-200 text-gray-400 shrink-0"
+                    className="opacity-0 group-hover:opacity-100 rounded p-0.5 hover:bg-gray-200 text-gray-400 shrink-0 dark:hover:bg-gray-700"
                     title="Delete"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -368,7 +368,7 @@ export function AIChat() {
           <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="rounded-md p-1 hover:bg-gray-100 shrink-0"
+              className="rounded-md p-1 hover:bg-gray-100 shrink-0 dark:hover:bg-gray-800"
               title={sidebarOpen ? "Hide history" : "Show history"}
             >
               {sidebarOpen ? (
@@ -377,7 +377,7 @@ export function AIChat() {
                 <PanelLeftOpen className="h-4 w-4 text-gray-500" />
               )}
             </button>
-            <Bot className="h-4 w-4 text-gray-700 shrink-0" />
+            <Bot className="h-4 w-4 text-gray-700 shrink-0 dark:text-gray-300" />
             <div className="min-w-0">
               <p className="text-sm font-semibold truncate">RS Assistant</p>
               <p className="text-[10px] text-gray-500 truncate">
@@ -388,14 +388,14 @@ export function AIChat() {
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={createNewConversation}
-              className="rounded-md p-1 hover:bg-gray-100"
+              className="rounded-md p-1 hover:bg-gray-100 dark:hover:bg-gray-800"
               title="New chat"
             >
               <Plus className="h-4 w-4 text-gray-500" />
             </button>
             <button
               onClick={() => setOpen(false)}
-              className="rounded-md p-1 hover:bg-gray-100"
+              className="rounded-md p-1 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               <X className="h-4 w-4" />
             </button>
@@ -421,7 +421,7 @@ export function AIChat() {
                   <button
                     key={q}
                     onClick={() => handleSend(q)}
-                    className="block w-full rounded-lg border px-3 py-2 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                    className="block w-full rounded-lg border px-3 py-2 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
                   >
                     {q}
                   </button>
@@ -439,15 +439,15 @@ export function AIChat() {
               className={`flex gap-2 ${m.role === "user" ? "justify-end" : ""}`}
             >
               {m.role === "assistant" && (
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                  <Bot className="h-3.5 w-3.5 text-gray-600" />
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+                  <Bot className="h-3.5 w-3.5 text-gray-600 dark:text-gray-400" />
                 </div>
               )}
               <div
                 className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
                   m.role === "user"
-                    ? "bg-gray-900 text-white"
-                    : "bg-gray-100 text-gray-800"
+                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                    : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
                 }`}
               >
                 {m.parts.map((part, i) => {
@@ -472,8 +472,8 @@ export function AIChat() {
                 })}
               </div>
               {m.role === "user" && (
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900">
-                  <User className="h-3.5 w-3.5 text-white" />
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100">
+                  <User className="h-3.5 w-3.5 text-white dark:text-gray-900" />
                 </div>
               )}
             </div>
@@ -481,10 +481,10 @@ export function AIChat() {
 
           {isLoading && (
             <div className="flex gap-2">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                <Bot className="h-3.5 w-3.5 text-gray-600" />
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+                <Bot className="h-3.5 w-3.5 text-gray-600 dark:text-gray-400" />
               </div>
-              <div className="rounded-xl bg-gray-100 px-3 py-2">
+              <div className="rounded-xl bg-gray-100 px-3 py-2 dark:bg-gray-800">
                 <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
               </div>
             </div>
@@ -502,7 +502,7 @@ export function AIChat() {
             {attachments.map((att, i) => (
               <div
                 key={i}
-                className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600"
+                className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400"
               >
                 {att.uploading ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -530,7 +530,7 @@ export function AIChat() {
             {/* File Upload Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-md p-1.5 hover:bg-gray-100 text-gray-400 hover:text-gray-600 shrink-0 self-center"
+              className="rounded-md p-1.5 hover:bg-gray-100 text-gray-400 hover:text-gray-600 shrink-0 self-center dark:hover:bg-gray-800 dark:hover:text-gray-300"
               title="Attach file (BOM, PDF, image)"
             >
               <Paperclip className="h-4 w-4" />
@@ -564,7 +564,7 @@ export function AIChat() {
                   : "Ask about customers, quotes, jobs..."
               }
               rows={1}
-              className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+              className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-gray-600"
             />
             <Button
               type="button"

@@ -49,7 +49,7 @@ export default async function JobsPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Jobs</h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Jobs</h2>
           <p className="mt-1 text-gray-500">
             Track jobs from creation through production to delivery.
           </p>
@@ -84,7 +84,7 @@ export default async function JobsPage({
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
           Failed to load jobs: {error.message}
         </div>
       )}
@@ -103,8 +103,8 @@ export default async function JobsPage({
         <JobKanban jobs={jobs} />
       ) : (
         <div className="table-responsive overflow-x-auto rounded-md border">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
+            <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">
                   Job #
@@ -129,12 +129,12 @@ export default async function JobsPage({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
               {jobs.map((job) => {
                 const customer = job.customers;
                 const gmp = job.gmps;
                 return (
-                  <tr key={job.id} className="hover:bg-gray-50">
+                  <tr key={job.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="px-4 py-3">
                       <a
                         href={`/jobs/${job.id}`}

@@ -107,7 +107,7 @@ export default async function InvoiceDetailPage({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="font-mono text-2xl font-bold text-gray-900">
+            <h2 className="font-mono text-2xl font-bold text-gray-900 dark:text-gray-100">
               {invoice.invoice_number}
             </h2>
             <InvoiceStatusBadge status={effectiveStatus} />
@@ -213,13 +213,13 @@ export default async function InvoiceDetailPage({
         <CardContent>
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Subtotal</span>
+              <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
               <span className="font-mono">{formatCurrency(subtotal)}</span>
             </div>
 
             {discount > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Discount</span>
+                <span className="text-gray-600 dark:text-gray-400">Discount</span>
                 <span className="font-mono text-green-600">
                   -{formatCurrency(discount)}
                 </span>
@@ -227,18 +227,18 @@ export default async function InvoiceDetailPage({
             )}
 
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">TPS/GST (5%)</span>
+              <span className="text-gray-600 dark:text-gray-400">TPS/GST (5%)</span>
               <span className="font-mono">{formatCurrency(tpsGst)}</span>
             </div>
 
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">TVQ/QST (9.975%)</span>
+              <span className="text-gray-600 dark:text-gray-400">TVQ/QST (9.975%)</span>
               <span className="font-mono">{formatCurrency(tvqQst)}</span>
             </div>
 
             {freight > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Freight</span>
+                <span className="text-gray-600 dark:text-gray-400">Freight</span>
                 <span className="font-mono">{formatCurrency(freight)}</span>
               </div>
             )}
@@ -265,7 +265,7 @@ export default async function InvoiceDetailPage({
             <CardTitle className="text-sm">Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="whitespace-pre-wrap text-sm text-gray-700">
+            <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
               {invoice.notes}
             </p>
           </CardContent>
@@ -343,7 +343,7 @@ async function PaymentsSection({
                   <span className="text-gray-500">
                     {formatDate(p.payment_date)}
                   </span>
-                  <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                  <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                     {METHOD_LABELS[p.payment_method] ?? p.payment_method}
                   </span>
                   {p.reference_number && (

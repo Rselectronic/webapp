@@ -156,7 +156,7 @@ export default async function CustomerDetailPage({
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-gray-900">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {customer.company_name}
             </h2>
             <Badge variant={customer.is_active ? "default" : "secondary"}>
@@ -367,7 +367,7 @@ export default async function CustomerDetailPage({
                           <Link
                             key={bom.id}
                             href={`/bom/${bom.id}`}
-                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-gray-50"
+                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50"
                           >
                             <FileText className="h-4 w-4 text-gray-400" />
                             <span className="flex-1 font-mono text-xs">{bom.file_name}</span>
@@ -378,9 +378,9 @@ export default async function CustomerDetailPage({
                               variant="secondary"
                               className={`text-xs ${
                                 bom.status === "parsed"
-                                  ? "bg-green-100 text-green-700"
+                                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
                                   : bom.status === "error"
-                                    ? "bg-red-100 text-red-700"
+                                    ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
                                     : ""
                               }`}
                             >
@@ -411,7 +411,7 @@ export default async function CustomerDetailPage({
             <CardTitle>Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">
+            <p className="text-sm text-gray-700 whitespace-pre-wrap dark:text-gray-300">
               {customer.notes}
             </p>
           </CardContent>
@@ -428,7 +428,7 @@ export default async function CustomerDetailPage({
         <CardContent className="space-y-8">
           {/* Recent Quotes */}
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">Recent Quotes</h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Recent Quotes</h3>
             {quotes.length === 0 ? (
               <p className="text-sm text-gray-500">No quotes yet.</p>
             ) : (
@@ -467,7 +467,7 @@ export default async function CustomerDetailPage({
 
           {/* Recent Jobs */}
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">Recent Jobs</h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Recent Jobs</h3>
             {jobs.length === 0 ? (
               <p className="text-sm text-gray-500">No jobs yet.</p>
             ) : (
@@ -506,7 +506,7 @@ export default async function CustomerDetailPage({
 
           {/* Recent Invoices */}
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">Recent Invoices</h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Recent Invoices</h3>
             {invoices.length === 0 ? (
               <p className="text-sm text-gray-500">No invoices yet.</p>
             ) : (

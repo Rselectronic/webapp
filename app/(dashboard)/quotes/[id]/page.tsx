@@ -114,7 +114,7 @@ export default async function QuoteDetailPage({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="font-mono text-2xl font-bold text-gray-900">
+            <h2 className="font-mono text-2xl font-bold text-gray-900 dark:text-gray-100">
               {quote.quote_number}
             </h2>
             <QuoteStatusBadge status={quote.status} />
@@ -270,7 +270,7 @@ export default async function QuoteDetailPage({
             {customer.contact_name && (
               <p className="font-medium">{customer.contact_name}</p>
             )}
-            <p className="flex items-center gap-2 text-sm text-gray-600">
+            <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <Mail className="h-3 w-3" />
               <a
                 href={`mailto:${customer.contact_email}`}
@@ -290,7 +290,7 @@ export default async function QuoteDetailPage({
             <CardTitle className="text-sm">Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="whitespace-pre-wrap text-sm text-gray-700">
+            <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
               {quote.notes}
             </p>
           </CardContent>

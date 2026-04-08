@@ -143,22 +143,27 @@
 
 **Deployed:** Vercel production, commit `efdc75f`
 
-**Even later in Session 3 — M-code reasoning, pricing APIs, data reset:**
+**Even later in Session 3 — M-code reasoning, pricing APIs, customer editing, dark mode, data reset:**
 
-- **M-code Reasoning + Confidence on BOM detail page:**
+- **Human-readable M-code reasoning:**
   - Added `m_code_reasoning` column to `bom_lines` (migration 022) and `quote_batch_lines` (migration 021)
-  - Classify routes now store `rule_id` as reasoning (e.g. "KEYWORD: SOT-23", "PAR-07")
-  - BOM table shows: source label (DB/Rule/AI/Manual) + matched keyword/rule + confidence bar (green/yellow/red)
+  - Classifier now generates plain-English explanations (e.g. `Found "SOT-23" in component data -> chip package (standard SMT)`) instead of just rule IDs
+  - BOM table shows: source label (DB/Rule/AI/Manual) + reasoning text + confidence bar (green/yellow/red)
   - Same reasoning shown in batch workflow table
 - **Pricing calls DigiKey/Mouser/LCSC directly:**
   - Removed fragile self-referencing HTTP fetch with cookie forwarding
   - Run Pricing step now imports supplier API clients directly
   - Queries all 3 suppliers in parallel, picks cheapest, caches for 7 days
+  - Quote preview now shows real component prices instead of $0
+- **Customer edit form:**
+  - Full inline editing of company info, contacts, addresses, BOM config, and notes
+  - All fields editable from the customer detail page
+- **Dark mode polish pass:** Visual consistency improvements across the app
 - **Full data reset:** Deleted all BOMs, bom_lines, quotes, jobs, invoices, procurements, production events — clean slate for fresh testing
 
-**Deployed:** Vercel production, commit `a1e1c9a`
+**Deployed:** Vercel production, commit `407aa40`
 
-**End state:** 27 tables, 48 API routes, 30 pages, ~57 components, ~26K lines TypeScript. Zero native dependencies. Clean database (customers + GMPs + rules + keywords remain, all transactional data wiped).
+**End state:** 27 tables, 56 API routes, 34 pages, 77 components, ~30K lines TypeScript, 106 commits. Zero native dependencies. Clean database (customers + GMPs + rules + keywords remain, all transactional data wiped).
 
 ---
 
@@ -204,4 +209,4 @@
 
 ---
 
-*Last updated: April 8, 2026, Session 3*
+*Last updated: April 8, 2026, Session 3 (late)*

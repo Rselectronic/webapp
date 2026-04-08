@@ -27,7 +27,7 @@ export default async function BomListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Bills of Materials</h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Bills of Materials</h2>
           <p className="text-sm text-gray-500 mt-1">{total} BOMs · {parsed} parsed · {pending} pending</p>
         </div>
         <Link href="/bom/upload">
@@ -83,7 +83,7 @@ export default async function BomListPage() {
                           ? "destructive"
                           : "secondary";
                     return (
-                      <TableRow key={bom.id} className="hover:bg-gray-50">
+                      <TableRow key={bom.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <TableCell className="font-medium">
                           <Link href={`/bom/${bom.id}`} className="text-blue-600 hover:underline">
                             {bom.file_name}
@@ -92,7 +92,7 @@ export default async function BomListPage() {
                         <TableCell className="text-sm">
                           <span className="font-mono text-xs text-gray-500">{customer?.code}</span>
                           {" "}
-                          <span className="text-gray-700">{customer?.company_name}</span>
+                          <span className="text-gray-700 dark:text-gray-300">{customer?.company_name}</span>
                         </TableCell>
                         <TableCell className="font-mono text-xs">
                           {gmp?.gmp_number}

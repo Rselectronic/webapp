@@ -79,7 +79,7 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
         )}
       </div>
 
-      <div className="rounded-lg border bg-white overflow-x-auto">
+      <div className="rounded-lg border bg-white overflow-x-auto dark:border-gray-800 dark:bg-gray-950">
         <Table>
           <TableHeader>
             <TableRow>
@@ -101,9 +101,9 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                 key={line.id}
                 className={
                   line.is_pcb
-                    ? "bg-blue-50"
+                    ? "bg-blue-50 dark:bg-blue-950/30"
                     : !line.m_code
-                      ? "bg-orange-50/60"
+                      ? "bg-orange-50/60 dark:bg-orange-950/20"
                       : ""
                 }
               >
@@ -137,11 +137,11 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                   {line.is_pcb ? null : (
                     <div className="flex items-center gap-1.5">
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                        line.m_code_source === "database" ? "bg-purple-100 text-purple-700"
-                          : line.m_code_source === "rules" ? "bg-cyan-100 text-cyan-700"
-                          : line.m_code_source === "api" ? "bg-orange-100 text-orange-700"
-                          : line.m_code_source === "manual" ? "bg-green-100 text-green-700"
-                          : "bg-gray-100 text-gray-500"
+                        line.m_code_source === "database" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                          : line.m_code_source === "rules" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300"
+                          : line.m_code_source === "api" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                          : line.m_code_source === "manual" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                          : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
                       }`}>
                         {line.m_code_source === "database" ? "DB"
                           : line.m_code_source === "rules" ? "Rule"
@@ -161,7 +161,7 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                 <TableCell>
                   {line.is_pcb || line.m_code_confidence == null ? null : (
                     <div className="flex items-center gap-1.5">
-                      <div className="h-2 w-12 rounded-full bg-gray-200 overflow-hidden">
+                      <div className="h-2 w-12 rounded-full bg-gray-200 overflow-hidden dark:bg-gray-700">
                         <div
                           className={`h-full rounded-full ${
                             line.m_code_confidence >= 0.9 ? "bg-green-500"
@@ -172,9 +172,9 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                         />
                       </div>
                       <span className={`text-xs font-mono font-semibold ${
-                        line.m_code_confidence >= 0.9 ? "text-green-700"
-                          : line.m_code_confidence >= 0.7 ? "text-yellow-700"
-                          : "text-red-700"
+                        line.m_code_confidence >= 0.9 ? "text-green-700 dark:text-green-400"
+                          : line.m_code_confidence >= 0.7 ? "text-yellow-700 dark:text-yellow-400"
+                          : "text-red-700 dark:text-red-400"
                       }`}>
                         {Math.round(line.m_code_confidence * 100)}%
                       </span>

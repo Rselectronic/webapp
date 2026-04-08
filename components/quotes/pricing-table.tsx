@@ -21,19 +21,19 @@ export function PricingTable({ tiers, warnings }: PricingTableProps) {
   return (
     <div className="space-y-3">
       {warnings && warnings.length > 0 && (
-        <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-2">
+        <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-2 dark:border-orange-800 dark:bg-orange-950/30">
           {warnings.map((w, i) => (
-            <p key={i} className="text-sm text-orange-700">
+            <p key={i} className="text-sm text-orange-700 dark:text-orange-300">
               {w}
             </p>
           ))}
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
+      <div className="overflow-x-auto rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-gray-50">
+            <tr className="border-b bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
                 Cost Breakdown
               </th>
@@ -53,15 +53,15 @@ export function PricingTable({ tiers, warnings }: PricingTableProps) {
                 key={key}
                 className={
                   highlight
-                    ? "border-t bg-gray-50 font-semibold"
-                    : "border-t"
+                    ? "border-t bg-gray-50 font-semibold dark:border-gray-800 dark:bg-gray-900"
+                    : "border-t dark:border-gray-800"
                 }
               >
-                <td className="px-4 py-2 text-gray-600">{label}</td>
+                <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{label}</td>
                 {tiers.map((t) => (
                   <td
                     key={t.board_qty}
-                    className={`px-4 py-2 text-right font-mono ${highlight ? "text-gray-900" : "text-gray-700"}`}
+                    className={`px-4 py-2 text-right font-mono ${highlight ? "text-gray-900 dark:text-gray-100" : "text-gray-700 dark:text-gray-300"}`}
                   >
                     {formatCurrency(t[key] as number)}
                   </td>

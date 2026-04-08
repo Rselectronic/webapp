@@ -148,7 +148,7 @@ export default async function EmailTemplatesPage({
           </CardContent>
         </Card>
       ) : (
-        <div className="rounded-lg border bg-white">
+        <div className="rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
           <Table>
             <TableHeader>
               <TableRow>

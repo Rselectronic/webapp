@@ -9,10 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Card, CardContent, CardHeader, CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, Save, Plus, Trash2, X } from "lucide-react";
 
 interface Contact {
@@ -152,208 +150,325 @@ export function CustomerEditForm({ customerId, initialData, onClose }: CustomerE
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Edit Customer — {initialData.code}</h2>
-        <Button variant="ghost" size="sm" onClick={onClose}>
+    <div className="flex flex-col h-full">
+      {/* ---- Header ---- */}
+      <div className="flex items-center justify-between pb-4 border-b">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">
+            Edit Customer
+          </h2>
+          <span className="text-sm text-muted-foreground font-mono">
+            {initialData.code}
+          </span>
+        </div>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* Company Info */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Company Info</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Company Name</Label>
-              <Input value={companyName} onChange={e => setCompanyName(e.target.value)} />
-            </div>
-            <div>
-              <Label>Payment Terms</Label>
-              <Select value={paymentTerms} onValueChange={(v) => { if (v) setPaymentTerms(v); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Net 30">Net 30</SelectItem>
-                  <SelectItem value="Net 15">Net 15</SelectItem>
-                  <SelectItem value="Net 45">Net 45</SelectItem>
-                  <SelectItem value="Net 60">Net 60</SelectItem>
-                  <SelectItem value="Due on receipt">Due on receipt</SelectItem>
-                  <SelectItem value="Prepaid">Prepaid</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Label>Status</Label>
-            <Button
-              variant={isActive ? "default" : "secondary"}
-              size="sm"
-              onClick={() => setIsActive(!isActive)}
-            >
-              {isActive ? "Active" : "Inactive"}
-            </Button>
-          </div>
-          <div>
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Internal notes about this customer..." />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Contacts */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Contacts ({contacts.length})</CardTitle>
-            <Button variant="outline" size="sm" onClick={addContact}>
-              <Plus className="mr-1 h-3 w-3" /> Add Contact
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {contacts.map((c, i) => (
-            <div key={i} className="rounded-lg border p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Contact {i + 1}</span>
-                  <Button
-                    variant={c.is_primary ? "default" : "outline"}
-                    size="sm"
-                    className="h-6 text-xs px-2"
-                    onClick={() => updateContact(i, "is_primary", true)}
-                  >
-                    {c.is_primary ? "Primary" : "Set Primary"}
-                  </Button>
-                </div>
-                {contacts.length > 1 && (
-                  <Button variant="ghost" size="sm" onClick={() => removeContact(i)}>
-                    <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                  </Button>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Name</Label>
-                  <Input value={c.name} onChange={e => updateContact(i, "name", e.target.value)} placeholder="Full name" />
-                </div>
-                <div>
-                  <Label className="text-xs">Role</Label>
-                  <Input value={c.role} onChange={e => updateContact(i, "role", e.target.value)} placeholder="e.g. Purchasing Manager" />
-                </div>
-                <div>
-                  <Label className="text-xs">Email</Label>
-                  <Input type="email" value={c.email} onChange={e => updateContact(i, "email", e.target.value)} placeholder="email@company.com" />
-                </div>
-                <div>
-                  <Label className="text-xs">Phone</Label>
-                  <Input value={c.phone} onChange={e => updateContact(i, "phone", e.target.value)} placeholder="+1 (514) 555-0000" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Addresses */}
-      {(["billing", "shipping"] as const).map(type => {
-        const addresses = type === "billing" ? billingAddresses : shippingAddresses;
-        return (
-          <Card key={type}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base capitalize">{type} Addresses ({addresses.length})</CardTitle>
-                <Button variant="outline" size="sm" onClick={() => addAddress(type)}>
-                  <Plus className="mr-1 h-3 w-3" /> Add
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {addresses.length === 0 && (
-                <p className="text-sm text-gray-500">No {type} addresses. Click Add to create one.</p>
-              )}
-              {addresses.map((a, i) => (
-                <div key={i} className="rounded-lg border p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={a.label}
-                        onChange={e => updateAddress(type, i, "label", e.target.value)}
-                        placeholder="Label (e.g. HQ, Warehouse)"
-                        className="h-7 w-40 text-xs"
-                      />
-                      <Button
-                        variant={a.is_default ? "default" : "outline"}
-                        size="sm"
-                        className="h-6 text-xs px-2"
-                        onClick={() => updateAddress(type, i, "is_default", true)}
-                      >
-                        {a.is_default ? "Default" : "Set Default"}
-                      </Button>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => removeAddress(type, i)}>
-                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                    </Button>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Street</Label>
-                    <Input value={a.street} onChange={e => updateAddress(type, i, "street", e.target.value)} placeholder="123 Main St" />
-                  </div>
-                  <div className="grid grid-cols-4 gap-3">
-                    <div>
-                      <Label className="text-xs">City</Label>
-                      <Input value={a.city} onChange={e => updateAddress(type, i, "city", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Province</Label>
-                      <Input value={a.province} onChange={e => updateAddress(type, i, "province", e.target.value)} placeholder="QC" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Postal Code</Label>
-                      <Input value={a.postal_code} onChange={e => updateAddress(type, i, "postal_code", e.target.value)} placeholder="H4S 1P9" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Country</Label>
-                      <Input value={a.country} onChange={e => updateAddress(type, i, "country", e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        );
-      })}
-
-      {/* BOM Config */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">BOM Configuration (JSON)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            value={bomConfigJson}
-            onChange={e => setBomConfigJson(e.target.value)}
-            rows={8}
-            className="font-mono text-xs"
-            placeholder='{"columns": "auto_detect"}'
+      {/* ---- Compact top fields ---- */}
+      <div className="grid grid-cols-[1fr_160px_auto] items-end gap-3 py-4">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Company Name</Label>
+          <Input
+            value={companyName}
+            onChange={e => setCompanyName(e.target.value)}
+            className="h-9"
           />
-          <p className="mt-1 text-xs text-gray-400">
-            Column mappings, header row, encoding, separator — controls how this customer&apos;s BOMs are parsed.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Separator />
-
-      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-4 py-2">{error}</p>}
-
-      <div className="flex items-center gap-3">
-        <Button onClick={handleSave} disabled={saving} className="flex-1">
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          Save Changes
-        </Button>
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Payment Terms</Label>
+          <Select value={paymentTerms} onValueChange={(v) => { if (v) setPaymentTerms(v); }}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Net 30">Net 30</SelectItem>
+              <SelectItem value="Net 15">Net 15</SelectItem>
+              <SelectItem value="Net 45">Net 45</SelectItem>
+              <SelectItem value="Net 60">Net 60</SelectItem>
+              <SelectItem value="Due on receipt">Due on receipt</SelectItem>
+              <SelectItem value="Prepaid">Prepaid</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsActive(!isActive)}
+          className="mb-0.5"
+        >
+          <Badge variant={isActive ? "default" : "secondary"} className="cursor-pointer select-none">
+            {isActive ? "Active" : "Inactive"}
+          </Badge>
+        </button>
       </div>
+
+      {/* ---- Tabbed content ---- */}
+      <Tabs defaultValue="contacts" className="flex-1 min-h-0">
+        <TabsList variant="line" className="w-full justify-start border-b pb-0">
+          <TabsTrigger value="contacts">Contacts</TabsTrigger>
+          <TabsTrigger value="addresses">Addresses</TabsTrigger>
+          <TabsTrigger value="bom-config">BOM Config</TabsTrigger>
+          <TabsTrigger value="notes">Notes</TabsTrigger>
+        </TabsList>
+
+        {/* ---- Contacts Tab ---- */}
+        <TabsContent value="contacts" className="pt-4">
+          <div className="space-y-3">
+            {/* Table header */}
+            <div className="grid grid-cols-[1fr_1fr_1fr_1fr_72px_36px] gap-2 px-1">
+              <span className="text-xs font-medium text-muted-foreground">Name</span>
+              <span className="text-xs font-medium text-muted-foreground">Role</span>
+              <span className="text-xs font-medium text-muted-foreground">Email</span>
+              <span className="text-xs font-medium text-muted-foreground">Phone</span>
+              <span className="text-xs font-medium text-muted-foreground">Primary</span>
+              <span />
+            </div>
+
+            {/* Contact rows */}
+            {contacts.map((c, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[1fr_1fr_1fr_1fr_72px_36px] gap-2 items-center"
+              >
+                <Input
+                  value={c.name}
+                  onChange={e => updateContact(i, "name", e.target.value)}
+                  placeholder="Full name"
+                  className="h-8 text-sm"
+                />
+                <Input
+                  value={c.role}
+                  onChange={e => updateContact(i, "role", e.target.value)}
+                  placeholder="Title / role"
+                  className="h-8 text-sm"
+                />
+                <Input
+                  type="email"
+                  value={c.email}
+                  onChange={e => updateContact(i, "email", e.target.value)}
+                  placeholder="email@co.com"
+                  className="h-8 text-sm"
+                />
+                <Input
+                  value={c.phone}
+                  onChange={e => updateContact(i, "phone", e.target.value)}
+                  placeholder="+1 (514) ..."
+                  className="h-8 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => updateContact(i, "is_primary", true)}
+                  className="flex justify-center"
+                >
+                  <Badge
+                    variant={c.is_primary ? "default" : "outline"}
+                    className="cursor-pointer select-none text-xs"
+                  >
+                    {c.is_primary ? "Primary" : "Set"}
+                  </Badge>
+                </button>
+                <div className="flex justify-center">
+                  {contacts.length > 1 ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => removeContact(i)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  ) : (
+                    <span className="h-7 w-7" />
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={addContact}
+            >
+              <Plus className="mr-1 h-3 w-3" />
+              Add contact
+            </Button>
+          </div>
+        </TabsContent>
+
+        {/* ---- Addresses Tab ---- */}
+        <TabsContent value="addresses" className="pt-4">
+          <div className="grid grid-cols-2 gap-6">
+            {/* Billing column */}
+            <AddressColumn
+              title="Billing"
+              addresses={billingAddresses}
+              onUpdate={(i, f, v) => updateAddress("billing", i, f, v)}
+              onAdd={() => addAddress("billing")}
+              onRemove={(i) => removeAddress("billing", i)}
+            />
+            {/* Shipping column */}
+            <AddressColumn
+              title="Shipping"
+              addresses={shippingAddresses}
+              onUpdate={(i, f, v) => updateAddress("shipping", i, f, v)}
+              onAdd={() => addAddress("shipping")}
+              onRemove={(i) => removeAddress("shipping", i)}
+            />
+          </div>
+        </TabsContent>
+
+        {/* ---- BOM Config Tab ---- */}
+        <TabsContent value="bom-config" className="pt-4">
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Column mappings, header row, encoding, separator -- controls how this customer&apos;s BOMs are parsed.
+            </p>
+            <Textarea
+              value={bomConfigJson}
+              onChange={e => setBomConfigJson(e.target.value)}
+              rows={14}
+              spellCheck={false}
+              className="font-mono text-[13px] leading-relaxed bg-muted/40 border-muted resize-y"
+              placeholder='{"columns": "auto_detect"}'
+            />
+          </div>
+        </TabsContent>
+
+        {/* ---- Notes Tab ---- */}
+        <TabsContent value="notes" className="pt-4">
+          <Textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={6}
+            className="resize-y"
+            placeholder="Internal notes about this customer..."
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* ---- Footer ---- */}
+      <div className="pt-4 mt-4 border-t space-y-3">
+        {error && (
+          <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+            {error}
+          </p>
+        )}
+        <div className="flex items-center gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Save Changes
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- Address Column Sub-component ---- */
+
+function AddressColumn({
+  title,
+  addresses,
+  onUpdate,
+  onAdd,
+  onRemove,
+}: {
+  title: string;
+  addresses: Address[];
+  onUpdate: (index: number, field: keyof Address, value: string | boolean) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium">{title}</h4>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs text-muted-foreground"
+          onClick={onAdd}
+        >
+          <Plus className="mr-1 h-3 w-3" />
+          Add
+        </Button>
+      </div>
+
+      {addresses.length === 0 && (
+        <p className="text-xs text-muted-foreground py-4 text-center border border-dashed rounded-md">
+          No {title.toLowerCase()} address
+        </p>
+      )}
+
+      {addresses.map((a, i) => (
+        <div key={i} className="space-y-2 rounded-md border p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Input
+                value={a.label}
+                onChange={e => onUpdate(i, "label", e.target.value)}
+                placeholder="Label (HQ, Warehouse)"
+                className="h-7 w-36 text-xs"
+              />
+              <button type="button" onClick={() => onUpdate(i, "is_default", true)}>
+                <Badge
+                  variant={a.is_default ? "default" : "outline"}
+                  className="cursor-pointer select-none text-xs"
+                >
+                  {a.is_default ? "Default" : "Set default"}
+                </Badge>
+              </button>
+            </div>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onRemove(i)}>
+              <Trash2 className="h-3 w-3 text-destructive" />
+            </Button>
+          </div>
+
+          <Input
+            value={a.street}
+            onChange={e => onUpdate(i, "street", e.target.value)}
+            placeholder="Street address"
+            className="h-8 text-sm"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              value={a.city}
+              onChange={e => onUpdate(i, "city", e.target.value)}
+              placeholder="City"
+              className="h-8 text-sm"
+            />
+            <Input
+              value={a.province}
+              onChange={e => onUpdate(i, "province", e.target.value)}
+              placeholder="Province"
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              value={a.postal_code}
+              onChange={e => onUpdate(i, "postal_code", e.target.value)}
+              placeholder="Postal code"
+              className="h-8 text-sm"
+            />
+            <Input
+              value={a.country}
+              onChange={e => onUpdate(i, "country", e.target.value)}
+              placeholder="Country"
+              className="h-8 text-sm"
+            />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

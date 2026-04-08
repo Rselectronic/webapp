@@ -249,7 +249,7 @@ export default async function InvoicesPage({
           description={activeStatus !== "all" ? `No invoices with status "${activeStatus}". Try a different filter.` : "Invoices are created from the job detail page once a job is ready to be invoiced."}
         />
       ) : (
-        <div className="table-responsive rounded-lg border bg-white">
+        <div className="table-responsive rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
           <Table>
             <TableHeader>
               <TableRow>
