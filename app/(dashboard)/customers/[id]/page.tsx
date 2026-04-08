@@ -13,6 +13,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Mail, Phone, User, MapPin, CircuitBoard, Plus, FileText } from "lucide-react";
 import { formatPhone, formatDate, formatCurrency } from "@/lib/utils/format";
+import { CustomerEditToggle } from "@/components/customers/customer-edit-toggle";
 
 export default async function CustomerDetailPage({
   params,
@@ -136,6 +137,21 @@ export default async function CustomerDetailPage({
           </Button>
         </Link>
       </div>
+
+      <CustomerEditToggle
+        customerId={id}
+        customerData={{
+          company_name: customer.company_name,
+          code: customer.code,
+          payment_terms: customer.payment_terms,
+          notes: customer.notes,
+          is_active: customer.is_active,
+          contacts,
+          billing_addresses: billingAddresses,
+          shipping_addresses: shippingAddresses,
+          bom_config: bomConfig,
+        }}
+      >
 
       <div className="flex items-center justify-between">
         <div>
@@ -526,6 +542,8 @@ export default async function CustomerDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      </CustomerEditToggle>
     </div>
   );
 }
