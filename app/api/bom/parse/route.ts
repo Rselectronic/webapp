@@ -155,20 +155,27 @@ export async function POST(request: Request) {
       headers = allRows[headerRowIndex].map((h) => String(h ?? ""));
       dataStartIndex = headerRowIndex + 1;
     } else {
-      // Auto-scan: try rows 0-20 to find the one with recognizable column headers
+      // Auto-scan: try rows 0-30 to find the one with recognizable column headers
       const knownHeaders = [
         "qty", "quantity", "designator", "mpn", "manufacturer part number",
         "description", "reference", "part number", "manufacturer", "value",
         "ref des", "refdes", "manufacturer part", "qté", "position sur circuit",
-        "# manufacturier", "partnumber", "manufacturer p/n",
+        "# manufacturier", "partnumber", "manufacturer p/n", "p/n", "part no",
+        "mfg", "mfr", "comment", "component", "count", "amount", "vendor",
+        "part #", "part#", "pn", "item", "spec", "mfg part", "mfr part",
       ];
       let foundRow = -1;
-      for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+      let bestMatchCount = 0;
+      // First pass: find the row with the MOST keyword matches
+      for (let i = 0; i < Math.min(allRows.length, 30); i++) {
         const rowStrs = (allRows[i] ?? []).map((c) => String(c ?? "").toLowerCase().trim()).filter(Boolean);
+        // Skip rows with mostly numbers (these are data rows, not headers)
+        const textCells = rowStrs.filter((s) => isNaN(Number(s)) && s.length > 1);
+        if (textCells.length < 2) continue;
         const matches = rowStrs.filter((s) => knownHeaders.some((kw) => s.includes(kw)));
-        if (matches.length >= 2) {
+        if (matches.length > bestMatchCount) {
+          bestMatchCount = matches.length;
           foundRow = i;
-          break;
         }
       }
       if (foundRow >= 0) {
@@ -191,7 +198,18 @@ export async function POST(request: Request) {
     });
 
     // Resolve column mapping and parse
-    const mapping = resolveColumnMapping(bomConfig, headers);
+    let mapping;
+    try {
+      mapping = resolveColumnMapping(bomConfig, headers);
+    } catch (mapError) {
+      // If column detection fails, return a helpful error with the detected headers
+      const detectedHeaders = headers.filter((h) => h && h.trim()).slice(0, 15);
+      return NextResponse.json({
+        error: `Could not detect BOM columns. The file headers don't match known BOM formats. Detected columns: [${detectedHeaders.join(", ")}]. Try configuring the customer's BOM settings (Settings → Customers → Edit → BOM Config) with explicit column mappings.`,
+        detected_headers: detectedHeaders,
+        suggestion: "Set bom_config on the customer with explicit column mappings, e.g.: {\"columns\": {\"qty\": \"Your Qty Column\", \"mpn\": \"Your Part Number Column\", \"designator\": \"Your Ref Des Column\"}}",
+      }, { status: 400 });
+    }
     const parseResult = parseBom(rawRows, mapping, headers, bomConfig, fileName);
 
     // Upload file to Supabase Storage (admin bypasses RLS)
