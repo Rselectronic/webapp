@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail } from "lucide-react";
+import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const settingsLinks = [
@@ -23,6 +23,13 @@ const settingsLinks = [
       "View the 47 PAR classification rules used by the M-Code engine.",
     href: "/settings/m-codes",
     icon: Cpu,
+  },
+  {
+    title: "Component Database",
+    description:
+      "View, search, and manage the master component library with M-Code classifications.",
+    href: "/settings/components",
+    icon: Database,
   },
   {
     title: "Email Templates",
