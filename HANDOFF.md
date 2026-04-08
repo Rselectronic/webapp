@@ -123,14 +123,34 @@
 
 **End state:** 27 tables, 48 API routes, 30 pages, 65 components, ~27K lines TypeScript.
 
+**Later in Session 3 — Cleanup + PDF migration + UI improvements:**
+
+- Removed 2 stale git worktrees, added `.claude/` to `.gitignore`
+- Disabled PAR-48 catch-all rule and 5 conflicting DB rules missing field_2 conditions
+- Deleted orphaned `quote-pdf.tsx`, stale sprint plans (7,860 lines removed)
+- Removed `@types/react-pdf` (unused)
+- **Ported ALL 9 PDF routes to pdf-lib** — removed `@react-pdf/renderer` entirely:
+  - Quote PDF, Invoice PDF, Supplier PO PDF
+  - Packing Slip, Compliance Certificate
+  - Job Card, Traveller, Print BOM, Reception File
+  - Deleted 8 orphaned React PDF components
+  - Created shared `lib/pdf/helpers.ts` for common header/footer/table utilities
+- **M-code reasoning UI** — batch workflow now shows:
+  - Why M-code was chosen: "DB Match" / "Rule" / "AI" / "Manual" / "Unclassified"
+  - Color-coded confidence bar: green (90%+), yellow (70-89%), red (<70%)
+- **BOM detail page** — header shows GMP number as primary heading instead of file name
+- Updated PROJECT_REPORT.md
+
+**Deployed:** Vercel production, commit `efdc75f`
+
+**End state:** 27 tables, 48 API routes, 30 pages, ~57 components, ~26K lines TypeScript. Zero native dependencies.
+
 ---
 
 ## Known Issues / Tech Debt
 
 ### Must Fix Soon
-- [ ] **Other PDF routes crash on Vercel** — invoices (`/api/invoices/[id]/pdf`), supplier POs (`/api/supplier-pos/[id]/pdf`), shipping docs, production docs all use `@react-pdf/renderer` which fails on serverless. Need to port to `pdf-lib` like the quote PDF was.
-- [ ] **PAR-48 (CPEXP fallback)** in the DB has `description regex .*` — matches EVERYTHING as CPEXP if nothing else matches. This is wrong. It should only be the size-based fallback, not a catch-all.
-- [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — the batch workflow uses the DB rules but the BOM detail page classifier uses in-code rules. Need to consolidate.
+- [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — the batch workflow uses the DB rules but the BOM detail page classifier uses in-code rules. Need to consolidate to DB-only.
 
 ### Nice to Have
 - [ ] Copy button on M-code override cells (Anas requested)
