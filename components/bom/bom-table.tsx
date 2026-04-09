@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -31,6 +31,11 @@ interface BomTableProps {
 
 export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) {
   const [lines, setLines] = useState(initialLines);
+
+  // Sync local state when server-provided lines change (e.g. after classification + router.refresh())
+  useEffect(() => {
+    setLines(initialLines);
+  }, [initialLines]);
 
   const nonPcb = lines.filter((l) => !l.is_pcb);
   const classified = nonPcb.filter((l) => l.m_code).length;

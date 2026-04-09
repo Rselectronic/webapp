@@ -222,6 +222,12 @@
 
 **End-to-end flow now works:** Pending lines -> Mark as Ordered (single or bulk) -> Create Supplier PO (auto-groups by supplier) -> Receive lines -> Procurement auto-completes.
 
+**BOM classification UX fixes:**
+- Summary/total rows filtered out (qty-only rows with no designator/MPN/description now skipped)
+- Two-step classification: rules first (instant), then AI for leftovers only
+- M-codes apply immediately after classification (no page refresh needed)
+- "29 components have no price" now shows WHICH MPNs are missing with a collapsible list
+
 ---
 
 ## Known Issues / Tech Debt

@@ -54,7 +54,14 @@ export interface QuoteInput {
   settings: PricingSettings;
 }
 
+export interface MissingPriceComponent {
+  mpn: string;
+  description: string;
+  qty_per_board: number;
+}
+
 export interface QuotePricing {
   tiers: PricingTier[];
   warnings: string[];
+  missing_price_components?: MissingPriceComponent[];
 }

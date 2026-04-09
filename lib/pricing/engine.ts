@@ -1,4 +1,4 @@
-import type { QuoteInput, QuotePricing, PricingTier } from "./types";
+import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent } from "./types";
 import { getOrderQty } from "./overage";
 
 const SMT_MCODES = new Set(["CP", "CPEXP", "0402", "0201"]);
@@ -20,6 +20,11 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
   const pcbMarkupMultiplier = 1 + settings.pcb_markup_pct / 100;
   const warnings: string[] = [];
   const tiers: PricingTier[] = [];
+
+  // Collect components with missing prices (once, same across all tiers)
+  const missingPriceComponents: MissingPriceComponent[] = lines
+    .filter((l) => l.unit_price === null)
+    .map((l) => ({ mpn: l.mpn, description: l.description, qty_per_board: l.qty_per_board }));
 
   for (const boardQty of quantities) {
     let componentCost = 0;
@@ -92,7 +97,11 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     );
   }
 
-  return { tiers, warnings };
+  return {
+    tiers,
+    warnings,
+    missing_price_components: missingPriceComponents.length > 0 ? missingPriceComponents : undefined,
+  };
 }
 
 function round2(n: number): number {

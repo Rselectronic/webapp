@@ -23,7 +23,7 @@ import {
   formatDateTime,
 } from "@/lib/utils/format";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
-import type { PricingTier } from "@/lib/pricing/types";
+import type { PricingTier, MissingPriceComponent } from "@/lib/pricing/types";
 
 interface QuoteDetailCustomer {
   code: string;
@@ -45,6 +45,7 @@ interface QuoteDetailBom {
 interface QuotePricingJson {
   tiers?: PricingTier[];
   warnings?: string[];
+  missing_price_components?: MissingPriceComponent[];
 }
 
 export default async function QuoteDetailPage({
@@ -84,6 +85,7 @@ export default async function QuoteDetailPage({
   const pricing = quote.pricing as unknown as QuotePricingJson | null;
   const tiers = pricing?.tiers ?? [];
   const warnings = pricing?.warnings ?? [];
+  const missingPriceComponents = pricing?.missing_price_components ?? [];
 
   const qtyValues = quantities ? Object.values(quantities) : [];
 
@@ -252,7 +254,7 @@ export default async function QuoteDetailPage({
             <CardTitle>Pricing Breakdown</CardTitle>
           </CardHeader>
           <CardContent>
-            <PricingTable tiers={tiers} warnings={warnings} />
+            <PricingTable tiers={tiers} warnings={warnings} missingPriceComponents={missingPriceComponents} />
           </CardContent>
         </Card>
       )}

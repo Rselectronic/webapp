@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
       quantities: Object.fromEntries(
         quantities.map((q, i) => [`qty_${i + 1}`, q])
       ),
-      pricing: { tiers: pricing.tiers, warnings: pricing.warnings },
+      pricing: { tiers: pricing.tiers, warnings: pricing.warnings, missing_price_components: pricing.missing_price_components },
       component_markup: settings.component_markup_pct ?? 20,
       pcb_cost_per_unit: pcb_unit_price,
       assembly_cost: pricing.tiers[0]?.assembly_cost ?? 0,

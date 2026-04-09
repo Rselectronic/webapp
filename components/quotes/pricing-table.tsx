@@ -1,10 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils/format";
-import type { PricingTier } from "@/lib/pricing/types";
+import type { PricingTier, MissingPriceComponent } from "@/lib/pricing/types";
 
 interface PricingTableProps {
   tiers: PricingTier[];
   warnings?: string[];
+  missingPriceComponents?: MissingPriceComponent[];
 }
 
 const ROWS: { key: keyof PricingTier; label: string; highlight?: boolean }[] = [
@@ -17,7 +18,7 @@ const ROWS: { key: keyof PricingTier; label: string; highlight?: boolean }[] = [
   { key: "per_unit", label: "Per Unit", highlight: true },
 ];
 
-export function PricingTable({ tiers, warnings }: PricingTableProps) {
+export function PricingTable({ tiers, warnings, missingPriceComponents }: PricingTableProps) {
   return (
     <div className="space-y-3">
       {warnings && warnings.length > 0 && (
@@ -27,6 +28,34 @@ export function PricingTable({ tiers, warnings }: PricingTableProps) {
               {w}
             </p>
           ))}
+          {/* Collapsible list of components with missing prices */}
+          {missingPriceComponents && missingPriceComponents.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-sm font-medium text-orange-800 hover:text-orange-900 dark:text-orange-200 dark:hover:text-orange-100">
+                Show {missingPriceComponents.length} component{missingPriceComponents.length !== 1 ? "s" : ""} with no price
+              </summary>
+              <div className="mt-2 max-h-48 overflow-y-auto rounded border border-orange-300 bg-white dark:border-orange-700 dark:bg-gray-900">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-orange-100 dark:bg-orange-900/40">
+                      <th className="px-3 py-1.5 text-left font-medium text-orange-800 dark:text-orange-200">MPN</th>
+                      <th className="px-3 py-1.5 text-left font-medium text-orange-800 dark:text-orange-200">Description</th>
+                      <th className="px-3 py-1.5 text-right font-medium text-orange-800 dark:text-orange-200">Qty/Board</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {missingPriceComponents.map((c, i) => (
+                      <tr key={i} className="border-b border-orange-100 dark:border-orange-800">
+                        <td className="px-3 py-1 font-mono text-gray-900 dark:text-gray-100">{c.mpn || "---"}</td>
+                        <td className="px-3 py-1 max-w-xs truncate text-gray-600 dark:text-gray-400" title={c.description}>{c.description || "---"}</td>
+                        <td className="px-3 py-1 text-right font-mono text-gray-700 dark:text-gray-300">{c.qty_per_board}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
         </div>
       )}
 

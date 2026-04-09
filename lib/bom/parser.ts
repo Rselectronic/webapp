@@ -81,9 +81,10 @@ export function parseBom(
       qty = parseInt(qtyStr, 10) || 0;
     }
 
-    // Skip empty rows
-    if (!designator && !mpn && !description && qty === 0) {
-      log.push({ raw_row_index: i, action: "EMPTY" });
+    // Skip empty rows — all text fields blank (regardless of qty).
+    // Catches summary/total rows that have a qty (e.g. 620) but no designator/MPN/description.
+    if (!designator && !mpn && !description && !manufacturer && !cpc) {
+      log.push({ raw_row_index: i, action: "EMPTY", detail: qty > 0 ? `qty-only row (${qty})` : undefined });
       continue;
     }
 
