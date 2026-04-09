@@ -78,12 +78,33 @@ export function UploadForm({ customers }: UploadFormProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ customer_id: customerId, gmp_number: newGmpNumber }),
         });
-        if (!gmpRes.ok) {
+        if (gmpRes.status === 409) {
+          // GMP already exists — look it up and use it (new BOM revision under existing GMP)
+          const existingGmp = gmps.find(
+            (g) => g.gmp_number.toLowerCase() === newGmpNumber.trim().toLowerCase()
+          );
+          if (existingGmp) {
+            resolvedGmpId = existingGmp.id;
+          } else {
+            // Not in the loaded list — fetch it
+            const lookupRes = await fetch(`/api/gmps?customer_id=${customerId}`);
+            if (lookupRes.ok) {
+              const lookupData = await lookupRes.json();
+              const match = (lookupData.gmps ?? []).find(
+                (g: { id: string; gmp_number: string }) =>
+                  g.gmp_number.toLowerCase() === newGmpNumber.trim().toLowerCase()
+              );
+              if (match) resolvedGmpId = match.id;
+            }
+          }
+          if (!resolvedGmpId) throw new Error("GMP exists but could not be found. Try selecting it from the dropdown.");
+        } else if (!gmpRes.ok) {
           const err = await gmpRes.json();
           throw new Error(err.error ?? "Failed to create GMP");
+        } else {
+          const gmpData = await gmpRes.json();
+          resolvedGmpId = gmpData.id;
         }
-        const gmpData = await gmpRes.json();
-        resolvedGmpId = gmpData.id;
       }
 
       if (!resolvedGmpId) throw new Error("Please select or create a GMP");

@@ -227,6 +227,7 @@
 - Two-step classification: rules first (instant), then AI for leftovers only
 - M-codes apply immediately after classification (no page refresh needed)
 - "29 components have no price" now shows WHICH MPNs are missing with a collapsible list
+- BOM upload: existing GMP no longer blocks — uploads as new revision under existing GMP automatically
 
 ---
 
