@@ -127,8 +127,7 @@ export async function GET() {
       },
       recent_activity: recentActivity.slice(0, 10),
     });
-  } catch (err) {
-    console.error("[MCP OVERVIEW]", err);
+  } catch {
     return NextResponse.json(
       { error: "Failed to fetch overview" },
       { status: 500 }

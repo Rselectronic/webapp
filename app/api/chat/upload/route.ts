@@ -58,7 +58,6 @@ export async function POST(req: Request) {
     });
 
   if (uploadError) {
-    console.error("Chat file upload error:", uploadError);
     return NextResponse.json({ error: "Upload failed: " + uploadError.message }, { status: 500 });
   }
 
@@ -86,8 +85,7 @@ export async function POST(req: Request) {
         `Preview (first ${Math.min(30, rows.length)} rows):`,
         ...lines,
       ].join("\n");
-    } catch (e) {
-      console.error("BOM parse preview error:", e);
+    } catch {
       parsedPreview = `[Uploaded file: ${file.name} — could not parse preview]`;
     }
   }

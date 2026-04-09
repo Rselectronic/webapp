@@ -8,6 +8,9 @@ export async function GET(
   const { id } = await params;
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { data: item, error } = await supabase
     .from("bg_stock")
     .select("*")

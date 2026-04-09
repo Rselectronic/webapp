@@ -4,6 +4,10 @@ import type { PricingSettings } from "@/lib/pricing/types";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const key = new URL(req.url).searchParams.get("key") ?? "pricing";
   const { data, error } = await supabase
     .from("app_settings")

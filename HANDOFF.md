@@ -233,6 +233,14 @@
 - Missing price components visible on ALL quotes (old and new) — collapsible list shows which MPNs have no price
 - AI chatbot system prompt updated: knows about 4,026 component database, keyword lookup, description fallback pricing
 
+**Codebase cleanup (4-agent audit):**
+- Added auth checks to 6 unprotected API routes (pricing, components, bg-stock, gmps, settings)
+- Removed console.error from 3 production API routes (mcp/classify, mcp/overview, chat/upload)
+- Fixed empty catch blocks in 3 components (added error logging)
+- Fixed dark mode on invoice dialog
+- Deleted 2 orphaned components (template-render-button, serial-numbers)
+- Verified: no unused imports, no dead API routes, no duplicate utilities, all deps in use
+
 ---
 
 ## Known Issues / Tech Debt

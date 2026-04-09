@@ -45,8 +45,8 @@ export function ExportBomButton({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch {
-      // silently fail — user can retry
+    } catch (err) {
+      console.error("[BOM Export] Failed:", err);
     } finally {
       setLoading(false);
     }

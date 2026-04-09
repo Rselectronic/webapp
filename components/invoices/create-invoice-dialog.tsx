@@ -60,8 +60,8 @@ export function CreateInvoiceDialog({
         const data = await res.json();
         setJobs(data);
       }
-    } catch {
-      // silently fail — user can retry
+    } catch (err) {
+      console.error("[Invoice] Failed to load jobs:", err);
     } finally {
       setLoadingJobs(false);
     }
@@ -300,7 +300,7 @@ export function CreateInvoiceDialog({
               </div>
 
               {/* Pricing summary */}
-              <div className="rounded-md border bg-gray-50 p-4">
+              <div className="rounded-md border bg-gray-50 dark:bg-gray-900 p-4">
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">

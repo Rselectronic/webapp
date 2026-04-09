@@ -46,8 +46,8 @@ export function CreateShipmentDialog() {
         const data = await res.json();
         setJobs(data);
       }
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("[Shipment] Failed to load jobs:", err);
     } finally {
       setLoadingJobs(false);
     }

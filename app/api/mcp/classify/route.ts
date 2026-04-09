@@ -63,8 +63,7 @@ export async function POST(request: NextRequest) {
       source: result.source,
       reasoning: result.rule_id ?? null,
     });
-  } catch (err) {
-    console.error("[MCP CLASSIFY]", err);
+  } catch {
     return NextResponse.json(
       { error: "Classification failed" },
       { status: 500 }
