@@ -148,9 +148,45 @@ export async function POST(req: NextRequest) {
         supplier: supplier_name,
         qty_ordered: qty,
         order_status: "ordered",
+        updated_at: new Date().toISOString(),
       })
       .eq("id", pl.id);
   }
+
+  // Recalculate procurement-level counts
+  const { data: allLines } = await supabase
+    .from("procurement_lines")
+    .select("qty_ordered, order_status")
+    .eq("procurement_id", procurement_id);
+
+  const linesOrdered = (allLines ?? []).filter(
+    (l) => l.qty_ordered > 0
+  ).length;
+  const linesReceived = (allLines ?? []).filter(
+    (l) => l.order_status === "received"
+  ).length;
+  const totalLinesCount = (allLines ?? []).length;
+
+  let procStatus: string;
+  if (linesReceived === totalLinesCount && totalLinesCount > 0) {
+    procStatus = "fully_received";
+  } else if (linesReceived > 0) {
+    procStatus = "partial_received";
+  } else if (linesOrdered > 0) {
+    procStatus = "ordering";
+  } else {
+    procStatus = "draft";
+  }
+
+  await supabase
+    .from("procurements")
+    .update({
+      lines_ordered: linesOrdered,
+      lines_received: linesReceived,
+      status: procStatus,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", procurement_id);
 
   return NextResponse.json(po, { status: 201 });
 }

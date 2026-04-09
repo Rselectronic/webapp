@@ -2,46 +2,40 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PackageCheck } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface ReceiveButtonProps {
+interface OrderButtonProps {
   procurementId: string;
   lineId: string;
-  totalQty: number;
 }
 
-export function ReceiveButton({
-  procurementId,
-  lineId,
-  totalQty,
-}: ReceiveButtonProps) {
+export function OrderButton({ procurementId, lineId }: OrderButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  async function handleReceive() {
+  async function handleOrder() {
     setLoading(true);
     try {
       const res = await fetch(`/api/procurements/${procurementId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "receive_line",
+          action: "order_line",
           line_id: lineId,
-          qty_received: totalQty,
         }),
       });
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Failed to mark as received");
+        throw new Error(body.error ?? "Failed to mark as ordered");
       }
 
       router.refresh();
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error("Receive failed:", err);
-      alert(err instanceof Error ? err.message : "Failed to mark as received");
+      console.error("Order failed:", err);
+      alert(err instanceof Error ? err.message : "Failed to mark as ordered");
     } finally {
       setLoading(false);
     }
@@ -52,10 +46,10 @@ export function ReceiveButton({
       variant="outline"
       size="sm"
       disabled={loading}
-      onClick={handleReceive}
+      onClick={handleOrder}
     >
-      <PackageCheck className="mr-1 h-3 w-3" />
-      {loading ? "..." : "Receive"}
+      <ShoppingCart className="mr-1 h-3 w-3" />
+      {loading ? "..." : "Order"}
     </Button>
   );
 }

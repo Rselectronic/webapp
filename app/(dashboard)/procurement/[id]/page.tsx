@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { formatDateTime } from "@/lib/utils/format";
 import { ReceiveButton } from "@/components/procurement/receive-button";
+import { OrderButton } from "@/components/procurement/order-button";
+import { OrderAllButton } from "@/components/procurement/order-all-button";
 import { CreatePOButton } from "@/components/procurement/create-po-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 
@@ -187,15 +189,21 @@ export default async function ProcurementDetailPage({
             </p>
           )}
         </div>
-        <CreatePOButton
-          procurementId={id}
-          lines={procLines.map((l) => ({
-            id: l.id,
-            mpn: l.mpn,
-            supplier: l.supplier,
-            order_status: l.order_status,
-          }))}
-        />
+        <div className="flex gap-2">
+          <OrderAllButton
+            procurementId={id}
+            pendingCount={procLines.filter((l) => l.order_status === "pending").length}
+          />
+          <CreatePOButton
+            procurementId={id}
+            lines={procLines.map((l) => ({
+              id: l.id,
+              mpn: l.mpn,
+              supplier: l.supplier,
+              order_status: l.order_status,
+            }))}
+          />
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -272,7 +280,8 @@ export default async function ProcurementDetailPage({
                 <TableHead>Description</TableHead>
                 <TableHead>M-Code</TableHead>
                 <TableHead className="text-right">Qty Needed</TableHead>
-                <TableHead className="text-right">Extra</TableHead>
+                <TableHead className="text-right">Extras</TableHead>
+                <TableHead className="text-right">Order Qty</TableHead>
                 <TableHead className="text-right">Received</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Status</TableHead>
@@ -283,6 +292,8 @@ export default async function ProcurementDetailPage({
               {procLines.map((line) => {
                 const totalQty = line.qty_needed + line.qty_extra;
                 const isFullyReceived = line.qty_received >= totalQty;
+                const isPending = line.order_status === "pending";
+                const isOrdered = line.order_status === "ordered";
 
                 return (
                   <TableRow
@@ -310,6 +321,9 @@ export default async function ProcurementDetailPage({
                     <TableCell className="text-right font-mono text-sm text-gray-500">
                       +{line.qty_extra}
                     </TableCell>
+                    <TableCell className="text-right font-mono text-sm font-semibold">
+                      {totalQty}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {line.qty_received}/{totalQty}
                     </TableCell>
@@ -328,7 +342,13 @@ export default async function ProcurementDetailPage({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {!isFullyReceived && (
+                      {isPending && (
+                        <OrderButton
+                          procurementId={id}
+                          lineId={line.id}
+                        />
+                      )}
+                      {isOrdered && !isFullyReceived && (
                         <ReceiveButton
                           procurementId={id}
                           lineId={line.id}

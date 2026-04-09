@@ -198,10 +198,36 @@
 
 ---
 
+### Session 5 — April 8, 2026 (later)
+
+**Procurement ordering/receiving flow fixed end-to-end.**
+
+**FIX 1: PATCH API supports 4 actions** (`app/api/procurements/[id]/route.ts`):
+- `action: "order_line"` — marks a single line as ordered (sets `qty_ordered = qty_needed + qty_extra`, `order_status = "ordered"`)
+- `action: "order_all"` — marks ALL pending lines as ordered in one call
+- `action: "receive_line"` — existing receiving logic (backward compatible, still default)
+- `action: "update_status"` — manually set procurement status (for completing)
+- All actions recalculate procurement-level `lines_ordered`, `lines_received`, and `status` automatically
+
+**FIX 2: Order buttons in UI** (`app/(dashboard)/procurement/[id]/page.tsx`):
+- New `OrderButton` component (`components/procurement/order-button.tsx`) — per-line "Order" button for pending lines
+- New `OrderAllButton` component (`components/procurement/order-all-button.tsx`) — bulk "Mark All as Ordered" with confirmation dialog
+- Table now shows "Order Qty" column (qty_needed + extras)
+- Action column is context-aware: pending lines show "Order", ordered lines show "Receive", received lines show nothing
+- `ReceiveButton` updated to pass `action: "receive_line"` explicitly
+
+**FIX 3: Supplier PO creation updates procurement counts** (`app/api/supplier-pos/route.ts`):
+- After marking lines as ordered, recalculates `lines_ordered`, `lines_received`, and procurement `status`
+- Procurement status auto-advances from "draft" to "ordering" when POs are created
+
+**End-to-end flow now works:** Pending lines -> Mark as Ordered (single or bulk) -> Create Supplier PO (auto-groups by supplier) -> Receive lines -> Procurement auto-completes.
+
+---
+
 ## Known Issues / Tech Debt
 
 ### Must Fix Soon
-- [ ] **Procurement module incomplete** — ordering/receiving flow broken, PO creation doesn't populate lines, no reception file trigger UI
+- [ ] **Procurement: no reception file trigger UI** — receiving marks qty but doesn't generate reception file PDF
 - [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — classifier uses in-code rules. Need to consolidate to DB-only.
 - [ ] **Security: /api/pricing/[mpn] has no auth check** — anyone can query supplier APIs
 
@@ -243,4 +269,4 @@
 
 ---
 
-*Last updated: April 8, 2026, Session 3 (late)*
+*Last updated: April 8, 2026, Session 5*
