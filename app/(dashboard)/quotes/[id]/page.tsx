@@ -85,7 +85,32 @@ export default async function QuoteDetailPage({
   const pricing = quote.pricing as unknown as QuotePricingJson | null;
   const tiers = pricing?.tiers ?? [];
   const warnings = pricing?.warnings ?? [];
-  const missingPriceComponents = pricing?.missing_price_components ?? [];
+  let missingPriceComponents = pricing?.missing_price_components ?? [];
+
+  // Fallback for old quotes: compute missing-price components live from BOM lines + pricing cache
+  if (missingPriceComponents.length === 0 && warnings.some((w) => w.includes("no price"))) {
+    const { data: bomLines } = await supabase
+      .from("bom_lines")
+      .select("mpn, description, quantity")
+      .eq("bom_id", quote.bom_id)
+      .eq("is_pcb", false)
+      .eq("is_dni", false)
+      .not("mpn", "is", null);
+
+    if (bomLines && bomLines.length > 0) {
+      const mpns = [...new Set(bomLines.map((l) => l.mpn).filter(Boolean))] as string[];
+      const { data: cached } = await supabase
+        .from("api_pricing_cache")
+        .select("search_key")
+        .in("search_key", mpns)
+        .gte("expires_at", new Date().toISOString());
+
+      const cachedMpns = new Set((cached ?? []).map((c) => c.search_key));
+      missingPriceComponents = bomLines
+        .filter((l) => l.mpn && !cachedMpns.has(l.mpn))
+        .map((l) => ({ mpn: l.mpn ?? "", description: l.description ?? "", qty_per_board: l.quantity }));
+    }
+  }
 
   const qtyValues = quantities ? Object.values(quantities) : [];
 

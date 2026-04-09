@@ -229,6 +229,9 @@
 - "29 components have no price" now shows WHICH MPNs are missing with a collapsible list
 - BOM upload: existing GMP no longer blocks — uploads as new revision under existing GMP automatically
 - BOM export button: downloads CP IP BOM as .xlsx with Qty, Designator, CPC, Description, MPN, Manufacturer, M-Code, Reasoning
+- Pricing description fallback: when MPN search fails on DigiKey/Mouser, retries with description keywords (e.g. "0603 10K resistor")
+- Missing price components visible on ALL quotes (old and new) — collapsible list shows which MPNs have no price
+- AI chatbot system prompt updated: knows about 4,026 component database, keyword lookup, description fallback pricing
 
 ---
 

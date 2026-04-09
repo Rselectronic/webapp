@@ -136,6 +136,44 @@ export async function POST(req: NextRequest) {
         if (hits.length > 0) {
           const best = hits.reduce((a, b) => a.unit_price <= b.unit_price ? a : b);
           priceMap.set(mpn, { unit_price: best.unit_price, source: best.source });
+        } else {
+          // Fallback: search by description keywords when MPN returns no results
+          const bomLine = bomLines.find((l) => l.mpn === mpn);
+          const desc = bomLine?.description ?? "";
+          if (desc.length > 5) {
+            // Extract key terms: package size + value + type (e.g. "0603 10K resistor")
+            const descKeywords = desc
+              .replace(/[,;()±%]/g, " ")
+              .split(/\s+/)
+              .filter((w: string) => w.length > 1)
+              .slice(0, 5)
+              .join(" ");
+
+            if (descKeywords) {
+              const [dkDesc, mouserDesc] = await Promise.allSettled([
+                searchPartPrice(descKeywords),
+                searchMouserPrice(descKeywords),
+              ]);
+
+              const descHits: Hit[] = [];
+              if (dkDesc.status === "fulfilled" && dkDesc.value) {
+                descHits.push({ source: "digikey", unit_price: dkDesc.value.unit_price, supplier_pn: dkDesc.value.digikey_pn, stock_qty: null, mpn: dkDesc.value.mpn, currency: dkDesc.value.currency });
+              }
+              if (mouserDesc.status === "fulfilled" && mouserDesc.value) {
+                descHits.push({ source: "mouser", unit_price: mouserDesc.value.unit_price, supplier_pn: mouserDesc.value.mouser_pn, stock_qty: mouserDesc.value.stock_qty, mpn: mouserDesc.value.mpn, currency: mouserDesc.value.currency });
+              }
+
+              if (descHits.length > 0) {
+                const best = descHits.reduce((a, b) => a.unit_price <= b.unit_price ? a : b);
+                priceMap.set(mpn, { unit_price: best.unit_price, source: best.source });
+                // Cache with original MPN as search key
+                await supabase.from("api_pricing_cache").upsert(
+                  { source: best.source, mpn: best.mpn, search_key: mpn.toUpperCase(), response: { description_fallback: true, search_terms: descKeywords } as unknown as Record<string, unknown>, unit_price: best.unit_price, stock_qty: null, currency: "CAD", expires_at: expiresAt },
+                  { onConflict: "source,search_key" }
+                );
+              }
+            }
+          }
         }
       })
     );
