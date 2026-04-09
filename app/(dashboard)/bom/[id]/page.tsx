@@ -11,6 +11,7 @@ import { BomTable } from "@/components/bom/bom-table";
 import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import { MCodeChart } from "@/components/bom/mcode-chart";
+import { ExportBomButton } from "@/components/bom/export-bom-button";
 import { formatDateTime } from "@/lib/utils/format";
 
 export default async function BomDetailPage({
@@ -104,7 +105,10 @@ export default async function BomDetailPage({
             <span>Rev {bom.revision}</span>
           </div>
         </div>
-        <Badge variant={statusVariant}>{bom.status}</Badge>
+        <div className="flex items-center gap-2">
+          <ExportBomButton bomId={id} fileName={bom.file_name} gmpNumber={gmp?.gmp_number ?? ""} />
+          <Badge variant={statusVariant}>{bom.status}</Badge>
+        </div>
       </div>
 
       {/* Stats */}

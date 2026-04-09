@@ -228,6 +228,7 @@
 - M-codes apply immediately after classification (no page refresh needed)
 - "29 components have no price" now shows WHICH MPNs are missing with a collapsible list
 - BOM upload: existing GMP no longer blocks — uploads as new revision under existing GMP automatically
+- BOM export button: downloads CP IP BOM as .xlsx with Qty, Designator, CPC, Description, MPN, Manufacturer, M-Code, Reasoning
 
 ---
 
