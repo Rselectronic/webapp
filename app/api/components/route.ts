@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
 
   const search = url.searchParams.get("search")?.trim() ?? "";
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
-  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10)));
+  const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10)));
   const offset = (page - 1) * limit;
 
   // Build query for items
@@ -32,23 +32,18 @@ export async function GET(req: NextRequest) {
     .from("components")
     .select("id", { count: "exact", head: true });
 
-  // Fetch M-code breakdown using RPC or paginated fetch
-  // Supabase returns max 1000 by default, so use a grouped count approach
+  // Fetch all m_code values in a single query (one column, ~5K rows is trivial)
+  const { data: mCodeRows } = await supabase
+    .from("components")
+    .select("m_code")
+    .limit(10000);
+
   const mCodeCounts: Record<string, number> = {};
-  let fetchOffset = 0;
-  const fetchLimit = 1000;
-  while (true) {
-    const { data: batch } = await supabase
-      .from("components")
-      .select("m_code")
-      .range(fetchOffset, fetchOffset + fetchLimit - 1);
-    if (!batch || batch.length === 0) break;
-    for (const c of batch) {
+  if (mCodeRows) {
+    for (const c of mCodeRows) {
       const code = c.m_code ?? "Unassigned";
       mCodeCounts[code] = (mCodeCounts[code] ?? 0) + 1;
     }
-    if (batch.length < fetchLimit) break;
-    fetchOffset += fetchLimit;
   }
 
   return NextResponse.json({
