@@ -163,14 +163,47 @@
 
 **Deployed:** Vercel production, commit `407aa40`
 
-**End state:** 27 tables, 56 API routes, 34 pages, 77 components, ~30K lines TypeScript, 106 commits. Zero native dependencies. Clean database (customers + GMPs + rules + keywords remain, all transactional data wiped).
+---
+
+### Session 4 — April 9, 2026
+
+**4,026 master components loaded into database:**
+- Bulk imported from RS master component database PDF (167 pages)
+- Layer 1 (database lookup) now catches 4,026 MPNs instantly at 95% confidence
+- Verified: 23/23 sample MPNs across all pages found with correct M-codes
+- Cleaned 252 duplicate rows from overlapping import batches
+- Non-standard M-codes preserved: APCB (352), EA (59), PCB (47), MEC (42), CABLE, FUSE, LABEL, etc.
+
+**Component Database management page** (Settings → Component Database):
+- View/search/add/edit/delete component M-codes
+- Stats cards with M-code distribution
+- Inline editing — click M-code badge to change
+- Page size selector (50/100/200 rows)
+- Performance fix: single query instead of paginated loop
+
+**BOM parser handles raw customer BOMs:**
+- 30+ new column keywords added (Part No, P/N, Component, Count, Item, Spec, etc.)
+- Multi-pass fallback: exact → contains → partial → guess
+- Scans 30 rows for headers (up from 20), picks best match
+- Graceful error: shows detected headers and suggests BOM config
+- No longer requires pre-processed CP IP files
+
+**Quote pricing calls APIs directly:**
+- Preview route now calls DigiKey/Mouser/LCSC for real component prices
+- No more $0 components
+
+**Deployed:** Vercel production, commit `6f3fce8`
+
+**End state:** 27 tables, 58 API routes, 35 pages, ~30K lines TypeScript, 115 commits. 4,026 components in master database.
 
 ---
 
 ## Known Issues / Tech Debt
 
 ### Must Fix Soon
+- [ ] **Procurement module incomplete** — ordering/receiving flow broken, PO creation doesn't populate lines, no reception file trigger UI
 - [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — classifier uses in-code rules. Need to consolidate to DB-only.
+- [ ] **Security: /api/pricing/[mpn] has no auth check** — anyone can query supplier APIs
 
 ### Nice to Have
 - [ ] Copy button on M-code override cells (Anas requested)
@@ -178,6 +211,7 @@
 - [ ] Email integration (send quotes/invoices)
 - [ ] AI chat memory persistence
 - [ ] Mobile responsiveness
+- [ ] Volume-based price breaks from DigiKey/Mouser (per-tier pricing)
 
 ---
 
