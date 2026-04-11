@@ -317,6 +317,9 @@
 - Create Procurement button was linking to non-existent page — created `/procurement/new` page with job details, overage explanation, and one-click procurement creation
 - Print Copy BOM and Reception File buttons work (were failing when no BOM linked to job)
 
-**End state:** 27 tables, 58 API routes, 36 pages, ~30K lines TypeScript, 120+ commits. 4,026 components. Codebase clean.
+- Stencil/PCB orders page fixed — was crashing due to RLS on nested joins, switched to admin client with auth check
+- Abdul's Wiki expanded to Part 14 (2,777 lines) — every page, every button, every field documented
+
+**End state:** 27 tables, 58 API routes, 36 pages, ~30K lines TypeScript, 125+ commits. 4,026 components. Codebase clean.
 
 *Last updated: April 11, 2026, Session 6*

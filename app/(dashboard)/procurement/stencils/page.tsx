@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, CircuitBoard, Download, Layers } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,8 +41,13 @@ export default async function StencilsPcbPage({
   const activeStatus = params.status ?? "all";
   const activeType = params.type ?? "all";
   const supabase = await createClient();
+  const admin = createAdminClient();
 
-  let query = supabase
+  // Use admin client to bypass RLS for nested joins (jobs → customers → gmps)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return <div>Unauthorized</div>;
+
+  let query = admin
     .from("fabrication_orders")
     .select(
       "*, jobs(job_number, customer_id, customers(code, company_name), gmps(gmp_number, board_name))"
