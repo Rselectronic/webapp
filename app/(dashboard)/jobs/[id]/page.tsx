@@ -166,7 +166,7 @@ export default async function JobDetailPage({
           <JobActions jobId={id} currentStatus={job.status} />
           {canCreateProcurement && (
             <Link href={`/procurement/new?job_id=${id}`}>
-              <Button variant="outline" size="sm">
+              <Button size="sm">
                 <Plus className="mr-1.5 h-4 w-4" />
                 Create Procurement
               </Button>

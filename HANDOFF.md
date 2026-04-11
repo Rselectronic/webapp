@@ -313,6 +313,10 @@
 
 **Reference prompt created** for Anas to use in any AI tool working on the app.
 
-**End state:** 27 tables, 58 API routes, 35 pages, ~30K lines TypeScript, 120+ commits. 4,026 components. Codebase clean (auth checks, no dead code, no unused deps).
+**Fixes:**
+- Create Procurement button was linking to non-existent page — created `/procurement/new` page with job details, overage explanation, and one-click procurement creation
+- Print Copy BOM and Reception File buttons work (were failing when no BOM linked to job)
+
+**End state:** 27 tables, 58 API routes, 36 pages, ~30K lines TypeScript, 120+ commits. 4,026 components. Codebase clean.
 
 *Last updated: April 11, 2026, Session 6*
