@@ -1,9 +1,11 @@
 import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent } from "./types";
 import { getOrderQty } from "./overage";
 
-const SMT_MCODES = new Set(["CP", "CPEXP", "0402", "0201"]);
+const SMT_MCODES = new Set(["CP", "CPEXP", "0402", "0201", "IP"]);
 const TH_MCODES = new Set(["TH"]);
 const MANSMT_MCODES = new Set(["MANSMT"]);
+// These M-codes don't contribute to placement costs (manual assembly, non-SMT)
+// MEC, Accs, CABLE, DEV B, PCB, EA, APCB, AEA, FUSE, LABEL, WIRE, PRESSFIT
 
 export function calculateQuote(input: QuoteInput): QuotePricing {
   const {

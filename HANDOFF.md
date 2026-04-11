@@ -241,6 +241,11 @@
 - Deleted 2 orphaned components (template-render-button, serial-numbers)
 - Verified: no unused imports, no dead API routes, no duplicate utilities, all deps in use
 
+**M-code classification fixes:**
+- Keyword matching now uses word-boundary for short keywords (≤4 chars) to prevent false matches like "LPC2468" matching "0402"
+- IP (IC Package) added to SMT_MCODES in pricing engine — was missing, causing $0 assembly cost for all ICs
+- MEC, Accs, CABLE, DEV B documented as non-placement M-codes (don't contribute to assembly cost)
+
 ---
 
 ## Known Issues / Tech Debt

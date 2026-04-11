@@ -123,8 +123,13 @@ async function lookupByKeyword(
     if (kw.match_type === "exact") {
       // Check each field individually for exact match
       matched = Object.values(searchFields).some((v) => v === needle);
+    } else if (kw.match_type === "word_boundary" || needle.length <= 4) {
+      // Short keywords (like "0402", "0603", "DIP", "SMA") must match as word boundaries
+      // to avoid false positives like "LPC2468" matching "0402"
+      const re = new RegExp(`(^|[^a-zA-Z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^a-zA-Z0-9])`, "i");
+      matched = re.test(haystack);
     } else {
-      // "contains" or "word_boundary"
+      // Longer keywords can safely use substring matching
       matched = haystack.includes(needle);
     }
 
