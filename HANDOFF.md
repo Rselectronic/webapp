@@ -293,4 +293,26 @@
 
 ---
 
-*Last updated: April 8, 2026, Session 5*
+---
+
+### Session 6 — April 11, 2026
+
+**M-code classification accuracy fixes:**
+- Keyword matching uses word-boundary for short keywords (≤4 chars) — prevents "LPC2468" falsely matching "0402"
+- IP (IC Package) was MISSING from SMT_MCODES in pricing engine — every IC was $0 assembly cost, now fixed
+- MEC, Accs, CABLE, DEV B documented as non-placement M-codes
+
+**Full app audit (bugs, blockers, UX):**
+- Identified: proc batch codes not being assigned, reception file no UI trigger, duplicate PAR rules, middleware deprecation
+- Dashboard needs quick action buttons, loading states on slow operations, mobile improvements
+
+**Abdul's Wiki created** (ABDULS_WIKI.md — 1,934 lines):
+- Complete tutorial explaining the entire system from zero context
+- 10 parts: business, data model, M-codes, BOM parser, pricing, procurement, API layer, frontend, deployment, what's not built
+- Written as a teaching document, not just reference tables
+
+**Reference prompt created** for Anas to use in any AI tool working on the app.
+
+**End state:** 27 tables, 58 API routes, 35 pages, ~30K lines TypeScript, 120+ commits. 4,026 components. Codebase clean (auth checks, no dead code, no unused deps).
+
+*Last updated: April 11, 2026, Session 6*
