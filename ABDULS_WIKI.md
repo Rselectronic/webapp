@@ -1910,6 +1910,849 @@ That's the win. That's why this system matters.
 
 ---
 
+
+
+## PART 14: EVERY PAGE, EVERY BUTTON — What Each Thing Does
+
+This is your screen-by-screen walkthrough of the entire app. Every button, every table column, every card, every form field. If you see it on screen, it is described here. Think of this as Anas sitting next to you pointing at the screen saying \"that button does THIS.\"
+
+---
+
+### Dashboard (/)
+
+The first thing you see after login. It has two tabs at the top: **Overview** and **Workflows**.
+
+#### Overview Tab
+
+**Primary KPI Cards (top row, 4 cards):**
+
+| Card | What the number is | Where it comes from |
+|---|---|---|
+| **Active Customers** | Count of customers with `is_active = true` | `customers` table, filtered on `is_active` |
+| **Open Quotes** | Count of quotes in draft, review, or sent status | `quotes` table, filtered on `status IN ('draft', 'review', 'sent')` |
+| **Active Jobs** | Count of jobs NOT in delivered/invoiced/archived | `jobs` table, excluding terminal statuses |
+| **Outstanding Invoices** | Dollar total of all sent + overdue invoices | `invoices` table, sum of `total` where `status IN ('sent', 'overdue')` |
+
+**Secondary KPI Cards (second row, 4 cards):**
+
+| Card | What it shows | Source |
+|---|---|---|
+| **Quotes This Month** | How many quotes were created this calendar month | `quotes` where `created_at >= start of month` |
+| **Jobs in Production** | Jobs with `status = 'production'` | `jobs` table |
+| **Avg Quote Value** | Average per-unit price from the first tier across all quotes | Computed from `quotes.pricing` JSONB, first tier's `per_unit` |
+| **Overdue Invoices** | Count of invoices past their due date | `invoices` where `status = 'overdue'` |
+
+**Recent Activity (bottom section):** A feed of the last 10 events across the system. It pulls the 5 most recent quotes, 5 most recent jobs, and 5 most recent invoices, merges them, and sorts by date. Each row shows:
+- An icon (blue calculator = quote, purple briefcase = job, green document = invoice)
+- The entity number (e.g. \"Quote QT-2604-001\")
+- Customer code
+- A colored status badge (gray=draft, yellow=review, blue=sent, green=accepted/paid, red=rejected/overdue, purple=production, orange=procurement)
+- How long ago it happened (e.g. \"3h ago\", \"2d ago\")
+
+#### Workflows Tab
+
+Shows the last 5 active jobs (not archived) with a visual pipeline view. Each workflow row shows the customer code and GMP number, with connected dots representing the lifecycle stages: BOM uploaded, classified, quoted, job created, procurement, production, shipping, invoiced. Completed stages are filled, the current stage is highlighted, and future stages are grayed out. Clicking any completed stage dot navigates to that entity's page.
+
+---
+
+### BOMs (/bom)
+
+The list of all uploaded Bill of Materials files.
+
+**Header area:**
+- Subtitle shows counts: \"X BOMs, Y parsed, Z pending\"
+- **Upload BOM** button (top right) -- navigates to `/bom/upload`
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **File** | The uploaded filename (clickable -- links to `/bom/[id]` detail page) |
+| **Customer** | Customer code + company name |
+| **GMP** | The GMP number and board name (if set) |
+| **Rev** | Revision number |
+| **Components** | How many parsed component lines are in this BOM |
+| **Status** | Badge showing: `parsed` (green), `error` (red), `uploaded`/`parsing` (gray) |
+| **Uploaded** | Date and time the BOM was uploaded |
+
+Clicking a BOM row's filename takes you to the BOM detail page.
+
+If no BOMs exist, you see an empty state with a big \"Upload your first BOM\" button.
+
+---
+
+### BOM Upload (/bom/upload)
+
+A single-column form to upload a new BOM file.
+
+**Form fields:**
+
+1. **Customer** -- Dropdown of all active customers. When you pick one, the app fetches that customer's existing GMP/board entries.
+2. **GMP / Board** -- Either pick an existing GMP from the dropdown, or toggle to \"New GMP\" and type a new GMP number. If the GMP already exists, it creates a new revision under it.
+3. **File** -- Drag-and-drop zone or click to browse. Accepts `.xlsx`, `.csv`, `.xls` files.
+
+**Upload BOM** button -- Sends the file to `/api/bom/parse`. The server:
+- Creates the GMP if it is new
+- Uploads the file to Supabase Storage
+- Parses the BOM using the customer's `bom_config` (column mappings, header row, encoding)
+- Applies the 9 CP/IP parsing rules (fiducial exclusion, PCB detection, DNI exclusion, MPN merge, etc.)
+- Saves parsed lines to `bom_lines` table
+- Redirects you to the BOM detail page
+
+---
+
+### BOM Detail (/bom/[id])
+
+This is where you review a parsed BOM and classify components. It is one of the most important pages in the app.
+
+**Navigation bar:**
+- **All BOMs** button -- back to the BOM list
+- **Upload New** button -- go to upload page
+
+**Workflow Banner:** A horizontal strip showing the lifecycle pipeline with icons: Upload, Classify, Quote, Job, Procurement, Production, Shipping, Invoice. Each stage is a circle:
+- Green filled circle with checkmark = completed (clickable, navigates to that entity)
+- Blue highlighted circle = current page/step
+- Gray circle = not yet reached
+- If a quote already exists for this BOM, you will see a \"Next Step\" button suggesting creating a quote
+
+**Header:** Shows the GMP number (large), board name, customer code, company name, filename, and revision. On the right: **Export BOM** button + status badge.
+
+**Stats Cards (4 across):**
+
+| Card | What it shows |
+|---|---|
+| **Components** | Total number of parsed component lines (`bom.component_count`) |
+| **Classified** | How many lines have an M-Code assigned (from `parse_result.classification_summary.classified`) |
+| **Need Review** | How many lines have NO M-Code (from `parse_result.classification_summary.unclassified`) -- shown in orange |
+| **Merged Lines** | How many duplicate MPN rows got merged during parsing (from `parse_result.stats.merged`) |
+
+**M-Code Distribution Chart:** A bar chart showing the breakdown of M-Codes across all non-PCB, non-DNI components. Each bar represents one M-Code (CP, IP, TH, 0402, etc.) with its count. Only appears after classification. Unclassified components show as a separate bar.
+
+**Classify Button (two-step flow):**
+
+This is the AI classification section. It only appears when there are unclassified components.
+
+- **Step 1: \"Classify (X unclassified)\"** -- Runs rule-based classification. This hits `/api/bom/[id]/classify` with the 3-layer pipeline: database lookup first, then the 47 PAR rules. After it runs, you see a summary: \"Classified 42 of 55 using rules. 13 remaining.\"
+- **Step 2: \"AI Classify remaining (X)\"** -- Only appears after rules run AND there are still unclassified components. This calls the API with `mode: \"ai-batch\"`, which sends the unclassified MPNs to DigiKey/Mouser for specs, then re-runs rules with enriched data. After it runs, you see: \"AI classified 10 of 13 -- 3 still need manual review.\"
+- After AI classification, you can expand a \"Show AI classification details\" section that lists every component it tried, the assigned M-Code, and the confidence percentage.
+
+**Export BOM Button:** Downloads the parsed BOM as an `.xlsx` file named \"CP IP BOM [GMP Number].xlsx\". This is the standardized 6-column format that Piyush uses -- the web app's equivalent of what cp_ip_v3.py used to produce.
+
+**Component Table Columns:**
+
+| Column | What it shows |
+|---|---|
+| **#** | Line number (or \"PCB\" for the PCB row) |
+| **Qty** | Quantity per board |
+| **Designator** | Reference designators (e.g. \"C1, C2, C10\") -- truncated with tooltip |
+| **CPC** | Customer Part Code |
+| **Description** | Component description -- truncated with tooltip |
+| **MPN** | Manufacturer Part Number |
+| **Manufacturer** | Manufacturer name |
+| **M-Code** | The assigned M-Code -- this is a DROPDOWN you can click to change. Selecting a new value is an instant manual override that also saves to the components table (learning loop) |
+| **Reasoning** | Shows HOW the M-Code was assigned, with two parts: |
+| | - A colored label: **DB** (purple) = database lookup, **Rule** (cyan) = PAR rule matched, **AI** (orange) = API-enriched classification, **Manual** (green) = human override, **--** (gray) = unclassified |
+| | - Short text explanation (e.g. \"R-12: package 0402\", \"KEYWORD: Through Hole\", \"Manual override\") |
+| **Confidence** | A visual progress bar + percentage. Colors: green (90%+), yellow (70-89%), red (below 70%). Manual overrides always show 100%. |
+
+**Row highlighting:**
+- PCB row: blue background
+- Unclassified components: orange tint background
+- Normal classified: white background
+
+**M-Code Dropdown:** When you click any M-Code cell, a dropdown appears with all 11 M-Code options (0201, 0402, CP, CPEXP, IP, TH, MANSMT, MEC, Accs, CABLE, DEV B). Selecting one immediately:
+1. Updates `bom_lines` with `m_code_source = \"manual\"` and `m_code_confidence = 1.0`
+2. Upserts into the `components` table so future BOMs with the same MPN auto-classify via Layer 1
+
+**Revision History:** If multiple BOMs have been uploaded for the same GMP, a card at the bottom shows all revisions with filename, revision number, date, and status. The current one is labeled \"(current)\" in blue.
+
+---
+
+### Quotes (/quotes)
+
+The list of all quotes.
+
+**Header buttons:**
+- **Batches** button -- navigates to `/quotes/batches` (the batch quoting workflow)
+- **Export CSV** button -- downloads all quotes as CSV via `/api/export?table=quotes`
+- **New Quote** button -- navigates to `/quotes/new`
+
+**Status Filter Tabs:** A row of buttons: All, Draft, Review, Sent, Accepted, Rejected, Expired. Clicking one filters the table by that status via URL query param.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **Quote #** | Quote number like \"QT-2604-001\" -- clickable, links to detail page |
+| **Customer** | Customer code + company name |
+| **GMP** | GMP number |
+| **Quantities** | The quantity tiers, slash-separated (e.g. \"50 / 100 / 250 / 500\") |
+| **Per Unit** | Per-unit price from the first tier (formatted as CAD currency) |
+| **Status** | Colored badge: gray=draft, yellow=review, blue=sent, green=accepted, red=rejected, gray-outline=expired |
+| **Created** | Date/time the quote was created |
+
+---
+
+### New Quote (/quotes/new)
+
+A form to create a new quote from a parsed BOM.
+
+**Form fields:**
+
+1. **Customer** -- Dropdown of all active customers. When you pick one, the app fetches parsed BOMs for that customer.
+2. **BOM** -- Dropdown showing parsed BOMs for the selected customer. Shows filename, GMP number, and revision.
+3. **Quantity Tiers** -- Starts with 4 inputs pre-filled (50, 100, 250, 500). Each has:
+   - A number input for the quantity
+   - An **X** button to remove that tier (cannot remove if only 1 left)
+   - An **Add Tier** button (+ icon) below to add more tiers
+4. **PCB Unit Price** -- The cost per bare PCB (from the PCB fabricator quote, e.g. from WMD or Candor)
+5. **NRE Charge** -- Non-recurring engineering charge (defaults to $350 -- stencil + setup + programming)
+6. **Shipping** -- Flat shipping estimate (defaults to $200)
+
+**Calculate Pricing** button -- Sends the BOM ID, quantities, PCB price, NRE, and shipping to `/api/quotes/preview`. The pricing engine:
+- Looks up each component's price from the `api_pricing_cache` (DigiKey/Mouser/LCSC)
+- Calculates order quantities with M-Code-based overage
+- Applies component markup (from pricing settings)
+- Calculates assembly cost (placement count x rate per M-Code type)
+- Adds PCB cost, NRE, and shipping
+- Returns a per-tier breakdown
+
+After calculating, a **Pricing Breakdown** table appears showing the results.
+
+**Save Quote as Draft** button -- Creates the quote in the database with status \"draft\" and redirects to the quote detail page.
+
+---
+
+### Quote Detail (/quotes/[id])
+
+Full detail view of a single quote.
+
+**Workflow Banner:** Same pipeline strip as the BOM page, but now \"Quote\" is highlighted. If a job has been created from this quote, the pipeline extends further.
+
+**Header:** Quote number (monospace, large) + status badge. Below: customer code, company name, GMP number, board name.
+
+**Action buttons (top right):**
+- **Status transition button** -- Changes depending on current status:
+  - Draft: \"Submit for Review\" (moves to review)
+  - Review: \"Mark as Sent\" (moves to sent)
+  - Sent: \"Mark as Accepted\" (moves to accepted)
+  - Accepted: \"Create Job\" (creates a job from this quote and navigates to the job)
+- **Download PDF** button -- Opens `/api/quotes/[id]/pdf` in a new tab, which generates a professional PDF quote matching RS's format
+
+**Info Cards (6 cards, 2 rows of 3):**
+
+| Card | What it shows |
+|---|---|
+| **BOM File** | The linked BOM filename and revision |
+| **Quantities** | The quantity tiers slash-separated, plus how many tiers |
+| **Expires** | Expiry date and validity period (e.g. \"May 15, 2026 -- 30 day validity\") |
+| **NRE Charge** | NRE amount in CAD |
+| **PCB Unit Price** | Per-unit PCB cost |
+| **Component Markup** | The markup percentage applied to component costs (e.g. \"20%\") |
+
+**Pricing Breakdown Table:** A table with one column per quantity tier. Rows show:
+- Component cost (total)
+- PCB cost (total)
+- Assembly cost
+- NRE charge
+- Shipping
+- Subtotal
+- Per-unit price
+
+If components are missing prices (no cached API price), a collapsible \"Missing price components\" section lists each MPN, description, and qty per board.
+
+**Warnings:** If the pricing engine detected issues (e.g. \"X components had no price data -- using $0\"), they appear as yellow warning text.
+
+**Customer Contact Card:** Shows the customer's contact name and email (clickable mailto link).
+
+**Notes:** If any notes were added to the quote, they display here.
+
+**Timestamps:** Bottom bar with created, updated, issued, and accepted dates.
+
+---
+
+### Quote Batches (/quotes/batches)
+
+The batch quoting system -- processes multiple BOMs at once with cross-BOM component deduplication.
+
+**Header:** \"Quote Batches\" title + **New Batch** button.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **Batch Name** | Clickable name, links to batch detail |
+| **Customer** | Customer code + company name |
+| **BOMs** | Count of BOMs in this batch |
+| **Qty Tiers** | The quantity tiers, slash-separated |
+| **Status** | Colored badge: Created, Merged, M-Codes Assigned, Extras Calculated, Priced, Quotes Generated, Archived |
+| **Created** | Date/time |
+
+**New Batch (/quotes/batches/new):** Form to create a batch. Pick a customer, select parsed BOMs, name the batch.
+
+**Batch Detail (/quotes/batches/[id]):** A step-by-step workflow component (`BatchWorkflow`) that walks through: merge lines across BOMs, assign M-codes, calculate extras/overage, run pricing, then generate individual quotes. Each step has action buttons.
+
+---
+
+### Jobs (/jobs)
+
+**View toggle buttons (top right):**
+- **Kanban** -- Shows jobs as cards in swim lanes by status (created, procurement, parts_ordered, parts_received, production, inspection, shipping, delivered, invoiced). Each card shows job number, customer code, GMP, quantity.
+- **Table** -- Standard table view
+- **Export CSV** button -- downloads jobs as CSV
+
+**Table columns (in table view):**
+
+| Column | What it shows |
+|---|---|
+| **Job #** | Job number like \"JB-2604-TLAN-001\" -- clickable, links to detail page |
+| **Customer** | Customer code + company name |
+| **GMP** | GMP number |
+| **Qty** | Board quantity for this job |
+| **Assembly** | Assembly type: TB (top+bottom), TS (top-side), CS (consignment), CB (customer board), AS (assembly-only) |
+| **Status** | Colored badge showing current status |
+| **Created** | Date |
+
+Empty state says \"Jobs are created when a quote is accepted.\"
+
+---
+
+### Job Detail (/jobs/[id])
+
+The central hub for a job's lifecycle.
+
+**Workflow Banner:** Shows the full pipeline with the current stage highlighted (changes based on job status -- procurement, production, or shipping).
+
+**Header:** Job number (monospace, large) + status badge. Customer info + GMP below.
+
+**Action Buttons (top right):**
+- **NCR** button -- Opens a dialog to create a Non-Conformance Report (quality issue) for this job
+- **Job Actions** dropdown -- A single button that changes label based on status:
+  - Created: \"Start Procurement\"
+  - Procurement: \"Mark Parts Ordered\"
+  - Parts Ordered: \"Mark Parts Received\"
+  - Parts Received: \"Start Production\"
+  - Production: \"Move to Inspection\"
+  - Inspection: \"Ready to Ship\"
+  - Shipping: \"Mark Delivered\"
+  - Delivered: \"Mark Invoiced\"
+- **Create Procurement** button -- Only visible when the job is in an eligible status (procurement through invoiced). Navigates to `/procurement/new?job_id=[id]`
+
+**Info Cards (5 across):**
+
+| Card | What it shows |
+|---|---|
+| **Quantity** | Board quantity |
+| **Assembly Type** | TB/TS/CS/CB/AS code |
+| **Quote** | Link to the source quote (clickable) |
+| **Scheduled Start** | Date or \"Not set\" |
+| **Scheduled Completion** | Date or \"Not set\" |
+
+**PO Pricing Section:** Validates the customer's PO price against the quoted price. Shows whether the PO amount matches what was quoted for the ordered quantity tier.
+
+**Shipping Section:** Appears when the job is in shipping/delivered/inspection/invoiced status. Contains:
+- **Ship Date** input field
+- **Courier Name** input field
+- **Tracking ID** input field
+- **Save Shipping Info** button -- Saves these fields to `jobs.metadata`
+- **Packing Slip** button -- Generates and opens a packing slip PDF
+- **Compliance Certificate** button -- Generates and opens a certificate of compliance PDF
+
+**Status Timeline (left card):** A vertical timeline showing every status change the job has gone through, with timestamps and optional notes. Shows old status -> new status transitions.
+
+**Production Events (right card):** A vertical timeline showing production floor events: \"Materials Received\", \"SMT Top Start\", \"Reflow End\", etc. Each shows the event type, timestamp, and who logged it.
+
+**Production Documents (bottom card):** Four buttons to download production PDFs:
+- **Job Card** (blue icon) -- A one-page summary card for the production floor: job number, customer, GMP, quantity, component count, assembly type
+- **Production Traveller** (green icon) -- A multi-step checklist that travels with the boards through production, with checkboxes for each step
+- **Print Copy BOM** (purple icon) -- The BOM formatted for the production floor, with M-Codes and quantities, designed to be printed and taped to the work area
+- **Reception File** (orange icon) -- A checklist for receiving materials: each component line with qty needed, qty received columns for Hammad to fill in by hand
+
+---
+
+### Procurement (/procurement)
+
+**Header:** \"Procurement\" title + **PCB & Stencil Orders** button (links to `/procurement/stencils`).
+
+**Status Filter Tabs:** All, Draft, Ordering, Partial, Received, Completed.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **Proc Code** | Like \"260403 TLAN-TB085\" (legacy format) -- clickable, links to detail page |
+| **Job #** | Linked job number |
+| **Customer** | Customer code + company name |
+| **Lines** | \"X/Y received\" showing received count vs total lines |
+| **Status** | Colored badge: Draft (gray), Ordering (blue), Partial (yellow), Received (green), Completed (emerald) |
+| **Created** | Date/time |
+
+---
+
+### Procurement Detail (/procurement/[id])
+
+**Workflow Banner:** Full pipeline with Procurement highlighted.
+
+**Header:** Proc code (monospace, large) + status badge. Customer + GMP info. Link to the parent job.
+
+**Action Buttons (top right):**
+- **Mark All as Ordered** -- Sets every pending line to \"ordered\" status in one click. Only enabled when there are pending lines.
+- **Create Supplier PO** -- Opens a dialog to generate a supplier purchase order. Groups lines by supplier, lets you select which lines to include.
+
+**Summary Cards (4 across):**
+
+| Card | What it shows |
+|---|---|
+| **Total Lines** | Total component lines in this procurement |
+| **Ordered** | How many lines have been ordered (blue) |
+| **Received** | How many lines have been fully received (green) |
+| **Pending** | How many lines are still pending (gray) |
+
+**Line Items Table:**
+
+| Column | What it shows |
+|---|---|
+| **MPN** | Manufacturer Part Number (monospace) |
+| **Description** | Truncated component description |
+| **M-Code** | Badge showing the M-Code (e.g. \"CP\", \"IP\") |
+| **Qty Needed** | How many the BOM requires (qty_per_board x board_qty) |
+| **Extras** | Overage amount with \"+\" prefix (e.g. \"+30\") -- calculated by M-Code |
+| **Order Qty** | Total order quantity (needed + extras), bold |
+| **Received** | \"X/Y\" showing received count out of order qty |
+| **Supplier** | Which supplier (DigiKey, Mouser, LCSC, etc.) |
+| **Status** | Colored badge: Pending (gray), Ordered (blue), Received (green), Backordered (red) |
+| **Action** | Context-sensitive button: |
+| | - If Pending: **Order** button -- marks line as ordered |
+| | - If Ordered and not fully received: **Receive** button -- marks line as received |
+
+Rows that are fully received get a green-tinted background.
+
+**Supplier POs Section:** Below the lines table, if any supplier POs have been generated, they show in a separate table with: PO Number, Supplier, Lines count, Total amount, Status, Created date, and a **PDF** button to download the PO PDF.
+
+---
+
+### PCB & Stencil Orders (/procurement/stencils)
+
+Tracks orders placed with PCB fabricators (WMD, Candor, PCBWay) and stencil suppliers (Stentech).
+
+**Header:** Back arrow to Procurement + **New Order** button + **Export CSV** button.
+
+**KPI Cards:** PCB Orders count, Stencil Orders count, Pending count, Total Cost.
+
+**Filters:** Two rows of filter buttons:
+- Type: All Types, PCB, Stencil
+- Status: All, Ordered, In Production, Shipped, Received
+
+**Table columns:** Type (badge: PCB or Stencil), Job #, Customer, Supplier, Ref #, Qty, Total Cost, Ordered date, Expected date, Status (badge), Actions (status update dropdown).
+
+---
+
+### Create Procurement (/procurement/new)
+
+A confirmation page for creating procurement from a job. Shows job details and explains what will happen:
+- Component lines generated from BOM with M-code-based overage
+- Best-price suppliers auto-assigned from cached pricing
+- BG stock auto-deducted
+- Job status advances to \"procurement\"
+
+**Create Procurement** button -- Creates the procurement, generates all lines, and redirects to the procurement detail page. Shows a success message with proc code and line count.
+
+---
+
+### Customers (/customers)
+
+**Header buttons:**
+- **New Customer** button -- Opens a dialog to add a new customer (code, company name, contact info)
+- **Export CSV** button -- Downloads all customers as CSV
+
+**Search bar:** Text input + Search button. Searches by customer code or company name.
+
+**Status filter:** Active / Inactive / All buttons.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **Code** | Short code like \"TLAN\", \"LABO\" -- clickable, links to detail page |
+| **Company Name** | Full company name |
+| **Contact** | Primary contact name |
+| **Email** | Contact email |
+| **Payment Terms** | e.g. \"Net 30\" |
+| **Status** | Badge: Active (green) or Inactive (gray) |
+
+---
+
+### Customer Detail (/customers/[id])
+
+Detailed view of a single customer with all their data.
+
+**Edit Customer button:** A toggle at the top that switches the page between view mode and edit mode. In edit mode, the `CustomerEditToggle` component renders editable forms with tabs:
+
+**Contacts Section:** Cards showing each contact person with:
+- Name, role, email (clickable mailto), phone (formatted)
+- \"Primary\" green badge for the primary contact
+- In edit mode: Add/remove contacts, edit all fields
+
+**Addresses Section (two columns):**
+- **Billing Addresses** -- Each address shows label, street, city/province/postal, country. \"Default\" badge for default address.
+- **Shipping Addresses** -- Same format.
+- In edit mode: Add/remove addresses, toggle default.
+
+**BOM Configuration:** Displays the `bom_config` JSONB as pretty-printed JSON. Shows the parsing rules for this customer:
+- `header_row`: Which row has column headers (null = no header, auto-detect)
+- `columns` or `columns_fixed`: Column name mappings (e.g. `{\"qty\": \"Quantity\", \"mpn\": \"Manufacturer Part Number\"}`)
+- `format`: File format (xlsx, csv, xlsx_raw_xml)
+- `encoding`: Character encoding (utf-8, utf-16)
+- `separator`: For CSV files (tab, comma)
+- `section_filter`: Whether to filter out section header rows
+- `mount_filter_col`: Column for \"Not Mounted\" filtering
+- `cpc_fallback`: Which field to use when CPC is blank
+
+If no config is set, it says \"No BOM configuration set. Auto-detection will be used.\"
+
+**Boards / GMPs Section:** Lists all board designs for this customer. Each GMP shows:
+- GMP number (monospace, blue), board name, revision, active/inactive badge
+- **Upload BOM** button per GMP -- navigates to `/bom/upload` pre-filled with this customer and GMP
+- BOM files under each GMP, showing filename, revision, status badge (parsed/error), component count
+- Clicking any BOM file navigates to its detail page
+- **Add Board** button at the top to upload a BOM for a new board
+
+**Notes:** Free-text notes about the customer.
+
+**Order History:** Three tables showing the customer's recent activity:
+- **Recent Quotes** -- Quote number (linked), GMP, status badge, date
+- **Recent Jobs** -- Job number (linked), status badge, quantity, date
+- **Recent Invoices** -- Invoice number (linked), status badge, total amount, date
+
+---
+
+### Invoices (/invoices)
+
+**Header buttons:**
+- **Create Invoice** button -- Opens a dialog to create an invoice. Pick a customer, then select one of their completed jobs. The invoice auto-populates pricing from the quote.
+- **Payment History** button -- Navigates to `/invoices/payments`
+- **Export CSV** button -- Downloads invoices as CSV
+
+**Aging KPI Cards (4 across):**
+
+| Card | What it shows | Color |
+|---|---|---|
+| **Total Outstanding** | Sum of all unpaid invoice totals | Default |
+| **Current** | Amount that is not yet past due | Green |
+| **30+ Days** | Amount past due by more than 30 days | Yellow |
+| **60+ Days** | Amount past due by more than 60 days | Red |
+
+**Status Filter Tabs:** All, Draft, Sent, Paid, Overdue.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **Invoice #** | Like \"INV-2604-001\" -- clickable |
+| **Customer** | Customer code + company name |
+| **Job #** | Linked job number |
+| **Total** | Invoice total in CAD |
+| **Status** | Colored badge: draft (gray), sent (blue), paid (green), overdue (red) |
+| **Issued** | Issue date |
+| **Due** | Due date |
+| **Days Outstanding** | Number of days since issue (red if overdue, green \"Paid\" if paid) |
+
+Overdue invoice rows have a red-tinted background.
+
+---
+
+### Invoice Detail (/invoices/[id])
+
+**Workflow Banner:** Full pipeline with Invoice highlighted.
+
+**Header:** Invoice number + status badge. Customer and GMP info.
+
+**Action Buttons:**
+- **Mark as Sent** (if draft) -- Moves invoice to sent status
+- **Record Payment** (if sent or overdue) -- Expands a payment form with date picker and payment method dropdown
+- **Download PDF** -- Opens invoice PDF in new tab (RS letterhead, with GST/QST tax lines)
+
+**Info Cards (4 across):** Job (linked), Issued Date, Due Date (red if overdue), Payment Terms.
+
+**Pricing Breakdown:** A list of line items:
+- Subtotal
+- Discount (if any, shown in green with minus sign)
+- TPS/GST (5%)
+- TVQ/QST (9.975%)
+- Freight (if any)
+- **Total Due** (bold, large)
+
+**Payments Section:** Shows all recorded payments for this invoice:
+- Each payment shows amount (green), date, method badge (Cheque/Wire Transfer/EFT/Credit Card), reference number
+- Running total: \"X of Y paid -- Z outstanding\"
+- If the invoice is not fully paid, a **Record Payment** form appears with: amount, date picker, method dropdown (cheque/wire/EFT/credit_card), reference number, notes, and a Submit button
+
+---
+
+### Payment History (/invoices/payments)
+
+A standalone page showing all payment records across all invoices.
+
+**KPI Cards:** Total Received (all time), This Month, and the top 2 payment methods by amount.
+
+**Table columns:** Invoice # (linked), Customer, Amount (green), Date, Method (badge), Reference #, Notes.
+
+---
+
+### Shipping (/shipping)
+
+**Header:** **Create Shipment** button + **Export CSV** button.
+
+**KPI Cards:** Pending, In Transit, Delivered, Total Shipping Cost.
+
+**Filters:** Two rows:
+- Status: All, Pending, Shipped, In Transit, Delivered
+- Carrier: All, FedEx, Purolator, UPS, Canada Post, Other
+
+**Table columns:** Job # (linked), Customer, Carrier (badge), Tracking #, Ship Date, Est. Delivery, Cost, Status (badge), Actions (status update dropdown).
+
+---
+
+### Production (/production)
+
+Shows all jobs currently in production or inspection status.
+
+**Header:** **Log Event** button -- navigates to `/production/log`.
+
+**Table columns:** Job # (linked), Customer, GMP, Qty, Status (badge), Latest Event (blue badge showing the most recent production event type), Time (how long ago).
+
+---
+
+### Production Event Logger (/production/log)
+
+This is Hammad's page. Designed for the shop floor -- simple and fast.
+
+**Form:**
+1. **Select Job** -- Dropdown of jobs in production/inspection status. Shows job number + customer code.
+2. **Event Type Buttons** -- Grouped by production phase:
+   - **Setup:** Materials Received, Setup Started
+   - **SMT Top:** SMT Top Start, SMT Top End
+   - **SMT Bottom:** SMT Bottom Start, SMT Bottom End
+   - **Reflow:** Reflow Start, Reflow End
+   - **AOI:** AOI Start, AOI Passed, AOI Failed
+   - **Through Hole:** TH Start, TH End
+   - **Final:** Touchup, Washing, Packing, Ready to Ship
+3. **Notes** -- Optional text area for any comments.
+
+Clicking an event button immediately logs it. A success message flashes. Recent events appear below in a feed showing job number, event type, timestamp, and who logged it.
+
+---
+
+### Quality / NCR (/quality)
+
+Non-Conformance Report tracking for quality issues.
+
+**KPI Cards:** Open (red), Investigating (yellow), Corrective Action (blue), Closed (green).
+
+**Status Filter Tabs:** All, Open, Investigating, Corrective Action, Closed.
+
+**Table columns:** NCR # (linked), Customer, Job #, Category (e.g. \"Solder defect / Cold joint\"), Severity (badge), Status (badge), Created date, Closed date.
+
+---
+
+### NCR Detail (/quality/[id])
+
+**Header:** NCR number + status badge + severity badge. Customer and GMP info.
+
+**Action Buttons:** `NCRActions` component -- advances status through the lifecycle (Open -> Investigating -> Corrective Action -> Closed).
+
+**Info Cards:** Category/subcategory, linked Job (clickable), Created date, Closed date.
+
+**Description Card:** The full description of the quality issue.
+
+**CAAF Form (Corrective Action and Assessment Form):** Three text fields that can be edited:
+- **Root Cause** -- What caused the defect
+- **Corrective Action** -- What was done to fix it
+- **Preventive Action** -- What will prevent it from happening again
+
+---
+
+### Inventory (/inventory)
+
+BG (Background) feeder stock -- the common passives that sit on the SMT machine feeders permanently.
+
+**KPI Cards:** Total Items, Healthy (green), Low Stock (yellow), Out of Stock (red).
+
+**Table columns:** MPN, Description, M-Code (badge), Feeder (slot number), Qty (current quantity), Min (minimum threshold), Status (badge: OK/Low/Out).
+
+Row highlighting: Out-of-stock rows have red background, low-stock rows have yellow background.
+
+---
+
+### Reports (/reports)
+
+CEO-only page with business analytics. Redirects non-CEO users to the dashboard.
+
+**Revenue Summary Cards (3 across):** Total Invoiced (Paid), Outstanding, Active Jobs.
+
+**Jobs by Status:** A horizontal bar chart showing job counts per status. Each status gets a bar proportional to the maximum count.
+
+**Top Customers:** Table showing the top 5 customers ranked by total paid invoice amount.
+
+**Monthly Activity:** Table comparing this month vs last month for Quotes Created, Jobs Created, Invoices Created.
+
+**Job Profitability:** Compares quoted totals vs actual costs for completed jobs.
+- **Summary KPIs:** Total Quoted, Total Actual Cost, Total Margin (green if positive, red if negative), Avg Margin %
+- **Per-job table:** Job #, Customer, Quoted Total, Actual Cost, Margin ($), Margin (%). Green/red colors indicate positive/negative margins.
+
+---
+
+### Settings (/settings)
+
+A hub page with 6 cards linking to sub-pages:
+
+| Card | Where it goes | Description |
+|---|---|---|
+| **Pricing Settings** | `/settings/pricing` | Markup rates, assembly costs, labour rates |
+| **Customer BOM Configs** | `/settings/customers` | Per-customer BOM parsing settings |
+| **M-Code Rules** | `/settings/m-codes` | The 47 PAR classification rules |
+| **Component Database** | `/settings/components` | Master component library |
+| **Email Templates** | `/settings/email-templates` | Reusable email templates |
+| **Audit Log** | `/settings/audit` | System-wide change log |
+
+---
+
+### Pricing Settings (/settings/pricing)
+
+CEO-only. A form with all the pricing variables that the quoting engine uses. Each field has a label, number input, and unit suffix.
+
+| Field | What it controls | Default | Unit |
+|---|---|---|---|
+| **Component markup** | Markup applied to distributor component prices | 20 | % |
+| **PCB markup** | Markup on bare PCB cost | 30 | % |
+| **SMT cost / placement** | Cost per SMT pick-and-place operation | 0.35 | CAD |
+| **TH cost / placement** | Cost per through-hole insertion | 0.75 | CAD |
+| **Manual SMT cost / placement** | Cost per hand-soldered SMT component | -- | CAD |
+| **Default NRE** | Default non-recurring engineering charge | 350 | CAD |
+| **Default shipping** | Default flat shipping rate | 200 | CAD |
+| **Quote validity** | How many days a quote is valid for | 30 | days |
+| **Labour rate** | Hourly labour rate | -- | CAD/hr |
+
+**Save Settings** button -- Saves to the `app_settings` table. Shows green \"Settings saved.\" confirmation.
+
+---
+
+### M-Code Rules (/settings/m-codes)
+
+CEO-only. A read-only table showing all 47 PAR classification rules.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **Rule ID** | Like \"PAR-01\", \"PAR-02\" through \"PAR-47\" |
+| **Priority** | Execution order (1 = runs first) |
+| **Layer** | Which classification layer: 1 (database), 2 (rules), 3 (API) |
+| **Condition 1** | First matching condition (e.g. `mounting_type equals \"Through Hole\"`) |
+| **Condition 2** | Optional second condition (e.g. `package contains \"QFP\"`) |
+| **M-Code** | The M-Code assigned if this rule matches (blue badge) |
+| **Description** | Human-readable explanation of what the rule does |
+| **Active** | \"Yes\" (green) or \"No\" (red) |
+
+---
+
+### Component Database (/settings/components)
+
+The master component library. Every MPN that has ever been classified gets stored here. This is Layer 1 of the classification pipeline -- the fastest lookup.
+
+**Header:** **Add Component** button -- opens a dialog with fields for MPN (required), Manufacturer, Description, M-Code (dropdown), Source (dropdown: manual/database/rules/api).
+
+**Stats Cards:** Total Components (overall count), then the top 3 M-Codes by count with percentages. Any remaining M-Codes show as small badges below.
+
+**Search:** Text input to search by MPN. Type and press Enter or click Search. Clear button resets search.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **MPN** | Manufacturer Part Number (monospace) |
+| **M-Code** | Badge showing M-Code. **Clickable** -- clicking opens inline edit with a dropdown selector, confirm (checkmark) and cancel (X) buttons. Saving sets `m_code_source = \"manual\"` |
+| **Source** | How the M-Code was assigned: manual, database, rules, or api |
+| **Updated** | Last update date |
+| **Actions** | Trash icon to delete the component (with confirmation dialog) |
+
+**Pagination:** Bottom bar shows \"Showing X-Y of Z\". Controls:
+- **Rows** dropdown: 50, 100, or 200 per page
+- **Prev/Next** buttons with page number display
+
+---
+
+### Customer BOM Configs (/settings/customers)
+
+CEO-only. Lists every customer with their BOM parsing configuration.
+
+Each customer appears as a collapsible card showing customer code + company name. The `BomConfigEditor` component lets you:
+- View the current BOM config as JSON
+- Edit the JSON directly
+- Save changes
+
+The JSON fields control how the BOM parser handles that customer's files (see the BOM Configuration section in the Customer Detail page for what each field means).
+
+---
+
+### Email Templates (/settings/email-templates)
+
+Manage reusable email templates for different purposes.
+
+**Header:** Back to Settings button + **New Template** button.
+
+**List View Table:**
+
+| Column | What it shows |
+|---|---|
+| **Name** | Template name (clickable -- opens edit view) |
+| **Subject** | Email subject line (truncated) |
+| **Category** | Badge: Quote, Invoice, Shipping, Procurement, General |
+| **Status** | Active (green) or Inactive (gray) |
+
+**Create/Edit View:** A form (via `TemplateEditor` component) with fields for: Name, Subject, Category (dropdown), Body (text editor with variable placeholders), Active toggle.
+
+---
+
+### Audit Log (/settings/audit)
+
+CEO-only. Shows the last 100 changes made across the system.
+
+**Table columns:**
+
+| Column | What it shows |
+|---|---|
+| **Time** | Timestamp of the change |
+| **User** | Who made the change (full name), or \"System\" for automated changes |
+| **Table** | Which database table was changed (monospace, e.g. \"quotes\", \"bom_lines\") |
+| **Action** | Badge: insert (green), update (blue), delete (red) |
+| **Record ID** | The UUID of the affected row (monospace, truncated) |
+| **Changes** | Preview of what changed. For inserts: first 3 field values. For updates: \"field: old -> new\" for up to 3 changed fields. For deletes: first 3 field values of the deleted row. |
+
+---
+
+### Login (/login)
+
+Email + password form. Three users are configured:
+- `anas@rspcbassembly.com` (CEO -- full access)
+- `piyush@rspcbassembly.com` (Operations Manager -- all except financials)
+- `hammad@rspcbassembly.com` (Shop Floor -- production events + active jobs only)
+
+---
+
+### Sidebar Navigation
+
+The sidebar (defined in the dashboard layout) has links to every module. Not all links are visible to all roles:
+
+**All roles see:** Dashboard, BOMs, Quotes, Jobs, Procurement, Production, Shipping, Inventory
+
+**CEO and Operations Manager see:** Customers, Quality
+
+**CEO only sees:** Invoices, Reports, Settings"}],
+
+
+---
+
 ## Final Notes for Abdul
 
 **When something confuses you:**
