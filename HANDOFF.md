@@ -434,7 +434,22 @@
 - Deleted `BUILD_PROMPT.md` and `PROJECT_REPORT.md` (content in ABDULS_WIKI.md and HANDOFF.md)
 - Kept: ABDULS_WIKI.md, HANDOFF.md, WORKFLOW.md, CLAUDE.md, AGENTS.md, README.md
 
-**End state:** 29 tables, 65+ API routes, 39 pages, ~36K lines TypeScript. AI agent: 39 tools. Full audit trail on 31 tables. Classification 10x faster.
+**11. DigiKey API enrichment + size-based M-code rules now working:**
+- DigiKey client (`lib/pricing/digikey.ts`) now extracts `Parameters` from API response: `mounting_type`, `package_case`, `category`, `length_mm`, `width_mm`, `height_mm`
+- New `lib/pricing/enrich-components.ts` — saves API data to `components` table (fire-and-forget after pricing lookups)
+- Pricing route (`/api/pricing/[mpn]`) enriches components table from DigiKey, Mouser, and LCSC after every lookup
+- Classifier now fetches component details (dimensions, package, mounting type) and passes them to rules engine
+- Size rules PAR-20 through PAR-24 now actually fire:
+  - PAR-20: L 0.4-0.99 × W 0.2-0.59 → 0201
+  - PAR-21: L 1.0-1.09 × W 0.5-0.59 → 0402
+  - PAR-22: L 1.5-3.79 × W 0.8-3.59 → CP
+  - PAR-48: L 3.8-4.29 × W 3.6-3.99 → CPEXP
+  - PAR-23: L 4.3-25 × W 4.0-25 → IP
+  - PAR-24: L 25+ × W 25+ → MEC
+- `classifyBomLines` batch-fetches component details in single query alongside M-code lookups
+- Previously these rules were dead code — dimensions never populated. Now they auto-populate from DigiKey.
+
+**End state:** 29 tables, 65+ API routes, 39 pages, ~37K lines TypeScript. AI agent: 39 tools. Full audit trail on 31 tables. Classification 10x faster. Size rules live.
 
 ---
 

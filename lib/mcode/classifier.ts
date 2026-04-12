@@ -12,6 +12,14 @@ type KeywordRow = {
   priority: number;
 };
 
+type ComponentDetails = {
+  mounting_type: string | null;
+  package_case: string | null;
+  category: string | null;
+  length_mm: number | null;
+  width_mm: number | null;
+};
+
 /**
  * 4-Layer M-Code classification pipeline.
  *
@@ -26,7 +34,8 @@ type KeywordRow = {
 export async function classifyComponent(
   input: ClassificationInput,
   supabase: SupabaseClient,
-  cachedKeywords?: KeywordRow[] | null
+  cachedKeywords?: KeywordRow[] | null,
+  componentDetails?: Map<string, ComponentDetails> | null
 ): Promise<ClassificationResult> {
   // Layer 1: Database lookup (components table — includes prior manual overrides)
   if (input.mpn) {
@@ -34,12 +43,29 @@ export async function classifyComponent(
     if (dbResult) return dbResult;
   }
 
+  // Enrich input with component details (dimensions, package, mounting type)
+  // from the components table — populated by DigiKey/Mouser API responses
+  let enrichedInput = input;
+  if (input.mpn && componentDetails) {
+    const details = componentDetails.get(input.mpn);
+    if (details) {
+      enrichedInput = {
+        ...input,
+        mounting_type: input.mounting_type ?? details.mounting_type ?? undefined,
+        package_case: input.package_case ?? details.package_case ?? undefined,
+        category: input.category ?? details.category ?? undefined,
+        length_mm: input.length_mm ?? details.length_mm ?? undefined,
+        width_mm: input.width_mm ?? details.width_mm ?? undefined,
+      };
+    }
+  }
+
   // Layer 1b: Keyword lookup (240+ common terms from mcode_keyword_lookup table)
-  const keywordResult = matchKeywords(input, cachedKeywords ?? null);
+  const keywordResult = matchKeywords(enrichedInput, cachedKeywords ?? null);
   if (keywordResult) return keywordResult;
 
-  // Layer 2: Rule engine (PAR rules)
-  const ruleResult = classifyByRules(input);
+  // Layer 2: Rule engine (PAR rules) — now with enriched dimensions/package data
+  const ruleResult = classifyByRules(enrichedInput);
   if (ruleResult && ruleResult.m_code) {
     return {
       m_code: ruleResult.m_code,
@@ -60,9 +86,29 @@ export async function classifyComponentFull(
   input: ClassificationInput,
   supabase: SupabaseClient
 ): Promise<ClassificationResult> {
-  // Try layers 1, 1b, 2 first
+  // Fetch enriched data for this component (dimensions, package from API lookups)
   const keywords = await fetchKeywords(supabase);
-  const result = await classifyComponent(input, supabase, keywords);
+  const detailsMap = new Map<string, ComponentDetails>();
+  if (input.mpn) {
+    const { data } = await supabase
+      .from("components")
+      .select("mpn, mounting_type, package_case, category, length_mm, width_mm")
+      .eq("mpn", input.mpn)
+      .limit(1)
+      .maybeSingle();
+    if (data && (data.mounting_type || data.package_case || data.length_mm)) {
+      detailsMap.set(input.mpn, {
+        mounting_type: data.mounting_type,
+        package_case: data.package_case,
+        category: data.category,
+        length_mm: data.length_mm,
+        width_mm: data.width_mm,
+      });
+    }
+  }
+
+  // Try layers 1, 1b, 2 with enriched data
+  const result = await classifyComponent(input, supabase, keywords, detailsMap);
   if (result.m_code) return result;
 
   // Layer 3: AI classification (Claude)
@@ -217,7 +263,7 @@ export async function saveManualOverride(
 
 /**
  * Classify all BOM lines using layers 1-2 (DB, keywords, rules).
- * Optimized: keywords fetched ONCE, DB lookups batched.
+ * Optimized: keywords fetched ONCE, DB lookups batched, component details enriched.
  */
 export async function classifyBomLines(
   lines: { mpn: string; description: string; cpc: string; manufacturer: string }[],
@@ -229,14 +275,28 @@ export async function classifyBomLines(
   // Batch DB lookup: fetch all known MPNs in one query
   const mpns = [...new Set(lines.map((l) => l.mpn).filter(Boolean))];
   const dbMap = new Map<string, { m_code: string; m_code_source: string }>();
+  const detailsMap = new Map<string, ComponentDetails>();
+
   if (mpns.length > 0) {
+    // Fetch M-codes AND component details (dimensions, package, mounting) in one query
     const { data } = await supabase
       .from("components")
-      .select("mpn, m_code, m_code_source")
-      .in("mpn", mpns)
-      .not("m_code", "is", null);
+      .select("mpn, m_code, m_code_source, mounting_type, package_case, category, length_mm, width_mm")
+      .in("mpn", mpns);
     for (const row of data ?? []) {
-      dbMap.set(row.mpn, { m_code: row.m_code, m_code_source: row.m_code_source });
+      if (row.m_code) {
+        dbMap.set(row.mpn, { m_code: row.m_code, m_code_source: row.m_code_source });
+      }
+      // Store details for enrichment even if no m_code (dimensions still useful for rules)
+      if (row.mounting_type || row.package_case || row.length_mm || row.width_mm) {
+        detailsMap.set(row.mpn, {
+          mounting_type: row.mounting_type,
+          package_case: row.package_case,
+          category: row.category,
+          length_mm: row.length_mm,
+          width_mm: row.width_mm,
+        });
+      }
     }
   }
 
@@ -253,11 +313,12 @@ export async function classifyBomLines(
       continue;
     }
 
-    // Layer 1b + Layer 2: keywords + rules (no DB calls, all in-memory)
+    // Layer 1b + Layer 2: keywords + rules with enriched component details (dimensions, package)
     const result = await classifyComponent(
       { mpn: line.mpn, description: line.description, cpc: line.cpc, manufacturer: line.manufacturer },
       supabase,
-      keywords
+      keywords,
+      detailsMap
     );
     results.push(result);
   }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { searchPartPrice } from "@/lib/pricing/digikey";
 import { searchMouserPrice } from "@/lib/pricing/mouser";
 import { searchLCSCPrice } from "@/lib/pricing/lcsc";
+import { enrichComponentFromAPI } from "@/lib/pricing/enrich-components";
 
 interface SupplierResult {
   source: string;
@@ -61,6 +62,7 @@ export async function GET(
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   // Process DigiKey
+  const adminDb = createAdminClient();
   if (digikey.status === "fulfilled" && digikey.value) {
     const r = digikey.value;
     suppliers.push({
@@ -84,6 +86,18 @@ export async function GET(
       },
       { onConflict: "source,search_key" }
     );
+    // Enrich components table with DigiKey details (fire-and-forget)
+    enrichComponentFromAPI(adminDb, {
+      mpn: r.mpn,
+      description: r.description,
+      mounting_type: r.mounting_type,
+      package_case: r.package_case,
+      category: r.category,
+      length_mm: r.length_mm,
+      width_mm: r.width_mm,
+      height_mm: r.height_mm,
+      digikey_pn: r.digikey_pn,
+    }).catch(() => {});
   }
 
   // Process Mouser
@@ -111,6 +125,12 @@ export async function GET(
       },
       { onConflict: "source,search_key" }
     );
+    // Enrich components table with Mouser supplier PN
+    enrichComponentFromAPI(adminDb, {
+      mpn: r.mpn,
+      description: r.description,
+      mouser_pn: r.mouser_pn,
+    }).catch(() => {});
   }
 
   // Process LCSC
@@ -138,6 +158,12 @@ export async function GET(
       },
       { onConflict: "source,search_key" }
     );
+    // Enrich components table with LCSC supplier PN
+    enrichComponentFromAPI(adminDb, {
+      mpn: r.mpn,
+      description: r.description,
+      lcsc_pn: r.lcsc_pn,
+    }).catch(() => {});
   }
 
   if (suppliers.length === 0) {

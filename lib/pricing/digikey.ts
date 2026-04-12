@@ -41,6 +41,13 @@ export interface DigiKeyPartResult {
   currency: string;
   in_stock: boolean;
   digikey_pn: string;
+  // Component details extracted from Parameters
+  mounting_type?: string;
+  package_case?: string;
+  category?: string;
+  length_mm?: number;
+  width_mm?: number;
+  height_mm?: number;
 }
 
 export async function searchPartPrice(
@@ -74,10 +81,40 @@ export async function searchPartPrice(
       UnitPrice: number;
       QuantityAvailable: number;
       DigiKeyPartNumber: string;
+      Parameters?: Array<{
+        ParameterId: number;
+        Parameter: string;
+        Value: string;
+      }>;
+      Category?: { Name: string };
     }>;
   };
   const product = data.Products?.[0];
   if (!product) return null;
+
+  // Extract component details from Parameters array
+  const params = product.Parameters ?? [];
+  const getParam = (name: string) => params.find((p) => p.Parameter === name)?.Value;
+
+  const mountingType = getParam("Mounting Type");
+  const packageCase = getParam("Package / Case") ?? getParam("Package/Case");
+  const category = product.Category?.Name;
+
+  // Try to parse dimensions from "Size / Dimension" parameter
+  // Format varies: "0.039" L x 0.020" W (1.00mm x 0.50mm)" or "1.0mm x 0.5mm"
+  let lengthMm: number | undefined;
+  let widthMm: number | undefined;
+  let heightMm: number | undefined;
+  const sizeStr = getParam("Size / Dimension") ?? getParam("Size/Dimension") ?? "";
+  const mmMatch = sizeStr.match(/([\d.]+)\s*mm\s*[x×]\s*([\d.]+)\s*mm/i);
+  if (mmMatch) {
+    lengthMm = parseFloat(mmMatch[1]);
+    widthMm = parseFloat(mmMatch[2]);
+  }
+  const heightStr = getParam("Height") ?? getParam("Height - Seated (Max)") ?? "";
+  const hMatch = heightStr.match(/([\d.]+)\s*mm/i);
+  if (hMatch) heightMm = parseFloat(hMatch[1]);
+
   return {
     mpn: product.ManufacturerPartNumber,
     description: product.Description.ProductDescription,
@@ -85,5 +122,11 @@ export async function searchPartPrice(
     currency: "CAD",
     in_stock: product.QuantityAvailable > 0,
     digikey_pn: product.DigiKeyPartNumber,
+    mounting_type: mountingType,
+    package_case: packageCase,
+    category,
+    length_mm: lengthMm,
+    width_mm: widthMm,
+    height_mm: heightMm,
   };
 }
