@@ -4,6 +4,14 @@ import { classifyByRules } from "./rules";
 import { classifyWithAI } from "./ai-classifier";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+type KeywordRow = {
+  keyword: string;
+  assigned_m_code: string;
+  match_field: string;
+  match_type: string;
+  priority: number;
+};
+
 /**
  * 4-Layer M-Code classification pipeline.
  *
@@ -17,7 +25,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export async function classifyComponent(
   input: ClassificationInput,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  cachedKeywords?: KeywordRow[] | null
 ): Promise<ClassificationResult> {
   // Layer 1: Database lookup (components table — includes prior manual overrides)
   if (input.mpn) {
@@ -26,7 +35,7 @@ export async function classifyComponent(
   }
 
   // Layer 1b: Keyword lookup (240+ common terms from mcode_keyword_lookup table)
-  const keywordResult = await lookupByKeyword(input, supabase);
+  const keywordResult = matchKeywords(input, cachedKeywords ?? null);
   if (keywordResult) return keywordResult;
 
   // Layer 2: Rule engine (PAR rules)
@@ -39,6 +48,22 @@ export async function classifyComponent(
       rule_id: ruleResult.rule_id,
     };
   }
+
+  // All non-AI layers failed — return null (AI is handled separately in batch)
+  return { m_code: null, confidence: 0, source: null };
+}
+
+/**
+ * Full classification including AI fallback. Used for single-component classification.
+ */
+export async function classifyComponentFull(
+  input: ClassificationInput,
+  supabase: SupabaseClient
+): Promise<ClassificationResult> {
+  // Try layers 1, 1b, 2 first
+  const keywords = await fetchKeywords(supabase);
+  const result = await classifyComponent(input, supabase, keywords);
+  if (result.m_code) return result;
 
   // Layer 3: AI classification (Claude)
   const aiResult = await classifyWithAI(
@@ -56,8 +81,19 @@ export async function classifyComponent(
     };
   }
 
-  // All layers failed
   return { m_code: null, confidence: 0, source: null };
+}
+
+/**
+ * Fetch keywords once from database. Reuse across all components.
+ */
+export async function fetchKeywords(supabase: SupabaseClient): Promise<KeywordRow[]> {
+  const { data } = await supabase
+    .from("mcode_keyword_lookup")
+    .select("keyword, assigned_m_code, match_field, match_type, priority")
+    .eq("is_active", true)
+    .order("priority", { ascending: true });
+  return (data ?? []) as KeywordRow[];
 }
 
 async function lookupInDatabase(
@@ -82,24 +118,15 @@ async function lookupInDatabase(
 }
 
 /**
- * Layer 1b: Keyword lookup against the 240+ common terms table.
- * Checks CPC, description, and package_case against known keywords.
- * Case-insensitive matching.
+ * Layer 1b: Match against pre-fetched keywords (no DB query).
+ * Keywords are fetched ONCE per BOM via fetchKeywords(), then passed here.
  */
-async function lookupByKeyword(
+function matchKeywords(
   input: ClassificationInput,
-  supabase: SupabaseClient
-): Promise<ClassificationResult | null> {
-  // Fetch all active keywords (cached per-request by Supabase client)
-  const { data: keywords } = await supabase
-    .from("mcode_keyword_lookup")
-    .select("keyword, assigned_m_code, match_field, match_type, priority")
-    .eq("is_active", true)
-    .order("priority", { ascending: true });
-
+  keywords: KeywordRow[] | null
+): ClassificationResult | null {
   if (!keywords || keywords.length === 0) return null;
 
-  // Build search text from all available fields
   const searchFields: Record<string, string> = {
     cpc: (input.cpc ?? "").toLowerCase(),
     description: (input.description ?? "").toLowerCase(),
@@ -121,20 +148,15 @@ async function lookupByKeyword(
 
     let matched = false;
     if (kw.match_type === "exact") {
-      // Check each field individually for exact match
       matched = Object.values(searchFields).some((v) => v === needle);
     } else if (kw.match_type === "word_boundary" || needle.length <= 4) {
-      // Short keywords (like "0402", "0603", "DIP", "SMA") must match as word boundaries
-      // to avoid false positives like "LPC2468" matching "0402"
       const re = new RegExp(`(^|[^a-zA-Z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^a-zA-Z0-9])`, "i");
       matched = re.test(haystack);
     } else {
-      // Longer keywords can safely use substring matching
       matched = haystack.includes(needle);
     }
 
     if (matched) {
-      // Build human-readable reasoning
       const mCodeNames: Record<string, string> = {
         "0201": "ultra-tiny passive (0201)",
         "0402": "small passive (0402)",
@@ -193,15 +215,49 @@ export async function saveManualOverride(
     );
 }
 
+/**
+ * Classify all BOM lines using layers 1-2 (DB, keywords, rules).
+ * Optimized: keywords fetched ONCE, DB lookups batched.
+ */
 export async function classifyBomLines(
   lines: { mpn: string; description: string; cpc: string; manufacturer: string }[],
   supabase: SupabaseClient
 ): Promise<ClassificationResult[]> {
+  // Fetch keywords ONCE for the entire BOM (was per-component before)
+  const keywords = await fetchKeywords(supabase);
+
+  // Batch DB lookup: fetch all known MPNs in one query
+  const mpns = [...new Set(lines.map((l) => l.mpn).filter(Boolean))];
+  const dbMap = new Map<string, { m_code: string; m_code_source: string }>();
+  if (mpns.length > 0) {
+    const { data } = await supabase
+      .from("components")
+      .select("mpn, m_code, m_code_source")
+      .in("mpn", mpns)
+      .not("m_code", "is", null);
+    for (const row of data ?? []) {
+      dbMap.set(row.mpn, { m_code: row.m_code, m_code_source: row.m_code_source });
+    }
+  }
+
+  // Classify each line using cached data (no per-component DB calls)
   const results: ClassificationResult[] = [];
   for (const line of lines) {
+    // Layer 1: Check pre-fetched DB map
+    const dbHit = line.mpn ? dbMap.get(line.mpn) : null;
+    if (dbHit?.m_code) {
+      const reason = dbHit.m_code_source === "manual"
+        ? `Previously manually classified as ${dbHit.m_code} — MPN "${line.mpn}" found in components database`
+        : `MPN "${line.mpn}" found in components database → ${dbHit.m_code}`;
+      results.push({ m_code: dbHit.m_code as MCode, confidence: 0.95, source: "database", rule_id: reason });
+      continue;
+    }
+
+    // Layer 1b + Layer 2: keywords + rules (no DB calls, all in-memory)
     const result = await classifyComponent(
       { mpn: line.mpn, description: line.description, cpc: line.cpc, manufacturer: line.manufacturer },
-      supabase
+      supabase,
+      keywords
     );
     results.push(result);
   }

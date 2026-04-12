@@ -70,9 +70,7 @@ Respond with ONLY a raw JSON object, NO markdown, NO backticks:
     });
 
     let text = response.content[0].type === "text" ? response.content[0].text : "";
-    // Strip markdown code fences if present
     text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    console.log("[AI CLASSIFIER] Raw response:", text);
     const parsed = JSON.parse(text);
 
     if (
@@ -88,10 +86,30 @@ Respond with ONLY a raw JSON object, NO markdown, NO backticks:
     }
     return null;
   } catch (err) {
-    console.error(
-      "[AI CLASSIFIER]",
-      err instanceof Error ? err.message : err
-    );
+    console.error("[AI CLASSIFIER]", err instanceof Error ? err.message : err);
     return null;
   }
+}
+
+/**
+ * Classify multiple components in parallel batches.
+ * Processes BATCH_SIZE components concurrently instead of one at a time.
+ * 10 parallel calls × 1.5s each = ~1.5s per batch instead of 15s sequential.
+ */
+const BATCH_SIZE = 10;
+
+export async function classifyBatchWithAI(
+  components: { mpn: string; description: string; manufacturer: string; packageCase?: string }[]
+): Promise<({ m_code: MCode; confidence: number; reasoning: string } | null)[]> {
+  const results: ({ m_code: MCode; confidence: number; reasoning: string } | null)[] = [];
+
+  for (let i = 0; i < components.length; i += BATCH_SIZE) {
+    const batch = components.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map((c) => classifyWithAI(c.mpn, c.description, c.manufacturer, c.packageCase))
+    );
+    results.push(...batchResults);
+  }
+
+  return results;
 }

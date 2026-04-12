@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { classifyBomLines } from "@/lib/mcode/classifier";
-import { classifyWithAI } from "@/lib/mcode/ai-classifier";
+import { classifyBatchWithAI } from "@/lib/mcode/ai-classifier";
 
 export async function POST(
   request: Request,
@@ -34,48 +34,51 @@ export async function POST(
 
   // -----------------------------------------------------------
   // AI batch mode: classify unclassified lines using Claude AI
+  // 10 components in parallel per batch instead of sequential
   // -----------------------------------------------------------
   if (mode === "ai-batch") {
     const unclassified = lines.filter(
       (l) => !l.m_code && !l.is_pcb && !l.is_dni && l.mpn
     );
 
-    let classifiedCount = 0;
-    const results: {
-      mpn: string;
-      m_code: string | null;
-      confidence: number;
-    }[] = [];
+    // Parallel AI classification (10 at a time)
+    const aiResults = await classifyBatchWithAI(
+      unclassified.map((l) => ({
+        mpn: l.mpn ?? "",
+        description: l.description ?? "",
+        manufacturer: l.manufacturer ?? "",
+      }))
+    );
 
-    for (const line of unclassified) {
-      const result = await classifyWithAI(
-        line.mpn ?? "",
-        line.description ?? "",
-        line.manufacturer ?? ""
-      );
+    // Batch DB updates: collect all successful classifications, update in parallel
+    let classifiedCount = 0;
+    const results: { mpn: string; m_code: string | null; confidence: number }[] = [];
+    const updatePromises: PromiseLike<void>[] = [];
+
+    for (let i = 0; i < unclassified.length; i++) {
+      const result = aiResults[i];
       if (result?.m_code && result.confidence >= 0.7) {
-        await supabase
-          .from("bom_lines")
-          .update({
-            m_code: result.m_code,
-            m_code_source: "ai",
-            m_code_confidence: result.confidence,
-          })
-          .eq("id", line.id);
+        updatePromises.push(
+          supabase
+            .from("bom_lines")
+            .update({
+              m_code: result.m_code,
+              m_code_source: "ai",
+              m_code_confidence: result.confidence,
+              m_code_reasoning: `AI: ${result.reasoning}`,
+            })
+            .eq("id", unclassified[i].id)
+            .then(() => {})
+        );
         classifiedCount++;
-        results.push({
-          mpn: line.mpn ?? "",
-          m_code: result.m_code,
-          confidence: result.confidence,
-        });
+        results.push({ mpn: unclassified[i].mpn ?? "", m_code: result.m_code, confidence: result.confidence });
       } else {
-        results.push({
-          mpn: line.mpn ?? "",
-          m_code: null,
-          confidence: result?.confidence ?? 0,
-        });
+        results.push({ mpn: unclassified[i].mpn ?? "", m_code: null, confidence: result?.confidence ?? 0 });
       }
     }
+
+    // Fire all DB updates in parallel
+    await Promise.all(updatePromises);
 
     return NextResponse.json({
       total_unclassified: unclassified.length,
@@ -86,7 +89,7 @@ export async function POST(
   }
 
   // -----------------------------------------------------------
-  // Default mode: rule-based classification
+  // Default mode: rule-based classification (already fast with batched lookups)
   // -----------------------------------------------------------
   const toClassify = lines.filter((l) => l.m_code_source !== "manual");
 
@@ -103,21 +106,26 @@ export async function POST(
   let classified = 0;
   let unclassified = 0;
 
+  // Batch DB updates in parallel instead of sequential
+  const updatePromises: PromiseLike<void>[] = [];
   for (let i = 0; i < toClassify.length; i++) {
     const result = ruleResults[i];
-    await supabase
-      .from("bom_lines")
-      .update({
-        m_code: result.m_code,
-        m_code_confidence: result.confidence,
-        m_code_source: result.source,
-        m_code_reasoning: result.rule_id ?? null,
-      })
-      .eq("id", toClassify[i].id);
-
+    updatePromises.push(
+      supabase
+        .from("bom_lines")
+        .update({
+          m_code: result.m_code,
+          m_code_confidence: result.confidence,
+          m_code_source: result.source,
+          m_code_reasoning: result.rule_id ?? null,
+        })
+        .eq("id", toClassify[i].id)
+        .then(() => {})
+    );
     if (result.m_code) classified++;
     else unclassified++;
   }
+  await Promise.all(updatePromises);
 
   const manual = lines.length - toClassify.length;
 
