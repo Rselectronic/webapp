@@ -252,8 +252,19 @@
 
 ### Must Fix Soon
 - [ ] **Procurement: no reception file trigger UI** — receiving marks qty but doesn't generate reception file PDF
-- [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — classifier uses in-code rules. Need to consolidate to DB-only.
-- [ ] **Security: /api/pricing/[mpn] has no auth check** — anyone can query supplier APIs
+- [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — classifier uses in-code rules. Need to consolidate to DB-only
+- [ ] **M-code classification still has inaccuracies** — Anas reported wrong M-codes. Word-boundary fix applied for short keywords but some components still misclassify. Need specific examples to trace which rule/keyword is wrong
+- [ ] **Labour costing (TIME file)** — NOT BUILT. No labour rate tracking, no TIME file equivalent
+- [ ] **Production scheduling** — NOT BUILT. No kanban, no refresh-qty, no scheduling
+- [ ] **Procurement merge-split cycle 2** — NOT BUILT. Second merge-split for ordering at ORDER quantities (vs BOM quantities)
+- [ ] **Proc batch code format** — `generateProcCode()` exists but may not match SOP format YYMMDD CUST-XYNNN
+
+### Fixed (was broken)
+- [x] **Security: /api/pricing/[mpn]** — auth check added (Session 5)
+- [x] **Stencil page crash** — RLS nested join issue fixed with admin client (Session 6)
+- [x] **New Order button crash** — dialog fetched {jobs:[]} as object not array (Session 6)
+- [x] **Create Procurement 404** — page didn't exist, now created at /procurement/new (Session 6)
+- [x] **IP missing from pricing** — IC packages were $0 assembly cost, now in SMT_MCODES (Session 6)
 
 ### Nice to Have
 - [ ] Copy button on M-code override cells (Anas requested)
@@ -262,6 +273,9 @@
 - [ ] AI chat memory persistence
 - [ ] Mobile responsiveness
 - [ ] Volume-based price breaks from DigiKey/Mouser (per-tier pricing)
+- [ ] Dashboard quick action buttons (New Quote, New Job)
+- [ ] Loading states on slow operations (pricing, classification)
+- [ ] QC verification workflow (PROC Verification V3 equivalent)
 
 ---
 
@@ -306,21 +320,50 @@
 - Identified: proc batch codes not being assigned, reception file no UI trigger, duplicate PAR rules, middleware deprecation
 - Dashboard needs quick action buttons, loading states on slow operations, mobile improvements
 
-**Abdul's Wiki created** (ABDULS_WIKI.md — 1,934 lines):
+**Abdul's Wiki** (ABDULS_WIKI.md — 2,777 lines):
 - Complete tutorial explaining the entire system from zero context
-- 10 parts: business, data model, M-codes, BOM parser, pricing, procurement, API layer, frontend, deployment, what's not built
-- Written as a teaching document, not just reference tables
+- 14 parts: business, data model, M-codes, BOM parser, pricing, procurement, API layer, frontend, deployment, what's not built, architecture decisions, formulas, data flow walkthrough, every page/button documented
+
+**Bug fixes:**
+- Create Procurement page created at `/procurement/new` — was a 404
+- Stencil/PCB orders page fixed — RLS nested join issue, switched to admin client
+- New Order button on stencil page fixed — dialog crashed because `/api/jobs` returns `{jobs:[]}` not array
+- Print Copy BOM and Reception File buttons work from job detail page
 
 **Reference prompt created** for Anas to use in any AI tool working on the app.
 
-**Fixes:**
-- Create Procurement button was linking to non-existent page — created `/procurement/new` page with job details, overage explanation, and one-click procurement creation
-- Print Copy BOM and Reception File buttons work (were failing when no BOM linked to job)
+**Deployed:** Vercel production, commit `b6aaef5`
 
-- Stencil/PCB orders page fixed — was crashing due to RLS on nested joins, switched to admin client with auth check
-- Abdul's Wiki expanded to Part 14 (2,777 lines) — every page, every button, every field documented
-- New Order button on stencil page fixed — was crashing because /api/jobs returns {jobs:[]} but dialog expected array
+**End state:** 27 tables, 58 API routes, 36 pages, ~31K lines TypeScript, 130+ commits. 4,026 components. Codebase clean.
 
-**End state:** 27 tables, 58 API routes, 36 pages, ~30K lines TypeScript, 125+ commits. 4,026 components. Codebase clean.
+---
+
+## How to Start Next Session
+
+```
+Read HANDOFF.md first, then CLAUDE.md, then BUILD_PROMPT.md.
+
+Key context:
+- App is ~60% complete toward replacing 11 Excel/VBA workbooks
+- 4,026 components pre-loaded for M-code classification
+- Quote flow works end-to-end (BOM → classify → price → PDF)
+- Procurement ordering/receiving flow works
+- All PDFs use pdf-lib (pure JS)
+- All API routes have auth checks
+- Abdul's Wiki (ABDULS_WIKI.md) documents every table, API, page, button
+
+What needs work next:
+1. M-code classification accuracy — Anas says some are still wrong, need specific examples
+2. Labour costing (TIME file) — not built at all
+3. Production scheduling — not built
+4. Procurement cycle 2 (merge-split for ordering at ORDER quantities)
+5. Reception file trigger from procurement UI
+
+IMPORTANT RULES:
+- Update HANDOFF.md after EVERY change — Anas requires this
+- Look at VBA code in "All vba codes/" folder BEFORE building any feature
+- Never build from assumptions — verify against the Excel/VBA source of truth
+- The VBA code IS the spec. If BUILD_PROMPT.md says one thing and VBA does another, VBA wins.
+```
 
 *Last updated: April 11, 2026, Session 6*
