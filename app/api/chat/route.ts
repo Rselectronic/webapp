@@ -12,9 +12,11 @@ const SYSTEM_PROMPT = `You are the AI assistant for RS PCB Assembly (R.S. Élect
 
 ## YOUR ROLE
 You are both a DATA ASSISTANT and an ACTION AGENT. You can:
-1. QUERY real data (customers, jobs, BOMs, quotes, invoices, NCRs, inventory)
-2. TAKE ACTIONS (update job status, classify components, create procurement, generate serial numbers, log production events)
+1. QUERY real data (customers, jobs, BOMs, quotes, invoices, NCRs, inventory, production schedule, labour costs, aging reports)
+2. TAKE ACTIONS — create quotes, create jobs from quotes, schedule production, create invoices, mark invoices paid, create procurement, order/receive procurement lines, generate serial numbers, log production events, create NCRs, update customers, generate any PDF document
 3. GUIDE users step-by-step through workflows
+
+When the user says "create a quote" or "make an invoice" or "schedule this job" — DO IT directly with your action tools. Don't just explain how — actually do it.
 
 Always use tools — never guess. When the user asks you to DO something, use the action tools directly. When they ask about data, query it. Provide clickable page links like /jobs/[id] so they can navigate.
 
@@ -752,8 +754,355 @@ export async function POST(req: Request) {
           };
         },
       },
+
+      // ==========================================
+      // NEW ACTION TOOLS (Session 7)
+      // ==========================================
+
+      createQuote: {
+        description: isPrivileged ? "Create a new quote from a parsed BOM with quantity tiers" : "DISABLED: requires CEO or Operations Manager role",
+        inputSchema: z.object({
+          bom_id: z.string().describe("BOM UUID"),
+          quantities: z.array(z.number()).describe("Quantity tiers, e.g. [50, 100, 250, 500]"),
+          pcb_cost_per_unit: z.number().optional().describe("PCB cost per unit"),
+          nre_charge: z.number().optional().describe("NRE charge (default $350)"),
+          component_markup: z.number().optional().describe("Component markup % (default 20)"),
+          notes: z.string().optional(),
+        }),
+        execute: async ({ bom_id, quantities, pcb_cost_per_unit, nre_charge, component_markup, notes }: { bom_id: string; quantities: number[]; pcb_cost_per_unit?: number; nre_charge?: number; component_markup?: number; notes?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const { data: bom } = await supabase.from("boms").select("id, gmp_id, customer_id").eq("id", bom_id).single();
+          if (!bom) return { error: "BOM not found" };
+          const now = new Date();
+          const prefix = `QT-${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const { count } = await supabase.from("quotes").select("id", { count: "exact", head: true }).ilike("quote_number", `${prefix}%`);
+          const quoteNumber = `${prefix}-${String((count ?? 0) + 1).padStart(3, "0")}`;
+          const quantitiesObj: Record<string, number> = {};
+          quantities.forEach((q, i) => { quantitiesObj[`qty_${i + 1}`] = q; });
+          const { data: quote, error } = await supabase.from("quotes").insert({
+            quote_number: quoteNumber, customer_id: bom.customer_id, gmp_id: bom.gmp_id, bom_id: bom.id,
+            status: "draft", quantities: quantitiesObj, pricing: {},
+            component_markup: component_markup ?? 20, pcb_cost_per_unit: pcb_cost_per_unit ?? 0,
+            nre_charge: nre_charge ?? 350, notes, created_by: user.id,
+          }).select("id, quote_number").single();
+          if (error) return { error: error.message };
+          return { success: true, quote_number: quote!.quote_number, link: `/quotes/${quote!.id}`, note: "Quote created as draft. Go to the quote page to run pricing and generate PDF." };
+        },
+      },
+
+      updateQuoteStatus: {
+        description: isPrivileged ? "Update quote status: draft→review→sent→accepted/rejected/expired" : "DISABLED",
+        inputSchema: z.object({
+          quote_number: z.string().describe("Quote number like QT-2604-001"),
+          new_status: z.enum(["draft", "review", "sent", "accepted", "rejected", "expired"]).describe("New status"),
+        }),
+        execute: async ({ quote_number, new_status }: { quote_number: string; new_status: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const { data: quote } = await supabase.from("quotes").select("id, status").eq("quote_number", quote_number).single();
+          if (!quote) return { error: "Quote not found" };
+          const updates: Record<string, unknown> = { status: new_status, updated_at: new Date().toISOString() };
+          if (new_status === "sent") updates.issued_at = new Date().toISOString();
+          if (new_status === "accepted") updates.accepted_at = new Date().toISOString();
+          const { error } = await supabase.from("quotes").update(updates).eq("id", quote.id);
+          if (error) return { error: error.message };
+          return { success: true, quote_number, old_status: quote.status, new_status, link: `/quotes/${quote.id}` };
+        },
+      },
+
+      createJobFromQuote: {
+        description: isPrivileged ? "Create a job from a quote. Auto-generates job number." : "DISABLED",
+        inputSchema: z.object({
+          quote_number: z.string().describe("Quote number"),
+          quantity: z.number().describe("Quantity tier to use"),
+          po_number: z.string().optional().describe("Customer PO number"),
+          assembly_type: z.enum(["TB", "TS", "CS", "CB", "AS"]).optional().describe("Assembly type (default TB)"),
+        }),
+        execute: async ({ quote_number, quantity, po_number, assembly_type }: { quote_number: string; quantity: number; po_number?: string; assembly_type?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const { data: quote } = await supabase.from("quotes").select("id, customer_id, gmp_id, bom_id, customers(code)").eq("quote_number", quote_number).single();
+          if (!quote) return { error: "Quote not found" };
+          const now = new Date();
+          const custCode = (quote.customers as unknown as { code: string })?.code ?? "UNK";
+          const prefix = `JB-${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, "0")}-${custCode}`;
+          const { count } = await supabase.from("jobs").select("id", { count: "exact", head: true }).ilike("job_number", `${prefix}%`);
+          const jobNumber = `${prefix}-${String((count ?? 0) + 1).padStart(3, "0")}`;
+          const { data: job, error } = await supabase.from("jobs").insert({
+            job_number: jobNumber, quote_id: quote.id, customer_id: quote.customer_id,
+            gmp_id: quote.gmp_id, bom_id: quote.bom_id, po_number, quantity,
+            assembly_type: assembly_type ?? "TB", status: "created", created_by: user.id,
+          }).select("id, job_number").single();
+          if (error) return { error: error.message };
+          await supabase.from("job_status_log").insert({ job_id: job!.id, old_status: null, new_status: "created", notes: `Created from quote ${quote_number} via AI` });
+          return { success: true, job_number: job!.job_number, quantity, link: `/jobs/${job!.id}` };
+        },
+      },
+
+      scheduleJob: {
+        description: isPrivileged ? "Set or update scheduled start and completion dates for a job" : "DISABLED",
+        inputSchema: z.object({
+          job_number: z.string().describe("Job number"),
+          scheduled_start: z.string().describe("Start date YYYY-MM-DD"),
+          scheduled_completion: z.string().describe("Completion date YYYY-MM-DD"),
+        }),
+        execute: async ({ job_number, scheduled_start, scheduled_completion }: { job_number: string; scheduled_start: string; scheduled_completion: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const { data: job } = await supabase.from("jobs").select("id").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+          const { error } = await supabase.from("jobs").update({ scheduled_start, scheduled_completion, updated_at: new Date().toISOString() }).eq("id", job.id);
+          if (error) return { error: error.message };
+          return { success: true, job_number, scheduled_start, scheduled_completion };
+        },
+      },
+
+      createInvoice: {
+        description: isPrivileged ? "Create an invoice for completed jobs from same customer. Supports multi-PO consolidation." : "DISABLED",
+        inputSchema: z.object({
+          job_numbers: z.array(z.string()).describe("One or more job numbers to invoice"),
+          discount: z.number().optional().describe("Discount amount"),
+          freight: z.number().optional().describe("Freight charge"),
+          notes: z.string().optional(),
+        }),
+        execute: async ({ job_numbers, discount, freight, notes }: { job_numbers: string[]; discount?: number; freight?: number; notes?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const { data: jobs } = await supabase.from("jobs").select("id, job_number, customer_id, quantity, quotes(pricing)").in("job_number", job_numbers);
+          if (!jobs || jobs.length === 0) return { error: "No jobs found" };
+          const customerIds = [...new Set(jobs.map((j: any) => j.customer_id))];
+          if (customerIds.length > 1) return { error: "All jobs must be from the same customer" };
+          let subtotal = 0;
+          for (const job of jobs) {
+            const pricing = (job.quotes as any)?.pricing;
+            if (pricing?.tiers) {
+              const tier = pricing.tiers.find((t: any) => t.qty === job.quantity) ?? pricing.tiers[0];
+              subtotal += tier?.total ?? 0;
+            }
+          }
+          const gst = subtotal * 0.05;
+          const qst = subtotal * 0.09975;
+          const total = subtotal - (discount ?? 0) + gst + qst + (freight ?? 0);
+          const now = new Date();
+          const prefix = `INV-${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const { count } = await supabase.from("invoices").select("id", { count: "exact", head: true }).ilike("invoice_number", `${prefix}%`);
+          const invoiceNumber = `${prefix}-${String((count ?? 0) + 1).padStart(3, "0")}`;
+          const { data: inv, error } = await supabase.from("invoices").insert({
+            invoice_number: invoiceNumber, job_id: jobs[0].id, customer_id: customerIds[0],
+            subtotal, discount: discount ?? 0, tps_gst: gst, tvq_qst: qst, freight: freight ?? 0,
+            total, status: "draft", issued_date: now.toISOString().split("T")[0],
+            due_date: new Date(now.getTime() + 30 * 86400000).toISOString().split("T")[0], notes,
+          }).select("id, invoice_number").single();
+          if (error) return { error: error.message };
+          return { success: true, invoice_number: inv!.invoice_number, total: `$${total.toFixed(2)}`, link: `/invoices/${inv!.id}` };
+        },
+      },
+
+      markInvoicePaid: {
+        description: isPrivileged ? "Mark an invoice as paid and record payment details" : "DISABLED",
+        inputSchema: z.object({
+          invoice_number: z.string().describe("Invoice number like INV-2604-001"),
+          payment_method: z.string().optional().describe("cheque, wire, credit card"),
+          paid_date: z.string().optional().describe("YYYY-MM-DD (defaults to today)"),
+        }),
+        execute: async ({ invoice_number, payment_method, paid_date }: { invoice_number: string; payment_method?: string; paid_date?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const { data: inv } = await supabase.from("invoices").select("id, status, total").eq("invoice_number", invoice_number).single();
+          if (!inv) return { error: "Invoice not found" };
+          const { error } = await supabase.from("invoices").update({
+            status: "paid", paid_date: paid_date ?? new Date().toISOString().split("T")[0],
+            payment_method: payment_method ?? "unspecified", updated_at: new Date().toISOString(),
+          }).eq("id", inv.id);
+          if (error) return { error: error.message };
+          return { success: true, invoice_number, total: `$${Number(inv.total).toFixed(2)}`, status: "paid" };
+        },
+      },
+
+      orderProcurementLines: {
+        description: isPrivileged ? "Mark procurement lines as ordered — single line or all pending" : "DISABLED",
+        inputSchema: z.object({
+          procurement_id: z.string().describe("Procurement UUID"),
+          line_id: z.string().optional().describe("Specific line ID (omit to order ALL pending)"),
+        }),
+        execute: async ({ procurement_id, line_id }: { procurement_id: string; line_id?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const action = line_id ? "order_line" : "order_all";
+          const payload: Record<string, string> = { action };
+          if (line_id) payload.line_id = line_id;
+          const res = await fetch(new URL(`/api/procurements/${procurement_id}`, req.url).toString(), {
+            method: "PATCH", headers: { "Content-Type": "application/json", Cookie: req.headers.get("cookie") ?? "" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) { const err = await res.json().catch(() => ({})); return { error: err.error ?? `Failed (${res.status})` }; }
+          return await res.json();
+        },
+      },
+
+      receiveProcurementLine: {
+        description: isPrivileged ? "Mark a procurement line as received" : "DISABLED",
+        inputSchema: z.object({
+          procurement_id: z.string().describe("Procurement UUID"),
+          line_id: z.string().describe("Procurement line UUID"),
+          qty_received: z.number().describe("Quantity received"),
+        }),
+        execute: async ({ procurement_id, line_id, qty_received }: { procurement_id: string; line_id: string; qty_received: number }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const res = await fetch(new URL(`/api/procurements/${procurement_id}`, req.url).toString(), {
+            method: "PATCH", headers: { "Content-Type": "application/json", Cookie: req.headers.get("cookie") ?? "" },
+            body: JSON.stringify({ action: "receive_line", line_id, qty_received }),
+          });
+          if (!res.ok) { const err = await res.json().catch(() => ({})); return { error: err.error ?? `Failed (${res.status})` }; }
+          return await res.json();
+        },
+      },
+
+      createNCR: {
+        description: isPrivileged ? "Create a Non-Conformance Report (NCR) for a job" : "DISABLED",
+        inputSchema: z.object({
+          job_number: z.string().describe("Job number"),
+          category: z.enum(["soldering_defect", "component", "pcb", "assembly", "cosmetic", "other"]),
+          subcategory: z.string().optional(),
+          severity: z.enum(["minor", "major", "critical"]),
+          description: z.string().describe("Description of the issue"),
+        }),
+        execute: async ({ job_number, category, subcategory, severity, description }: { job_number: string; category: string; subcategory?: string; severity: string; description: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const { data: job } = await supabase.from("jobs").select("id, customer_id").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+          const now = new Date();
+          const prefix = `NCR-${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const { count } = await supabase.from("ncr_reports").select("id", { count: "exact", head: true }).ilike("ncr_number", `${prefix}%`);
+          const ncrNumber = `${prefix}-${String((count ?? 0) + 1).padStart(3, "0")}`;
+          const { data: ncr, error } = await supabase.from("ncr_reports").insert({
+            ncr_number: ncrNumber, job_id: job.id, customer_id: job.customer_id,
+            category, subcategory, severity, description, status: "open", reported_by: user.id,
+          }).select("id, ncr_number").single();
+          if (error) return { error: error.message };
+          return { success: true, ncr_number: ncr!.ncr_number, severity, link: `/quality` };
+        },
+      },
+
+      updateCustomer: {
+        description: isPrivileged ? "Update customer details (contact info, payment terms, notes)" : "DISABLED",
+        inputSchema: z.object({
+          customer_code: z.string().describe("Customer code (TLAN, LABO, etc.)"),
+          contact_name: z.string().optional(), contact_email: z.string().optional(),
+          contact_phone: z.string().optional(), payment_terms: z.string().optional(), notes: z.string().optional(),
+        }),
+        execute: async ({ customer_code, ...updates }: { customer_code: string; contact_name?: string; contact_email?: string; contact_phone?: string; payment_terms?: string; notes?: string }) => {
+          if (!isPrivileged) return { error: "Permission denied." };
+          const cleanUpdates = Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined));
+          if (Object.keys(cleanUpdates).length === 0) return { error: "No fields to update" };
+          const { data, error } = await supabase.from("customers").update({ ...cleanUpdates, updated_at: new Date().toISOString() }).eq("code", customer_code.toUpperCase()).select("code, company_name").single();
+          if (error) return { error: error.message };
+          if (!data) return { error: "Customer not found" };
+          return { success: true, customer: data, updated_fields: Object.keys(cleanUpdates) };
+        },
+      },
+
+      generateDocument: {
+        description: "Generate a PDF document. Returns a download URL you can share with the user.",
+        inputSchema: z.object({
+          type: z.enum(["quote", "invoice", "packing_slip", "compliance_cert", "job_card", "traveller", "print_bom", "reception_file"]),
+          id: z.string().describe("Record ID — quote ID for quotes, invoice ID for invoices, job ID for production/shipping docs"),
+        }),
+        execute: async ({ type, id }: { type: string; id: string }) => {
+          const urlMap: Record<string, string> = {
+            quote: `/api/quotes/${id}/pdf`, invoice: `/api/invoices/${id}/pdf`,
+            packing_slip: `/api/jobs/${id}/shipping-docs?type=packing_slip`,
+            compliance_cert: `/api/jobs/${id}/shipping-docs?type=compliance`,
+            job_card: `/api/jobs/${id}/production-docs?type=job_card`,
+            traveller: `/api/jobs/${id}/production-docs?type=traveller`,
+            print_bom: `/api/jobs/${id}/production-docs?type=print_bom`,
+            reception_file: `/api/jobs/${id}/production-docs?type=reception`,
+          };
+          const url = urlMap[type];
+          if (!url) return { error: "Unknown document type" };
+          return { success: true, download_url: url, note: `Open this URL to download the ${type.replace(/_/g, " ")} PDF` };
+        },
+      },
+
+      // ==========================================
+      // NEW READ TOOLS (Session 7)
+      // ==========================================
+
+      getProductionSchedule: {
+        description: "Get production schedule — active jobs by status for Kanban/calendar view, overdue jobs, upcoming jobs",
+        inputSchema: z.object({
+          view: z.enum(["kanban", "overdue", "upcoming", "all"]).optional().describe("View type (default: all)"),
+        }),
+        execute: async ({ view }: { view?: string }) => {
+          const { data: jobs } = await supabase.from("jobs")
+            .select("job_number, status, quantity, assembly_type, scheduled_start, scheduled_completion, customers(code, company_name), gmps(gmp_number, board_name)")
+            .not("status", "in", '("delivered","invoiced","archived","created")')
+            .order("scheduled_completion", { ascending: true, nullsFirst: false });
+          const allJobs = jobs ?? [];
+          const now = new Date().toISOString().split("T")[0];
+          if (view === "overdue") return { jobs: allJobs.filter((j: any) => j.scheduled_completion && j.scheduled_completion < now) };
+          if (view === "upcoming") {
+            const week = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+            return { jobs: allJobs.filter((j: any) => j.scheduled_start && j.scheduled_start <= week && j.scheduled_start >= now) };
+          }
+          if (view === "kanban") {
+            const grouped: Record<string, unknown[]> = {};
+            for (const j of allJobs) { (grouped[j.status] ??= []).push(j); }
+            return { kanban: grouped };
+          }
+          return { total: allJobs.length, jobs: allJobs };
+        },
+      },
+
+      getLabourCost: {
+        description: "Get labour cost breakdown for a job — placements, setup, programming, NRE",
+        inputSchema: z.object({ job_number: z.string().describe("Job number") }),
+        execute: async ({ job_number }: { job_number: string }) => {
+          const { data: job } = await supabase.from("jobs").select("id, bom_id, quantity").eq("job_number", job_number).single();
+          if (!job) return { error: "Job not found" };
+          const res = await fetch(new URL("/api/labour", req.url).toString(), {
+            method: "POST", headers: { "Content-Type": "application/json", Cookie: req.headers.get("cookie") ?? "" },
+            body: JSON.stringify({ bom_id: job.bom_id, board_qty: job.quantity }),
+          });
+          if (!res.ok) return { error: `Labour API failed (${res.status})` };
+          return await res.json();
+        },
+      },
+
+      getAgingReport: {
+        description: "Get accounts receivable aging report — outstanding invoices by 30/60/90+ days",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const { data: invoices } = await supabase.from("invoices")
+            .select("invoice_number, total, status, issued_date, due_date, customers(code, company_name)")
+            .in("status", ["sent", "overdue"]);
+          const now = new Date();
+          let current = 0, over30 = 0, over60 = 0, over90 = 0;
+          const items = (invoices ?? []).map((inv: any) => {
+            const due = new Date(inv.due_date);
+            const days = Math.floor((now.getTime() - due.getTime()) / 86400000);
+            const amount = Number(inv.total) || 0;
+            if (days > 90) over90 += amount; else if (days > 60) over60 += amount; else if (days > 30) over30 += amount; else current += amount;
+            return { ...inv, days_outstanding: Math.max(0, days) };
+          });
+          const total = current + over30 + over60 + over90;
+          return { total_outstanding: `$${total.toFixed(2)}`, current: `$${current.toFixed(2)}`, over_30: `$${over30.toFixed(2)}`, over_60: `$${over60.toFixed(2)}`, over_90: `$${over90.toFixed(2)}`, invoices: items };
+        },
+      },
+
+      listProcurements: {
+        description: "List procurements with status, optionally filtered by status or job",
+        inputSchema: z.object({
+          status: z.string().optional().describe("Status: draft, ordering, partial_received, fully_received, completed"),
+          job_number: z.string().optional().describe("Filter by job number"),
+        }),
+        execute: async ({ status, job_number }: { status?: string; job_number?: string }) => {
+          let query = supabase.from("procurements").select("id, proc_code, status, total_lines, lines_ordered, lines_received, created_at, jobs(job_number, customers(code))").order("created_at", { ascending: false }).limit(20);
+          if (status) query = query.eq("status", status);
+          if (job_number) {
+            const { data: job } = await supabase.from("jobs").select("id").eq("job_number", job_number).single();
+            if (job) query = query.eq("job_id", job.id);
+          }
+          const { data } = await query;
+          return { procurements: data ?? [] };
+        },
+      },
     },
-    stopWhen: stepCountIs(8),
+    stopWhen: stepCountIs(12),
   });
 
   // --- PERSIST MESSAGES TO DB (fire-and-forget) ---

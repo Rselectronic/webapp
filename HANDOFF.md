@@ -400,7 +400,16 @@
 - `supabase/migrations/020_procurement_batches.sql`
 - `supabase/migrations/023_labour_costing_settings.sql`
 
-**End state:** 29 tables, 65+ API routes, 39 pages, ~35K lines TypeScript.
+**6. AI Agent expanded from 23 to 39 tools:**
+- **16 new tools** added to `/api/chat/route.ts`:
+  - **Write actions:** `createQuote`, `updateQuoteStatus`, `createJobFromQuote`, `scheduleJob`, `createInvoice`, `markInvoicePaid`, `orderProcurementLines`, `receiveProcurementLine`, `createNCR`, `updateCustomer`, `generateDocument`
+  - **Read tools:** `getProductionSchedule` (kanban/overdue/upcoming views), `getLabourCost`, `getAgingReport`, `listProcurements`
+- AI can now perform the full lifecycle via chat: create quotes, accept them into jobs, schedule production, create procurement, order/receive parts, generate invoices, mark paid, generate any PDF
+- System prompt updated: AI now identifies as both DATA ASSISTANT and ACTION AGENT
+- Step limit increased from 8 to 12 to support multi-tool workflows
+- All write tools gated by `isPrivileged` (CEO + Operations Manager only)
+
+**End state:** 29 tables, 65+ API routes, 39 pages, ~36K lines TypeScript. AI agent: 39 tools.
 
 ---
 
