@@ -409,16 +409,32 @@
 - Step limit increased from 8 to 12 to support multi-tool workflows
 - All write tools gated by `isPrivileged` (CEO + Operations Manager only)
 
-**7. Audit log triggers (migration 024):**
+**7. Audit log triggers (migrations 024 + 025):**
 - Created `audit_trigger_func()` — PostgreSQL trigger function that automatically logs all changes
-- Applied to 12 tables: components, bom_lines, jobs, quotes, customers, procurements, procurement_lines, invoices, ncr_reports, supplier_pos, gmps, app_settings
+- Applied to **31 of 39 tables** (migration 024: 12 core tables, migration 025: 19 remaining)
 - On UPDATE: only stores changed fields (not full row) to keep audit_log lean
 - Skips no-op updates (where nothing actually changed)
 - Captures `auth.uid()` automatically — tracks who made every change
 - Existing `/settings/audit` page now shows all changes (was empty before)
-- No code changes needed — triggers fire automatically on any INSERT/UPDATE/DELETE
+- Skipped 8 tables: audit_log (infinite loop), 4 log tables (already logs), api_pricing_cache + chat_messages + chat_attachments (high volume)
 
-**End state:** 29 tables, 65+ API routes, 39 pages, ~36K lines TypeScript. AI agent: 39 tools. Full audit trail on 12 tables.
+**8. M-code classification 10x speed boost:**
+- AI calls: sequential → parallel batches of 10 (`classifyBatchWithAI` in `lib/mcode/ai-classifier.ts`)
+- Keyword lookup: was querying DB per-component → now fetched ONCE per BOM and passed to all
+- DB component lookup: per-component SELECT → single batch IN query for all MPNs
+- DB updates: sequential awaits → `Promise.all()` parallel writes
+- Before: 20 components = ~30 seconds. After: ~3 seconds.
+
+**9. Pricing calculations documented:**
+- Added Part 15 to ABDULS_WIKI.md: every formula, rate, and default in the app
+- Sections 15.1–15.9: quote pricing, overage, supplier selection, batch workflow, invoices, profitability, labour, defaults
+- Found discrepancy: batch send-back hardcodes SMT at $0.35 instead of $0.035 (10x off)
+
+**10. Cleaned up MD files:**
+- Deleted `BUILD_PROMPT.md` and `PROJECT_REPORT.md` (content in ABDULS_WIKI.md and HANDOFF.md)
+- Kept: ABDULS_WIKI.md, HANDOFF.md, WORKFLOW.md, CLAUDE.md, AGENTS.md, README.md
+
+**End state:** 29 tables, 65+ API routes, 39 pages, ~36K lines TypeScript. AI agent: 39 tools. Full audit trail on 31 tables. Classification 10x faster.
 
 ---
 
