@@ -409,7 +409,16 @@
 - Step limit increased from 8 to 12 to support multi-tool workflows
 - All write tools gated by `isPrivileged` (CEO + Operations Manager only)
 
-**End state:** 29 tables, 65+ API routes, 39 pages, ~36K lines TypeScript. AI agent: 39 tools.
+**7. Audit log triggers (migration 024):**
+- Created `audit_trigger_func()` — PostgreSQL trigger function that automatically logs all changes
+- Applied to 12 tables: components, bom_lines, jobs, quotes, customers, procurements, procurement_lines, invoices, ncr_reports, supplier_pos, gmps, app_settings
+- On UPDATE: only stores changed fields (not full row) to keep audit_log lean
+- Skips no-op updates (where nothing actually changed)
+- Captures `auth.uid()` automatically — tracks who made every change
+- Existing `/settings/audit` page now shows all changes (was empty before)
+- No code changes needed — triggers fire automatically on any INSERT/UPDATE/DELETE
+
+**End state:** 29 tables, 65+ API routes, 39 pages, ~36K lines TypeScript. AI agent: 39 tools. Full audit trail on 12 tables.
 
 ---
 
