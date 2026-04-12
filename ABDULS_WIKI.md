@@ -2775,3 +2775,194 @@ Welcome to RS PCB Assembly's ERP system. You've got this.
 ---
 
 *This wiki will be updated as features are built and more context is needed. It represents the system as of April 2026.*
+
+---
+
+## Part 15 — Every Calculation in the App
+
+This section documents every formula, rate, and calculation used across the entire system.
+
+---
+
+### 15.1 Quote Pricing — The Main Formula
+
+When you create a quote for X boards, here's exactly what happens:
+
+```
+Total Per Tier = Component Cost + PCB Cost + Assembly Cost + NRE + Setup + Programming
+Per Unit = Total / board_qty
+```
+
+**Component Cost:**
+```
+For EACH component on the BOM:
+  order_qty = (qty_per_board × board_qty) + overage_extras
+  line_cost = unit_price × order_qty × (1 + markup%)
+
+Total Component Cost = SUM of all line_costs
+```
+- `unit_price` comes from DigiKey/Mouser/LCSC (cheapest wins, cached 7 days)
+- Default markup: **20%** (configurable in Settings → Pricing)
+
+**PCB Cost:**
+```
+PCB Cost = pcb_unit_price × board_qty × (1 + pcb_markup%)
+```
+- PCB unit price entered manually (from WMD/Candor quote)
+
+**Assembly / Placement Cost:**
+```
+SMT cost    = (total SMT placements) × $0.035/placement × board_qty
+TH cost     = (total TH placements) × $0.75/placement × board_qty
+MANSMT cost = (total MANSMT placements) × $1.25/placement × board_qty
+
+Assembly Cost = SMT + TH + MANSMT
+```
+- **SMT placements** = sum of qty_per_board for all CP, IP, CPEXP, 0402, 0201 components
+- **TH placements** = sum of qty_per_board for all TH components
+- **MANSMT placements** = sum of qty_per_board for all MANSMT components
+- MEC, Accs, CABLE, DEV B = **no placement cost** (component cost only)
+
+**Labour (Setup + Programming):**
+```
+Setup Cost = setup_time_hours × $130/hr
+Programming Cost = programming_time_hours × $130/hr
+```
+
+**NRE (Non-Recurring Engineering):**
+```
+NRE = Programming + Stencil + Setup + PCB Fab + Misc
+Default total: $350 (first-time boards only)
+```
+Each of the 5 items is configurable in Settings → Pricing.
+
+---
+
+### 15.2 Overage — How Extras Are Calculated
+
+Each M-code has a tier table. The system finds the **last tier where board_qty >= threshold**:
+
+| M-Code | Tiers (threshold → extras) |
+|--------|---------------------------|
+| **CP** | 1→10, 60→30, 100→35, 200→40, 300→50, 500→60 |
+| **0402** | 1→50, 60→60, 100→70, 200→80, 300→100, 500→120 |
+| **IP** | 1→5, 10→5, 20→10, 50→15, 100→20, 250→20 |
+| **TH** | 1→1, 10→1, 20→2, 50→5, 100→5, 250→20 |
+
+**Example:** Ordering 100 boards, CP component with qty 5/board:
+- Overage at 100 boards = **35 extras**
+- Order qty = (5 × 100) + 35 = **535 units**
+
+Overage is **absolute** (not percentage). Last matching tier wins (not cumulative).
+
+**Code:** `lib/pricing/overage.ts` — `getOverage(mCode, boardQty, tiers)` and `getOrderQty(qtyPerBoard, boardQty, mCode, tiers)`
+
+---
+
+### 15.3 Supplier Pricing — Best Price Selection
+
+```
+1. Check cache (api_pricing_cache, 7-day TTL)
+2. If miss → query DigiKey + Mouser + LCSC in parallel
+3. Pick CHEAPEST across all 3 suppliers
+4. If MPN search fails → retry with description keywords ("0603 10K resistor")
+5. Cache result for 7 days
+```
+
+**Code:** `app/api/quotes/preview/route.ts` and `app/api/quote-batches/[id]/run-pricing/route.ts`
+
+---
+
+### 15.4 Batch Workflow — Cross-BOM Deduplication
+
+When quoting multiple boards together (DM batch):
+```
+1. MERGE: Same MPN across boards → combine (sum BOM qty, track board refs "A:4, B:2")
+2. CLASSIFY: Assign M-codes to merged lines
+3. EXTRAS: Calculate overage at COMBINED qty (saves money vs individual)
+4. PRICE: Query suppliers for each unique MPN once
+5. SEND BACK: Split pricing proportionally back to individual quotes
+```
+
+Each board's component cost = `extended_price × (board_qty / total_bom_qty)`
+
+**Code:** `app/api/quote-batches/[id]/` — merge, assign-mcodes, calculate-extras, run-pricing, send-back routes
+
+---
+
+### 15.5 Invoice Calculation — Taxes
+
+```
+Subtotal = quote total for the accepted tier
+GST/TPS = subtotal × 5%
+QST/TVQ = subtotal × 9.975%
+Total = subtotal + GST + QST + freight - discount
+Due date = issued date + 30 days (Net 30)
+```
+
+Multi-job consolidation: one invoice for multiple jobs from same customer.
+
+**Code:** `app/api/invoices/route.ts`
+
+---
+
+### 15.6 Profitability — Quoted vs Actual
+
+```
+Quoted Total = matching tier subtotal from quote
+Actual Cost = SUM(procurement_lines.unit_price × qty_ordered)
+Gross Margin = Quoted - Actual
+Margin % = (Margin / Quoted) × 100
+```
+
+**Code:** `lib/pricing/profitability.ts`
+
+---
+
+### 15.7 Labour Cost API
+
+Returns M-code stats matching VBA TIME File:
+```
+Stats:
+  - total_unique_lines (non-PCB, non-DNI)
+  - cp_feeder_count (unique CP lines)
+  - ip_feeder_count (unique IP lines)
+  - total_smt_placements (CP+IP+CPEXP+0402+0201 × qty)
+  - th_placement_sum (TH × qty)
+  - mansmt_count (MANSMT lines)
+
+Costs:
+  SMT placement cost = smt_placements × $0.035 × board_qty
+  TH placement cost = th_placements × $0.75 × board_qty
+  MANSMT placement cost = mansmt_placements × $1.25 × board_qty
+  Setup cost = hours × $130/hr
+  Programming cost = hours × $130/hr
+  NRE = 5 granular items summed
+  Grand Total = labour + NRE
+```
+
+**Code:** `app/api/labour/route.ts`
+
+---
+
+### 15.8 All Default Rates
+
+| Setting | Default | Where |
+|---------|---------|-------|
+| Component markup | 20% | Settings → Pricing |
+| SMT rate | $0.035/placement | Settings → Pricing |
+| TH rate | $0.75/placement | Settings → Pricing |
+| MANSMT rate | $1.25/placement | Settings → Pricing |
+| Labour rate | $130/hour | Settings → Pricing (VBA: C15-C18) |
+| SMT machine rate | $165/hour | Settings → Pricing (VBA: D15-D18) |
+| Default NRE | $350 total | Settings → Pricing |
+| Quote validity | 30 days | Settings → Pricing |
+| GST/TPS | 5% | Hardcoded (federal) |
+| QST/TVQ | 9.975% | Hardcoded (Quebec) |
+| Invoice terms | Net 30 | Per customer |
+| Pricing cache TTL | 7 days | Hardcoded |
+| Currency | CAD | Hardcoded |
+
+### 15.9 Known Discrepancy
+
+The batch send-back route (`app/api/quote-batches/[id]/send-back/route.ts`) hardcodes SMT at **$0.35/placement** instead of reading the settings value of **$0.035/placement**. That's a 10x difference. The main pricing engine uses the correct value from settings.
