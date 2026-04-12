@@ -1,9 +1,14 @@
-import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent } from "./types";
+import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent, LabourBreakdown } from "./types";
 import { getOrderQty } from "./overage";
 
 const SMT_MCODES = new Set(["CP", "CPEXP", "0402", "0201", "IP"]);
 const TH_MCODES = new Set(["TH"]);
 const MANSMT_MCODES = new Set(["MANSMT"]);
+
+// Sub-groups for TIME file stats (from VBA: CP/CPEXP/0402/0201 vs IP)
+const CP_FEEDER_MCODES = new Set(["CP", "CPEXP", "0402", "0201"]);
+const IP_FEEDER_MCODES = new Set(["IP"]);
+
 // These M-codes don't contribute to placement costs (manual assembly, non-SMT)
 // MEC, Accs, CABLE, DEV B, PCB, EA, APCB, AEA, FUSE, LABEL, WIRE, PRESSFIT
 
@@ -27,6 +32,53 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
   const missingPriceComponents: MissingPriceComponent[] = lines
     .filter((l) => l.unit_price === null)
     .map((l) => ({ mpn: l.mpn, description: l.description, qty_per_board: l.qty_per_board }));
+
+  // ---- Pre-compute M-code stats (independent of quantity tier) ----
+  let totalUniqueLines = 0;
+  let cpFeederCount = 0;
+  let ipFeederCount = 0;
+  let cpPlacementSum = 0;
+  let ipPlacementSum = 0;
+  let mansmtCountSum = 0;
+  let thPlacementSum = 0;
+
+  for (const line of lines) {
+    if (line.qty_per_board > 0) {
+      totalUniqueLines++;
+    }
+    const mc = line.m_code;
+    if (mc && CP_FEEDER_MCODES.has(mc)) {
+      cpFeederCount++;
+      cpPlacementSum += line.qty_per_board;
+    } else if (mc && IP_FEEDER_MCODES.has(mc)) {
+      ipFeederCount++;
+      ipPlacementSum += line.qty_per_board;
+    } else if (mc && MANSMT_MCODES.has(mc)) {
+      mansmtCountSum += line.qty_per_board;
+    } else if (mc && TH_MCODES.has(mc)) {
+      thPlacementSum += line.qty_per_board;
+    }
+  }
+
+  const totalSmtPlacements = cpPlacementSum + ipPlacementSum + mansmtCountSum;
+
+  // NRE breakdown — use granular settings if available, fall back to nre_charge
+  const nreProgramming = settings.nre_programming ?? 0;
+  const nreStencil = settings.nre_stencil ?? 0;
+  const nreSetup = settings.nre_setup ?? 0;
+  const nrePcbFab = settings.nre_pcb_fab ?? 0;
+  const nreMisc = settings.nre_misc ?? 0;
+  // If granular NRE values are all 0 but nre_charge is provided, use nre_charge as the total
+  const nreTotal = (nreProgramming + nreStencil + nreSetup + nrePcbFab + nreMisc) > 0
+    ? nreProgramming + nreStencil + nreSetup + nrePcbFab + nreMisc
+    : nre_charge;
+
+  // Setup & programming time costs
+  const labourRate = settings.labour_rate_per_hour ?? 130;
+  const setupTimeHours = settings.setup_time_hours ?? 0;
+  const programmingTimeHours = settings.programming_time_hours ?? 0;
+  const setupCost = round2(setupTimeHours * labourRate);
+  const programmingCost = round2(programmingTimeHours * labourRate);
 
   for (const boardQty of quantities) {
     let componentCost = 0;
@@ -65,14 +117,44 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
 
     const pcbCost = pcb_unit_price * boardQty * pcbMarkupMultiplier;
 
-    const assemblyCost =
-      (smtPlacements * settings.smt_cost_per_placement +
-        thPlacements * settings.th_cost_per_placement +
-        mansmtPlacements * settings.mansmt_cost_per_placement) *
-      boardQty;
+    // Placement costs (per-board placements x rate x board_qty)
+    const smtPlacementCost = round2(smtPlacements * settings.smt_cost_per_placement * boardQty);
+    const thPlacementCost = round2(thPlacements * settings.th_cost_per_placement * boardQty);
+    const mansmtPlacementCost = round2(mansmtPlacements * settings.mansmt_cost_per_placement * boardQty);
+    const totalPlacementCost = round2(smtPlacementCost + thPlacementCost + mansmtPlacementCost);
+
+    // Assembly cost = placement cost (same as before, for backward compatibility)
+    const assemblyCost = totalPlacementCost;
+
+    // Total labour = placement + setup + programming
+    const totalLabourCost = round2(totalPlacementCost + setupCost + programmingCost);
+
+    const labour: LabourBreakdown = {
+      smt_placement_cost: smtPlacementCost,
+      th_placement_cost: thPlacementCost,
+      mansmt_placement_cost: mansmtPlacementCost,
+      total_placement_cost: totalPlacementCost,
+      setup_cost: setupCost,
+      programming_cost: programmingCost,
+      total_labour_cost: totalLabourCost,
+      nre_programming: round2(nreProgramming),
+      nre_stencil: round2(nreStencil),
+      nre_setup: round2(nreSetup),
+      nre_pcb_fab: round2(nrePcbFab),
+      nre_misc: round2(nreMisc),
+      nre_total: round2(nreTotal),
+      total_unique_lines: totalUniqueLines,
+      total_smt_placements: totalSmtPlacements,
+      cp_feeder_count: cpFeederCount,
+      ip_feeder_count: ipFeederCount,
+      cp_placement_sum: cpPlacementSum,
+      ip_placement_sum: ipPlacementSum,
+      mansmt_count: mansmtCountSum,
+      th_placement_sum: thPlacementSum,
+    };
 
     const subtotal =
-      componentCost + pcbCost + assemblyCost + nre_charge + shipping_flat;
+      componentCost + pcbCost + assemblyCost + nreTotal + shipping_flat + setupCost + programmingCost;
 
     const perUnit = boardQty > 0 ? subtotal / boardQty : 0;
 
@@ -81,14 +163,16 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       component_cost: round2(componentCost),
       pcb_cost: round2(pcbCost),
       assembly_cost: round2(assemblyCost),
-      nre_charge: round2(nre_charge),
+      nre_charge: round2(nreTotal),
       shipping: round2(shipping_flat),
       subtotal: round2(subtotal),
       per_unit: round2(perUnit),
       smt_placements: smtPlacements,
       th_placements: thPlacements,
+      mansmt_placements: mansmtPlacements,
       components_with_price: componentsWithPrice,
       components_missing_price: componentsMissingPrice,
+      labour,
     });
   }
 
@@ -103,6 +187,49 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     tiers,
     warnings,
     missing_price_components: missingPriceComponents.length > 0 ? missingPriceComponents : undefined,
+  };
+}
+
+/**
+ * Standalone labour cost calculator for a given M-code distribution and quantity.
+ * Useful for per-job labour breakdown without re-running the full pricing engine.
+ */
+export function calculateLabourCost(input: {
+  smtPlacements: number;
+  thPlacements: number;
+  mansmtPlacements: number;
+  boardQty: number;
+  smtCostPerPlacement: number;
+  thCostPerPlacement: number;
+  mansmtCostPerPlacement: number;
+  labourRatePerHour: number;
+  setupTimeHours: number;
+  programmingTimeHours: number;
+}): {
+  smt_placement_cost: number;
+  th_placement_cost: number;
+  mansmt_placement_cost: number;
+  total_placement_cost: number;
+  setup_cost: number;
+  programming_cost: number;
+  total_labour_cost: number;
+} {
+  const smtPlacementCost = round2(input.smtPlacements * input.smtCostPerPlacement * input.boardQty);
+  const thPlacementCost = round2(input.thPlacements * input.thCostPerPlacement * input.boardQty);
+  const mansmtPlacementCost = round2(input.mansmtPlacements * input.mansmtCostPerPlacement * input.boardQty);
+  const totalPlacementCost = round2(smtPlacementCost + thPlacementCost + mansmtPlacementCost);
+  const setupCost = round2(input.setupTimeHours * input.labourRatePerHour);
+  const programmingCost = round2(input.programmingTimeHours * input.labourRatePerHour);
+  const totalLabourCost = round2(totalPlacementCost + setupCost + programmingCost);
+
+  return {
+    smt_placement_cost: smtPlacementCost,
+    th_placement_cost: thPlacementCost,
+    mansmt_placement_cost: mansmtPlacementCost,
+    total_placement_cost: totalPlacementCost,
+    setup_cost: setupCost,
+    programming_cost: programmingCost,
+    total_labour_cost: totalLabourCost,
   };
 }
 

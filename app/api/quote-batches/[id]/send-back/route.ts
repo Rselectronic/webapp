@@ -97,7 +97,10 @@ export async function POST(
     // Filter batch lines to only those that appear on this board
     const boardLetter = bb.board_letter;
     let componentTotal1 = 0, componentTotal2 = 0, componentTotal3 = 0, componentTotal4 = 0;
-    let smtPlacements = 0, thPlacements = 0;
+    let smtPlacements = 0, thPlacements = 0, mansmtPlacements = 0;
+    let cpFeederCount = 0, ipFeederCount = 0;
+    let cpPlacementSum = 0, ipPlacementSum = 0;
+    let totalUniqueLines = 0;
 
     for (const line of batchLines) {
       if (line.is_pcb || !line.board_refs) continue;
@@ -108,6 +111,7 @@ export async function POST(
       if (!boardRef) continue; // This component isn't on this board
 
       const qtyOnBoard = parseInt(boardRef.split(":")[1], 10) || 0;
+      if (qtyOnBoard > 0) totalUniqueLines++;
 
       // Accumulate extended prices (proportional to this board's share)
       const proportion = line.bom_qty > 0 ? qtyOnBoard / line.bom_qty : 0;
@@ -118,18 +122,28 @@ export async function POST(
 
       // Count placements for assembly cost
       const mCode = line.m_code_final ?? "";
-      if (["TH", "MANSMT"].includes(mCode)) {
+      if (mCode === "MANSMT") {
+        mansmtPlacements += qtyOnBoard;
+      } else if (mCode === "TH") {
         thPlacements += qtyOnBoard;
-      } else if (["CP", "IP", "0402", "0201", "CPEXP"].includes(mCode)) {
+      } else if (["CP", "CPEXP", "0402", "0201"].includes(mCode)) {
         smtPlacements += qtyOnBoard;
+        cpFeederCount++;
+        cpPlacementSum += qtyOnBoard;
+      } else if (mCode === "IP") {
+        smtPlacements += qtyOnBoard;
+        ipFeederCount++;
+        ipPlacementSum += qtyOnBoard;
       }
     }
 
     const pcbCost = bb.pcb_cost_per_unit ?? 0;
     const smtRate = batch.smt_cost_per_placement ?? 0.35;
     const thRate = batch.th_cost_per_placement ?? 0.75;
-    const assemblyCostPerBoard = (smtPlacements * smtRate) + (thPlacements * thRate);
+    const mansmtRate = 1.25; // MANSMT default rate
+    const assemblyCostPerBoard = (smtPlacements * smtRate) + (thPlacements * thRate) + (mansmtPlacements * mansmtRate);
     const nre = batch.nre_charge ?? 350;
+    const totalSmtPlacements = cpPlacementSum + ipPlacementSum + mansmtPlacements;
 
     // Build per-tier pricing in the standard PricingTier[] format
     // so the PDF generator and quote detail page work without normalization
@@ -145,6 +159,10 @@ export async function POST(
       if (!tier.qty) continue;
       const pcbTotal = pcbCost * tier.qty;
       const assemblyTotal = assemblyCostPerBoard * tier.qty;
+      const smtPlacementCost = +(smtPlacements * smtRate * tier.qty).toFixed(2);
+      const thPlacementCost = +(thPlacements * thRate * tier.qty).toFixed(2);
+      const mansmtPlacementCost = +(mansmtPlacements * mansmtRate * tier.qty).toFixed(2);
+      const totalPlacementCost = +(smtPlacementCost + thPlacementCost + mansmtPlacementCost).toFixed(2);
       const total = tier.components + pcbTotal + assemblyTotal + nre;
       tiers.push({
         board_qty: tier.qty,
@@ -157,8 +175,32 @@ export async function POST(
         per_unit: +(total / tier.qty).toFixed(2),
         smt_placements: smtPlacements,
         th_placements: thPlacements,
+        mansmt_placements: mansmtPlacements,
         components_with_price: 0,
         components_missing_price: 0,
+        labour: {
+          smt_placement_cost: smtPlacementCost,
+          th_placement_cost: thPlacementCost,
+          mansmt_placement_cost: mansmtPlacementCost,
+          total_placement_cost: totalPlacementCost,
+          setup_cost: 0,
+          programming_cost: 0,
+          total_labour_cost: totalPlacementCost,
+          nre_programming: 0,
+          nre_stencil: 0,
+          nre_setup: 0,
+          nre_pcb_fab: 0,
+          nre_misc: 0,
+          nre_total: nre,
+          total_unique_lines: totalUniqueLines,
+          total_smt_placements: totalSmtPlacements,
+          cp_feeder_count: cpFeederCount,
+          ip_feeder_count: ipFeederCount,
+          cp_placement_sum: cpPlacementSum,
+          ip_placement_sum: ipPlacementSum,
+          mansmt_count: mansmtPlacements,
+          th_placement_sum: thPlacements,
+        },
       });
     }
     const pricing = { tiers, warnings: [] as string[] };

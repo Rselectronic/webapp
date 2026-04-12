@@ -338,32 +338,132 @@
 
 ---
 
+### Session 7 — April 11, 2026
+
+**5 bugs/features fixed in parallel (5 agents, worktree isolation).**
+
+**1. Reception File Trigger UI** (was: no way to generate reception file from procurement):
+- Added "Generate Reception File" button to procurement detail page header
+- Only shows when status is `partial_received` or `fully_received`
+- Calls existing `/api/jobs/{job_id}/production-docs?type=reception` endpoint
+- Opens PDF in new tab — no new API routes needed
+
+**2. Labour Costing / TIME File** (was: NOT BUILT):
+- Extended `PricingSettings` type with `smt_rate_per_hour` ($165/hr from VBA), granular NRE breakdown (5 items)
+- New `LabourBreakdown` interface: per-tier SMT/TH/MANSMT placement costs, setup cost, programming cost
+- Enhanced `calculateQuote()` to include full labour breakdown in every tier
+- New `POST /api/labour` endpoint — calculates labour cost for any BOM + quantity
+- Settings page expanded: Labour Rates & Time section, NRE breakdown with 5 configurable items
+- Pricing table: collapsible "Show Labour & NRE Breakdown" section with M-code stats
+- Quote batch send-back updated to populate labour data
+- Migration 023 applied (labour costing settings)
+- Key VBA rates: labour $130/hr, SMT $165/hr
+
+**3. Production Scheduling** (was: NOT BUILT):
+- **Kanban Board**: 4 columns (Parts Received → Production → Inspection → Ready to Ship), drag-and-drop + click-to-move, color-coded urgency borders
+- **Weekly Schedule**: Mon-Fri calendar grid, job date spans, week navigation, unscheduled jobs warning
+- **Production Dashboard**: KPI cards, overdue jobs panel, today's active jobs, upcoming 7 days, recent events
+- **Job Scheduler**: inline date picker on job detail page for scheduled start/completion
+- Production page rebuilt with 3 togglable views (Dashboard / Kanban / Weekly)
+- No new tables/APIs — uses existing `jobs`, `production_events`, `job_status_log`
+- Based on VBA Production Schedule V3 spec (7 modules)
+
+**4. Procurement Merge-Split Cycle 2** (was: NOT BUILT):
+- New tables: `procurement_batches`, `procurement_batch_lines` (migration 020)
+- 6 API endpoints under `/api/procurement-batches/`:
+  - Create batch, merge components, calculate extras, allocate suppliers, create POs, split back
+- 3 UI pages: `/procurement/batches`, `/procurement/batches/new`, `/procurement/batches/[id]`
+- 2 new components: `batch-workflow.tsx`, `new-proc-batch-form.tsx`
+- Follows same merge-split pattern as quote batches
+- Cross-job component deduplication at ORDER quantities with recalculated overage
+
+**5. Proc Batch Code Format** (was: generating wrong codes like "BT" instead of "TB"):
+- Found VBA source: `procbatchcode_generator_V2.bas` from Job Queue V8
+- Removed broken `ASSEMBLY_TYPE_MAP` that reversed letter order (TB→BT)
+- Added all 12 valid type codes from VBA (TB, TS, AB, AS, CB, CS, PB, PS, DB, DS, MB, MS)
+- Sequence counter changed from per-customer-per-type to per-customer globally (matching VBA)
+- Removed unused `is_batch` parameter
+
+**New files created:**
+- `components/production/production-kanban.tsx`
+- `components/production/weekly-schedule.tsx`
+- `components/production/production-dashboard.tsx`
+- `components/production/job-scheduler.tsx`
+- `components/procurement/batch-workflow.tsx`
+- `components/procurement/new-proc-batch-form.tsx`
+- `app/api/labour/route.ts`
+- `app/api/procurement-batches/route.ts`
+- `app/api/procurement-batches/[id]/route.ts`
+- `app/(dashboard)/procurement/batches/page.tsx`
+- `app/(dashboard)/procurement/batches/new/page.tsx`
+- `app/(dashboard)/procurement/batches/[id]/page.tsx`
+- `supabase/migrations/020_procurement_batches.sql`
+- `supabase/migrations/023_labour_costing_settings.sql`
+
+**End state:** 29 tables, 65+ API routes, 39 pages, ~35K lines TypeScript.
+
+---
+
+## Known Issues / Tech Debt
+
+### Must Fix Soon
+- [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — classifier uses in-code rules. Need to consolidate to DB-only
+- [ ] **M-code classification still has inaccuracies** — Anas reported wrong M-codes. Need specific examples to trace which rule/keyword is wrong
+
+### Fixed (was broken)
+- [x] **Security: /api/pricing/[mpn]** — auth check added (Session 5)
+- [x] **Stencil page crash** — RLS nested join issue fixed with admin client (Session 6)
+- [x] **New Order button crash** — dialog fetched {jobs:[]} as object not array (Session 6)
+- [x] **Create Procurement 404** — page didn't exist, now created at /procurement/new (Session 6)
+- [x] **IP missing from pricing** — IC packages were $0 assembly cost, now in SMT_MCODES (Session 6)
+- [x] **Procurement: no reception file trigger UI** — button added to procurement detail page (Session 7)
+- [x] **Labour costing (TIME file)** — full module built with settings, API, pricing integration (Session 7)
+- [x] **Production scheduling** — Kanban, weekly schedule, dashboard, job scheduler built (Session 7)
+- [x] **Procurement merge-split cycle 2** — batch ordering with cross-job dedup built (Session 7)
+- [x] **Proc batch code format** — fixed to match VBA YYMMDD CUST-XYNNN format (Session 7)
+
+### Nice to Have
+- [ ] Copy button on M-code override cells (Anas requested)
+- [ ] Guided workflow wizard (stepper component showing BOM → Classify → Quote → Job → PROC → Ship → Invoice)
+- [ ] Email integration (send quotes/invoices)
+- [ ] AI chat memory persistence
+- [ ] Mobile responsiveness
+- [ ] Volume-based price breaks from DigiKey/Mouser (per-tier pricing)
+- [ ] Dashboard quick action buttons (New Quote, New Job)
+- [ ] Loading states on slow operations (pricing, classification)
+- [ ] QC verification workflow (PROC Verification V3 equivalent)
+
+---
+
 ## How to Start Next Session
 
 ```
 Read HANDOFF.md first, then CLAUDE.md, then BUILD_PROMPT.md.
 
 Key context:
-- App is ~60% complete toward replacing 11 Excel/VBA workbooks
+- App is ~75% complete toward replacing 11 Excel/VBA workbooks
 - 4,026 components pre-loaded for M-code classification
 - Quote flow works end-to-end (BOM → classify → price → PDF)
-- Procurement ordering/receiving flow works
+- Labour costing built with VBA TIME File rates ($130/hr labour, $165/hr SMT)
+- Production scheduling: Kanban + weekly view + dashboard
+- Procurement ordering/receiving + batch merge-split cycle 2 built
 - All PDFs use pdf-lib (pure JS)
 - All API routes have auth checks
 - Abdul's Wiki (ABDULS_WIKI.md) documents every table, API, page, button
 
 What needs work next:
 1. M-code classification accuracy — Anas says some are still wrong, need specific examples
-2. Labour costing (TIME file) — not built at all
-3. Production scheduling — not built
-4. Procurement cycle 2 (merge-split for ordering at ORDER quantities)
-5. Reception file trigger from procurement UI
+2. Duplicate PAR rules consolidation (in-code vs DB)
+3. Apply migrations 020 + 023 to Supabase production
+4. Test all new features end-to-end
+5. Email integration
+6. QC verification workflow
 
 IMPORTANT RULES:
-- Update HANDOFF.md after EVERY change — Anas requires this
+- Update HANDOFF.md after EVERY change AND push — Anas requires this
 - Look at VBA code in "All vba codes/" folder BEFORE building any feature
 - Never build from assumptions — verify against the Excel/VBA source of truth
 - The VBA code IS the spec. If BUILD_PROMPT.md says one thing and VBA does another, VBA wins.
 ```
 
-*Last updated: April 11, 2026, Session 6*
+*Last updated: April 11, 2026, Session 7*

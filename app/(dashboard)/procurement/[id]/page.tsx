@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Package, PackageCheck, ShoppingCart, ClipboardList, FileText } from "lucide-react";
+import { ArrowLeft, Package, PackageCheck, ShoppingCart, ClipboardList, FileText, FileDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -203,6 +203,18 @@ export default async function ProcurementDetailPage({
               order_status: l.order_status,
             }))}
           />
+          {(proc.status === "partial_received" || proc.status === "fully_received") && proc.job_id && (
+            <a
+              href={`/api/jobs/${proc.job_id}/production-docs?type=reception`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="default" className="bg-green-600 hover:bg-green-700">
+                <FileDown className="mr-2 h-4 w-4" />
+                Generate Reception File
+              </Button>
+            </a>
+          )}
         </div>
       </div>
 

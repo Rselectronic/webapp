@@ -3,6 +3,27 @@ import { redirect } from "next/navigation";
 import { PricingSettingsForm } from "@/components/settings/pricing-settings-form";
 import type { PricingSettings } from "@/lib/pricing/types";
 
+const DEFAULTS: PricingSettings = {
+  component_markup_pct: 20,
+  pcb_markup_pct: 30,
+  smt_cost_per_placement: 0.035,
+  th_cost_per_placement: 0.75,
+  mansmt_cost_per_placement: 1.25,
+  default_nre: 350,
+  default_shipping: 200,
+  quote_validity_days: 30,
+  labour_rate_per_hour: 130,
+  smt_rate_per_hour: 165,
+  currency: "CAD",
+  nre_programming: 100,
+  nre_stencil: 100,
+  nre_setup: 100,
+  nre_pcb_fab: 0,
+  nre_misc: 50,
+  setup_time_hours: 1,
+  programming_time_hours: 1,
+};
+
 export default async function PricingSettingsPage() {
   const supabase = await createClient();
   const {
@@ -22,14 +43,21 @@ export default async function PricingSettingsPage() {
     .select("value")
     .eq("key", "pricing")
     .single();
-  const settings = (settingsRow?.value ?? {}) as PricingSettings;
+
+  // Merge stored settings with defaults so new fields always have a value
+  const stored = (settingsRow?.value ?? {}) as Partial<PricingSettings>;
+  const settings: PricingSettings = { ...DEFAULTS, ...stored };
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Pricing Settings</h2>
-        <p className="text-sm text-gray-500">
-          Adjust markup rates, assembly costs, and NRE defaults.
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+          Pricing &amp; Labour Settings
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Configure markup rates, placement costs, labour rates, and NRE defaults.
+          These values are used by the pricing engine when generating quotes.
+          Equivalent to the TIME File V11 settings in the Excel system.
         </p>
       </div>
       <PricingSettingsForm settings={settings} />

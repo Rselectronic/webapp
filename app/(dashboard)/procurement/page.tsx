@@ -86,12 +86,20 @@ export default async function ProcurementPage({
             {rows.length} procurement{rows.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Link
-          href="/procurement/stencils"
-          className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground"
-        >
-          PCB &amp; Stencil Orders
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/procurement/batches"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-xs hover:bg-blue-700"
+          >
+            Batch Ordering
+          </Link>
+          <Link
+            href="/procurement/stencils"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground"
+          >
+            PCB &amp; Stencil Orders
+          </Link>
+        </div>
       </div>
 
       {/* Status filter tabs */}

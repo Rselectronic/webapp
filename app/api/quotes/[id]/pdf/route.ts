@@ -71,8 +71,18 @@ export async function GET(
           per_unit: t.per_unit ?? 0,
           smt_placements: 0,
           th_placements: 0,
+          mansmt_placements: 0,
           components_with_price: 0,
           components_missing_price: 0,
+          labour: {
+            smt_placement_cost: 0, th_placement_cost: 0, mansmt_placement_cost: 0,
+            total_placement_cost: 0, setup_cost: 0, programming_cost: 0,
+            total_labour_cost: 0, nre_programming: 0, nre_stencil: 0,
+            nre_setup: 0, nre_pcb_fab: 0, nre_misc: 0, nre_total: t.nre ?? 0,
+            total_unique_lines: 0, total_smt_placements: 0, cp_feeder_count: 0,
+            ip_feeder_count: 0, cp_placement_sum: 0, ip_placement_sum: 0,
+            mansmt_count: 0, th_placement_sum: 0,
+          },
         });
       }
     }

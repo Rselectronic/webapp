@@ -4,33 +4,42 @@ import { getOverage } from "@/lib/pricing/overage";
 import type { OverageTier } from "@/lib/pricing/types";
 
 /**
- * Maps job assembly_type to the SOP X+Y code characters.
- * X = B (Batch/multiple boards) or S (Single board)
- * Y = T (Turnkey), A (Assembly Only), C (Consignment), P (PCB Only)
+ * Valid assembly type codes for proc batch codes (from VBA procbatchcode_generator_V2).
+ *
+ * Format: XY where X = order type letter, Y = B(atch) or S(ingle)
+ *   T = Turnkey, A = Assy Only, C = Consignment,
+ *   P = PCB Only, D = Components Only, M = PCB & Components
+ *
+ * The job's assembly_type column already stores these codes (e.g. "TB", "TS", "AS").
  */
-const ASSEMBLY_TYPE_MAP: Record<string, string> = {
-  TB: "BT", // Top+Bottom → Batch Turnkey
-  TS: "ST", // Top-side only → Single Turnkey
-  CS: "BC", // Consignment → Batch Consignment
-  CB: "BA", // Customer Board → Batch Assembly
-  AS: "BA", // Assembly-only → Batch Assembly
-};
+const VALID_TYPE_CODES = new Set([
+  "TB", "TS", // Turnkey Batch / Single
+  "AB", "AS", // Assembly Only Batch / Single
+  "CB", "CS", // Consignment Batch / Single
+  "PB", "PS", // PCB Only Batch / Single
+  "DB", "DS", // Components Only Batch / Single
+  "MB", "MS", // PCB & Components Batch / Single
+]);
 
 /**
- * Generates a proc code in SOP format: "YYMMDD CUST-XYNNN"
- * Example: "250413 TLAN-BT029"
+ * Generates a proc code in legacy SOP format: "YYMMDD CUST-XYNNN"
+ *
+ * Example: "260403 TLAN-TB085"
+ *   Date:     260403 (April 3, 2026)
+ *   Customer: TLAN
+ *   Type:     TB (Turnkey Batch)
+ *   Sequence: 085 (auto-incremented per customer)
+ *
+ * The sequence number increments globally per customer across ALL type codes,
+ * matching the VBA behavior where column X tracks one counter per customer.
  */
 async function generateProcCode(
   supabase: Awaited<ReturnType<typeof createClient>>,
   customerCode: string,
-  assemblyType: string,
-  isBatch: boolean = true
+  assemblyType: string
 ): Promise<string> {
-  const xy = ASSEMBLY_TYPE_MAP[assemblyType] ?? "BT";
-  // Override the X character if caller explicitly specifies batch/single
-  const xChar = isBatch ? "B" : "S";
-  const yChar = xy[1] ?? "T";
-  const typeCode = `${xChar}${yChar}`;
+  // Use the job's assembly_type directly — it already encodes type + batch/single
+  const typeCode = VALID_TYPE_CODES.has(assemblyType) ? assemblyType : "TB";
 
   const now = new Date();
   const yy = String(now.getFullYear()).slice(2);
@@ -38,18 +47,19 @@ async function generateProcCode(
   const dd = String(now.getDate()).padStart(2, "0");
   const datePart = `${yy}${mm}${dd}`;
 
-  // Match existing codes for this customer + type code to find next sequence
-  // Format: "YYMMDD CUST-XYNNN" — match on "% CUST-XY%"
-  const pattern = `% ${customerCode}-${typeCode}%`;
+  // Find the highest existing sequence number for this customer.
+  // The VBA tracks one counter per customer (column X in Admin sheet),
+  // so we look at ALL proc codes for this customer regardless of type code.
+  const pattern = `% ${customerCode}-%`;
   const { data: existing } = await supabase
     .from("procurements")
     .select("proc_code")
     .like("proc_code", pattern);
 
-  // Extract the highest NNN from existing codes
+  // Extract the highest NNN from existing codes (last 3 digits)
   let maxSeq = 0;
   const seqRegex = new RegExp(
-    `\\d{6} ${customerCode}-${typeCode}(\\d{3})$`
+    `\\d{6} ${customerCode}-[A-Z]{2}(\\d{3})$`
   );
   for (const row of existing ?? []) {
     const match = row.proc_code.match(seqRegex);
@@ -96,7 +106,6 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json()) as {
     job_id: string;
-    is_batch?: boolean;
   };
 
   if (!body.job_id) {
@@ -132,12 +141,10 @@ export async function POST(req: NextRequest) {
   const customer = job.customers as unknown as { code: string } | null;
   const customerCode = customer?.code ?? "UNK";
   const assemblyType = (job.assembly_type as string) ?? "TB";
-  const isBatch = body.is_batch ?? true;
   const procCode = await generateProcCode(
     supabase,
     customerCode,
-    assemblyType,
-    isBatch
+    assemblyType
   );
 
   // Fetch BOM lines (non-PCB)

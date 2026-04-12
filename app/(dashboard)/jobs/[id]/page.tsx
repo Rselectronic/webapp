@@ -10,6 +10,7 @@ import { ShippingActions } from "@/components/shipping/shipping-actions";
 import { NCRCreateDialog } from "@/components/ncr/ncr-create-dialog";
 import { PoPricingSection } from "@/components/jobs/po-pricing-section";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
+import { JobScheduler } from "@/components/production/job-scheduler";
 
 interface JobCustomer {
   code: string;
@@ -161,7 +162,13 @@ export default async function JobDetailPage({
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <JobScheduler
+            jobId={id}
+            jobNumber={job.job_number}
+            scheduledStart={job.scheduled_start}
+            scheduledCompletion={job.scheduled_completion}
+          />
           <NCRCreateDialog jobId={id} customerId={job.customer_id} />
           <JobActions jobId={id} currentStatus={job.status} />
           {canCreateProcurement && (
