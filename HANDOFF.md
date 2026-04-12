@@ -319,6 +319,7 @@
 
 - Stencil/PCB orders page fixed — was crashing due to RLS on nested joins, switched to admin client with auth check
 - Abdul's Wiki expanded to Part 14 (2,777 lines) — every page, every button, every field documented
+- New Order button on stencil page fixed — was crashing because /api/jobs returns {jobs:[]} but dialog expected array
 
 **End state:** 27 tables, 58 API routes, 36 pages, ~30K lines TypeScript, 125+ commits. 4,026 components. Codebase clean.
 
