@@ -543,6 +543,18 @@
 | Customer | `DELETE /api/customers/[id]` | CEO only | Soft-delete (is_active=false). Blocks hard delete if quotes/jobs/BOMs exist |
 | NCR | `DELETE /api/ncr/[id]` | CEO + Ops | Only deletable when status is "open" (closed NCRs are quality records) |
 
+**10. Monthly Gantt chart view for production scheduling:**
+- New `components/production/monthly-gantt.tsx` — horizontal bar chart showing jobs as colored bars spanning their scheduled dates
+- Color-coded by status: amber (parts received), blue (production), purple (inspection), green (shipping)
+- Navigate months with prev/next buttons + "Today" reset
+- Today line (blue vertical), weekend shading, week start lines
+- Overdue jobs highlighted with red ring + "LATE" badge
+- Hover tooltip: job number, customer, GMP, dates, duration, status, qty
+- Unscheduled jobs shown below as badges
+- Month summary: scheduled count, total boards, overdue count
+- 4th tab on production page: Dashboard | Kanban | Weekly | **Monthly**
+- Monthly view fetches all non-archived jobs (not just production statuses)
+
 **End state:** 29 tables, 74+ API routes, 40 pages, ~39K lines TypeScript. AI agent: 39 tools.
 
 ---

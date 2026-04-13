@@ -3,10 +3,12 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ProductionKanban } from "@/components/production/production-kanban";
 import { WeeklySchedule } from "@/components/production/weekly-schedule";
+import { MonthlyGantt } from "@/components/production/monthly-gantt";
 import { ProductionDashboard } from "@/components/production/production-dashboard";
 import {
   LayoutGrid,
   CalendarDays,
+  Calendar,
   Activity,
   ClipboardList,
 } from "lucide-react";
@@ -42,9 +44,11 @@ export default async function ProductionPage({
     ? "kanban"
     : view === "weekly"
       ? "weekly"
-      : view === "log"
-        ? "log"
-        : "dashboard";
+      : view === "monthly"
+        ? "monthly"
+        : view === "log"
+          ? "log"
+          : "dashboard";
 
   const supabase = await createClient();
 
@@ -59,12 +63,17 @@ export default async function ProductionPage({
 
   const client = adminClient ?? supabase;
 
+  // Monthly view needs all non-archived jobs; other views need production-relevant only
+  const statusFilter = activeView === "monthly"
+    ? ["created", "procurement", "parts_ordered", "parts_received", "production", "inspection", "shipping", "delivered"]
+    : ["parts_received", "production", "inspection", "shipping"];
+
   const { data: jobsData, error: jobsError } = await client
     .from("jobs")
     .select(
       "id, job_number, status, quantity, assembly_type, po_number, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name)"
     )
-    .in("status", ["parts_received", "production", "inspection", "shipping"])
+    .in("status", statusFilter)
     .order("created_at", { ascending: false });
 
   const jobs = (jobsData ?? []) as unknown as ProductionJob[];
@@ -151,10 +160,20 @@ export default async function ProductionPage({
               <Button
                 variant={activeView === "weekly" ? "default" : "ghost"}
                 size="sm"
-                className="rounded-l-none border-l"
+                className="rounded-none border-l"
               >
                 <CalendarDays className="mr-1.5 h-4 w-4" />
                 Weekly
+              </Button>
+            </Link>
+            <Link href="/production?view=monthly">
+              <Button
+                variant={activeView === "monthly" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-l-none border-l"
+              >
+                <Calendar className="mr-1.5 h-4 w-4" />
+                Monthly
               </Button>
             </Link>
           </div>
@@ -187,6 +206,8 @@ export default async function ProductionPage({
       )}
 
       {activeView === "weekly" && <WeeklySchedule jobs={jobs} />}
+
+      {activeView === "monthly" && <MonthlyGantt jobs={jobs} />}
     </div>
   );
 }
