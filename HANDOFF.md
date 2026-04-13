@@ -555,7 +555,24 @@
 - 4th tab on production page: Dashboard | Kanban | Weekly | **Monthly**
 - Monthly view fetches all non-archived jobs (not just production statuses)
 
-**End state:** 29 tables, 74+ API routes, 40 pages, ~39K lines TypeScript. AI agent: 39 tools.
+**11. All 9 PDFs rewritten to match Excel source-of-truth templates (6 parallel agents):**
+
+Anas added `/Users/rselectronicpc/Downloads/6. BACKEND/` with the actual Excel templates the business uses. Agents extracted layouts from the .xlsm/.xlsx files (unzipped them as ZIP archives, parsed sharedStrings.xml + sheet XML) and rewrote each PDF generator to match.
+
+- **Invoice** (`api/invoices/[id]/pdf`): US Letter, RS logo embedded from template (`public/pdf/rs-logo.png`), red "ELECTRONIQUE INC." header, BILL TO / SHIP TO panels, dark navy line items table with 6 columns (PO# | PRODUCT# | DESCRIPTION | QTY | UNIT PRICE | TOTAL AMOUNT), CAD totals with GST 5% / QST 9.975%, tax ID panel
+- **Supplier PO** (`api/supplier-pos/[id]/pdf`): US Letter, SUPPLIER / SHIP TO blocks, meta strip (REQUISITIONER | SHIP VIA | CURRENCY | F.O.B. | PAYMENT TERMS), 7-column table (# | MANUFACTURER PN | MANUFACTURER | DC | QTY | UNIT PRICE | EXT PRICE), 20-row minimum, multi-page with repeating headers, totals panel
+- **Packing Slip** (`api/jobs/[id]/shipping-docs?type=packing_slip`): 8-column table (#, LINE#, PART#, DESCRIPTION, ORDERED, SHIPPED, CURRENT, BACK ORDER), courier + tracking, 30-day return disclaimer
+- **Compliance Certificate** (`api/jobs/[id]/shipping-docs?type=compliance`): now 2 pages — page 1 Lead-Free Certification (EU RoHS, solder materials table, "Approved by Shamsuddin Patel"), page 2 IPC-A-610 Certificate of Compliance
+- **Job Card** (`api/jobs/[id]/production-docs?type=job_card`): Landscape A4, 8-column batch table (PO # | Product Name | BL | Qty | BOM Name | Gerber Name | Stencil Name | MCODE Summary), BATCH-AWARE — renders one row per job in same procurement batch, M-Code summary computed live per BOM
+- **Production Traveller** (`api/jobs/[id]/production-docs?type=traveller`): 9 checklist sections matching Excel (Reception Setup, Printing, Supports, CP, IP, Manual Parts, Pre-Reflow Final Check, Mecanical, TH Setup, Final Inspection, Packing), each step has tick box + Name + Date slots, Pass/Fail checkboxes on inspections, auto-paginated with "Page X of N"
+- **Print BOM** (`api/jobs/[id]/production-docs?type=print_bom`): Landscape A4, 10 columns matching template (Serial | X-Qty | Order Qty | Qty | R Des. | CPC # | Description | MPN | Mfr | M-Code), PCB row pinned amber, DNI rows red, alternating row bands, BOM SUMMARY totals block with M-Code breakdown
+- **Reception File** (`api/jobs/[id]/production-docs?type=reception`): Landscape A4, pulls from procurement_lines (real supplier/PN/prices), 16-column PROC table (# | R.Des | MPN | Description | MFR | M-Code | Supplier | Supplier PN | Qty/Brd | Extra | Needed | Ordered | Rcvd | Recv Date | Checked | OK), physical checkboxes, signature block + 5 QC checkboxes on last page
+
+**Bonus fixes:**
+- Added URL alias map in production-docs route: `?type=job_card`, `?type=print_bom`, `?type=reception_file` (underscored versions from chat API) now work alongside hyphenated forms
+- Fixed pre-existing type errors in print_bom and reception branches
+
+**End state:** 29 tables, 74+ API routes, 40 pages, ~41K lines TypeScript. All 9 PDFs match Excel templates. RS logo embedded in invoice.
 
 ---
 

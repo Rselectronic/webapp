@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 
 interface POLine {
   mpn: string;
   description: string | null;
+  manufacturer?: string | null;
   qty: number;
   unit_price: number;
   line_total: number;
+  dc?: string | null;
 }
 
-function fmt(n: number): string {
-  return "$" + n.toFixed(2);
+function fmtMoney(n: number): string {
+  return n.toLocaleString("en-CA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function fmtDate(iso?: string | null): string {
@@ -19,20 +24,32 @@ function fmtDate(iso?: string | null): string {
   return new Date(iso).toLocaleDateString("en-CA");
 }
 
-/** Truncate text to fit within a given width (approximate). */
-function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars - 1) + "\u2026";
+/** Truncate text to fit within a given pixel width. */
+function truncate(
+  text: string,
+  maxWidth: number,
+  font: PDFFont,
+  size: number
+): string {
+  if (!text) return "";
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+  let t = text;
+  while (t.length > 0 && font.widthOfTextAtSize(t + "\u2026", size) > maxWidth) {
+    t = t.slice(0, -1);
+  }
+  return t + "\u2026";
 }
 
-// Colors
-const BLACK = rgb(0.06, 0.09, 0.16); // #0f172a
-const DARK = rgb(0.1, 0.1, 0.1);
-const GRAY = rgb(0.28, 0.33, 0.42); // #475569
-const LIGHT_GRAY = rgb(0.58, 0.64, 0.71); // #94a3b8
-const ROW_ALT = rgb(0.97, 0.98, 0.99); // #f8fafc
+// ── Colors (match the Excel template's restrained look) ────────────
+const INK = rgb(0.08, 0.09, 0.11); // near-black
+const SUB = rgb(0.32, 0.36, 0.42); // muted slate
+const MUTED = rgb(0.55, 0.60, 0.66);
+const LINE = rgb(0.75, 0.78, 0.82);
+const LINE_SOFT = rgb(0.88, 0.90, 0.92);
+const HEADER_BG = rgb(0.92, 0.94, 0.97); // very light blue-gray
+const BLOCK_BG = rgb(0.96, 0.97, 0.98);
 const WHITE = rgb(1, 1, 1);
-const BORDER = rgb(0.89, 0.91, 0.94); // #e2e8f0
+const ACCENT = rgb(0.78, 0.09, 0.14); // red title accent (classic PO look)
 
 export async function GET(
   _req: NextRequest,
@@ -76,463 +93,721 @@ export async function GET(
   const dateStr = fmtDate(po.created_at);
 
   const procCode = procurement?.proc_code ?? null;
-  const jobNumber = procurement?.jobs?.job_number ?? null;
-  const customerName = procurement?.jobs?.customers?.company_name ?? null;
   const totalAmount = Number(po.total_amount) || 0;
 
-  // ── Build PDF ──────────────────────────────────────────────
+  // Financial roll-ups
+  const subtotal = lines.reduce(
+    (acc, l) => acc + (Number(l.line_total) || 0),
+    0
+  );
+  const tax = 0;
+  const shipping = 0;
+  const other = 0;
+  const grandTotal = totalAmount > 0 ? totalAmount : subtotal + tax + shipping + other;
+
+  // ── Build PDF ────────────────────────────────────────────────────
   const doc = await PDFDocument.create();
   const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique);
 
-  const PAGE_W = 595.28; // A4
-  const PAGE_H = 841.89;
-  const MARGIN = 40;
+  const PAGE_W = 612; // US Letter (template is US Letter)
+  const PAGE_H = 792;
+  const MARGIN = 36;
   const CONTENT_W = PAGE_W - MARGIN * 2;
 
-  // Column widths for the table (absolute points)
-  const COL_MPN_W = CONTENT_W * 0.25;
-  const COL_DESC_W = CONTENT_W * 0.33;
-  const COL_QTY_W = CONTENT_W * 0.12;
-  const COL_PRICE_W = CONTENT_W * 0.15;
-  const COL_TOTAL_W = CONTENT_W * 0.15;
+  // Line-item table column layout (matches template: # | MPN | MFR | DC | QTY | UNIT | EXT)
+  const COL = {
+    num: { x: MARGIN, w: 26 },
+    mpn: { x: 0, w: 150 },
+    mfr: { x: 0, w: 120 },
+    dc: { x: 0, w: 36 },
+    qty: { x: 0, w: 40 },
+    unit: { x: 0, w: 70 },
+    ext: { x: 0, w: 0 },
+  };
+  COL.mpn.x = COL.num.x + COL.num.w;
+  COL.mfr.x = COL.mpn.x + COL.mpn.w;
+  COL.dc.x = COL.mfr.x + COL.mfr.w;
+  COL.qty.x = COL.dc.x + COL.dc.w;
+  COL.unit.x = COL.qty.x + COL.qty.w;
+  COL.ext.x = COL.unit.x + COL.unit.w;
+  COL.ext.w = PAGE_W - MARGIN - COL.ext.x;
 
   let page = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
-  let pageNum = 1;
-  const pageNumbers: { page: ReturnType<typeof doc.addPage>; num: number }[] = [
-    { page, num: pageNum },
+
+  // ── Header: Company + PURCHASE ORDER title ──────────────────────
+  // Left: company block
+  page.drawText("R.S. \u00C9LECTRONIQUE INC.", {
+    x: MARGIN,
+    y,
+    size: 16,
+    font: fontBold,
+    color: INK,
+  });
+  y -= 18;
+  const addressLines = [
+    "5580 Rue Vanden Abeele",
+    "Saint-Laurent, QC H4S 1P9",
+    "apatel@rspcbassembly.com",
+    "www.rspcbassembly.com",
+    "+1 (438) 833-8477",
   ];
-
-  /** Add a new page if remaining space is too small. */
-  function ensureSpace(needed: number) {
-    if (y - needed < MARGIN + 30) {
-      // leave room for footer
-      drawFooter(page, pageNum);
-      page = doc.addPage([PAGE_W, PAGE_H]);
-      pageNum++;
-      pageNumbers.push({ page, num: pageNum });
-      y = PAGE_H - MARGIN;
-    }
-  }
-
-  function drawFooter(
-    pg: ReturnType<typeof doc.addPage>,
-    num: number
-  ) {
-    const footerY = 24;
-    // top border
-    pg.drawLine({
-      start: { x: MARGIN, y: footerY + 12 },
-      end: { x: PAGE_W - MARGIN, y: footerY + 12 },
-      thickness: 0.5,
-      color: BORDER,
-    });
-    pg.drawText("R.S. \u00c9lectronique Inc.", {
+  for (const line of addressLines) {
+    page.drawText(line, {
       x: MARGIN,
-      y: footerY,
-      size: 7,
+      y,
+      size: 8.5,
       font: fontRegular,
-      color: LIGHT_GRAY,
+      color: SUB,
     });
-    pg.drawText(po.po_number, {
-      x: PAGE_W / 2 - fontRegular.widthOfTextAtSize(po.po_number, 7) / 2,
-      y: footerY,
-      size: 7,
-      font: fontRegular,
-      color: LIGHT_GRAY,
-    });
-    // Page number placeholder text -- we'll fill totalPages at the end
-    const pgText = `Page ${num}`;
-    pg.drawText(pgText, {
-      x: PAGE_W - MARGIN - fontRegular.widthOfTextAtSize(pgText, 7),
-      y: footerY,
-      size: 7,
-      font: fontRegular,
-      color: LIGHT_GRAY,
-    });
+    y -= 11;
   }
 
-  // ── Header ────────────────────────────────────────────────
-  // Company name (left)
-  page.drawText("R.S. \u00c9LECTRONIQUE INC.", {
-    x: MARGIN,
-    y: y,
-    size: 14,
+  // Right: PURCHASE ORDER title + meta table (Date / PO #)
+  const titleY = PAGE_H - MARGIN;
+  const title = "PURCHASE ORDER";
+  const titleSize = 22;
+  const titleW = fontBold.widthOfTextAtSize(title, titleSize);
+  page.drawText(title, {
+    x: PAGE_W - MARGIN - titleW,
+    y: titleY,
+    size: titleSize,
     font: fontBold,
-    color: BLACK,
-  });
-  y -= 13;
-  page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9", {
-    x: MARGIN,
-    y: y,
-    size: 8,
-    font: fontRegular,
-    color: GRAY,
-  });
-  y -= 11;
-  page.drawText("+1 (438) 833-8477 \u00b7 info@rspcbassembly.com", {
-    x: MARGIN,
-    y: y,
-    size: 8,
-    font: fontRegular,
-    color: GRAY,
+    color: ACCENT,
   });
 
-  // PO title + number (right side, same vertical area)
-  const titleY = PAGE_H - MARGIN;
-  const poTitle = "PURCHASE ORDER";
-  page.drawText(poTitle, {
-    x: PAGE_W - MARGIN - fontBold.widthOfTextAtSize(poTitle, 18),
-    y: titleY,
-    size: 18,
-    font: fontBold,
-    color: BLACK,
+  // Meta box (Date / PO #) — two rows, right-aligned
+  const metaBoxW = 200;
+  const metaBoxX = PAGE_W - MARGIN - metaBoxW;
+  const metaLabelW = 60;
+  const metaRowH = 16;
+  let metaY = titleY - titleSize - 8;
+
+  // Date row
+  page.drawRectangle({
+    x: metaBoxX,
+    y: metaY - metaRowH,
+    width: metaLabelW,
+    height: metaRowH,
+    color: HEADER_BG,
+    borderColor: LINE,
+    borderWidth: 0.5,
   });
-  page.drawText(po.po_number, {
-    x:
-      PAGE_W -
-      MARGIN -
-      fontRegular.widthOfTextAtSize(po.po_number, 10),
-    y: titleY - 16,
-    size: 10,
-    font: fontRegular,
-    color: DARK,
+  page.drawRectangle({
+    x: metaBoxX + metaLabelW,
+    y: metaY - metaRowH,
+    width: metaBoxW - metaLabelW,
+    height: metaRowH,
+    color: WHITE,
+    borderColor: LINE,
+    borderWidth: 0.5,
+  });
+  page.drawText("Date", {
+    x: metaBoxX + 6,
+    y: metaY - metaRowH + 5,
+    size: 8,
+    font: fontBold,
+    color: INK,
   });
   page.drawText(dateStr, {
-    x:
-      PAGE_W - MARGIN - fontRegular.widthOfTextAtSize(dateStr, 9),
-    y: titleY - 28,
+    x: metaBoxX + metaLabelW + 6,
+    y: metaY - metaRowH + 5,
     size: 9,
     font: fontRegular,
-    color: GRAY,
+    color: INK,
   });
+  metaY -= metaRowH;
 
-  // Separator line
-  y -= 8;
-  page.drawLine({
-    start: { x: MARGIN, y: y },
-    end: { x: PAGE_W - MARGIN, y: y },
-    thickness: 2,
-    color: BLACK,
+  // PO # row
+  page.drawRectangle({
+    x: metaBoxX,
+    y: metaY - metaRowH,
+    width: metaLabelW,
+    height: metaRowH,
+    color: HEADER_BG,
+    borderColor: LINE,
+    borderWidth: 0.5,
   });
-  y -= 20;
-
-  // ── Supplier + Order Details ──────────────────────────────
-  const infoLeftX = MARGIN;
-  const infoRightX = MARGIN + CONTENT_W * 0.52;
-
-  // Supplier block
-  page.drawText("SUPPLIER", {
-    x: infoLeftX,
-    y: y,
+  page.drawRectangle({
+    x: metaBoxX + metaLabelW,
+    y: metaY - metaRowH,
+    width: metaBoxW - metaLabelW,
+    height: metaRowH,
+    color: WHITE,
+    borderColor: LINE,
+    borderWidth: 0.5,
+  });
+  page.drawText("PO #", {
+    x: metaBoxX + 6,
+    y: metaY - metaRowH + 5,
+    size: 8,
+    font: fontBold,
+    color: INK,
+  });
+  page.drawText(po.po_number, {
+    x: metaBoxX + metaLabelW + 6,
+    y: metaY - metaRowH + 5,
     size: 9,
     font: fontBold,
-    color: BLACK,
-  });
-  y -= 14;
-  page.drawText(po.supplier_name, {
-    x: infoLeftX,
-    y: y,
-    size: 9,
-    font: fontRegular,
-    color: GRAY,
-  });
-  if (po.supplier_email) {
-    y -= 13;
-    page.drawText(po.supplier_email, {
-      x: infoLeftX,
-      y: y,
-      size: 9,
-      font: fontRegular,
-      color: GRAY,
-    });
-  }
-
-  // Order details block (right column, same y range)
-  let detailY = y + (po.supplier_email ? 27 : 14);
-  page.drawText("ORDER DETAILS", {
-    x: infoRightX,
-    y: detailY,
-    size: 9,
-    font: fontBold,
-    color: BLACK,
-  });
-  detailY -= 14;
-  if (procCode) {
-    page.drawText(`PROC: ${procCode}`, {
-      x: infoRightX,
-      y: detailY,
-      size: 9,
-      font: fontRegular,
-      color: GRAY,
-    });
-    detailY -= 13;
-  }
-  if (jobNumber) {
-    page.drawText(`Job: ${jobNumber}`, {
-      x: infoRightX,
-      y: detailY,
-      size: 9,
-      font: fontRegular,
-      color: GRAY,
-    });
-    detailY -= 13;
-  }
-  if (customerName) {
-    page.drawText(`Customer: ${customerName}`, {
-      x: infoRightX,
-      y: detailY,
-      size: 9,
-      font: fontRegular,
-      color: GRAY,
-    });
-    detailY -= 13;
-  }
-  page.drawText(`Lines: ${lines.length}`, {
-    x: infoRightX,
-    y: detailY,
-    size: 9,
-    font: fontRegular,
-    color: GRAY,
+    color: INK,
   });
 
-  y -= 24;
+  // Advance y to whichever side is lower
+  y = Math.min(y, metaY - metaRowH) - 18;
 
-  // ── Table Header ──────────────────────────────────────────
-  const TABLE_ROW_H = 18;
-  const HEADER_H = 22;
+  // ── SUPPLIER | SHIP TO blocks ───────────────────────────────────
+  const blockW = (CONTENT_W - 12) / 2;
+  const blockH = 92;
+  const supplierX = MARGIN;
+  const shipToX = MARGIN + blockW + 12;
+  const blockTop = y;
 
-  function drawTableHeader() {
-    // Background
+  function drawBlock(
+    pg: PDFPage,
+    x: number,
+    top: number,
+    width: number,
+    height: number,
+    header: string,
+    body: string[]
+  ) {
+    // Header bar
+    pg.drawRectangle({
+      x,
+      y: top - 18,
+      width,
+      height: 18,
+      color: INK,
+    });
+    pg.drawText(header, {
+      x: x + 8,
+      y: top - 13,
+      size: 9,
+      font: fontBold,
+      color: WHITE,
+    });
+    // Body box
+    pg.drawRectangle({
+      x,
+      y: top - height,
+      width,
+      height: height - 18,
+      color: BLOCK_BG,
+      borderColor: LINE,
+      borderWidth: 0.5,
+    });
+    let by = top - 18 - 14;
+    for (const line of body) {
+      if (!line) continue;
+      pg.drawText(truncate(line, width - 16, fontRegular, 9), {
+        x: x + 8,
+        y: by,
+        size: 9,
+        font: fontRegular,
+        color: INK,
+      });
+      by -= 12;
+    }
+  }
+
+  // Supplier block contents
+  const supplierBody: string[] = [];
+  supplierBody.push(po.supplier_name || "");
+  if (po.supplier_email) supplierBody.push(po.supplier_email);
+
+  drawBlock(
+    page,
+    supplierX,
+    blockTop,
+    blockW,
+    blockH,
+    "SUPPLIER",
+    supplierBody
+  );
+
+  // Ship to block
+  drawBlock(page, shipToX, blockTop, blockW, blockH, "SHIP TO", [
+    "Anas Patel",
+    "R.S. \u00C9LECTRONIQUE INC.",
+    "5580 Rue Vanden Abeele",
+    "Saint-Laurent, QC H4S 1P9",
+    "+1 (438) 833-8477",
+  ]);
+
+  y = blockTop - blockH - 12;
+
+  // ── Order meta row: REQUISITIONER | SHIP VIA | CURRENCY | F.O.B. | PAYMENT TERMS ──
+  const metaCols = [
+    { label: "REQUISITIONER", value: "Anas Patel" },
+    { label: "SHIP VIA", value: "Supplier Shipping" },
+    { label: "CURRENCY", value: "CAD" },
+    { label: "F.O.B.", value: "R.S. \u00C9lectronique Inc." },
+    { label: "PAYMENT TERMS", value: "Net 30" },
+  ];
+  const colW = CONTENT_W / metaCols.length;
+  const metaHeaderH = 16;
+  const metaValueH = 18;
+
+  // header row
+  for (let i = 0; i < metaCols.length; i++) {
     page.drawRectangle({
+      x: MARGIN + i * colW,
+      y: y - metaHeaderH,
+      width: colW,
+      height: metaHeaderH,
+      color: INK,
+    });
+    const lbl = metaCols[i].label;
+    const lw = fontBold.widthOfTextAtSize(lbl, 8);
+    page.drawText(lbl, {
+      x: MARGIN + i * colW + (colW - lw) / 2,
+      y: y - metaHeaderH + 5,
+      size: 8,
+      font: fontBold,
+      color: WHITE,
+    });
+  }
+  // value row
+  for (let i = 0; i < metaCols.length; i++) {
+    page.drawRectangle({
+      x: MARGIN + i * colW,
+      y: y - metaHeaderH - metaValueH,
+      width: colW,
+      height: metaValueH,
+      color: WHITE,
+      borderColor: LINE,
+      borderWidth: 0.5,
+    });
+    const val = truncate(metaCols[i].value, colW - 8, fontRegular, 9);
+    const vw = fontRegular.widthOfTextAtSize(val, 9);
+    page.drawText(val, {
+      x: MARGIN + i * colW + (colW - vw) / 2,
+      y: y - metaHeaderH - metaValueH + 6,
+      size: 9,
+      font: fontRegular,
+      color: INK,
+    });
+  }
+  y -= metaHeaderH + metaValueH + 14;
+
+  // ── Line item table ────────────────────────────────────────────
+  const tableTop = y;
+  const rowH = 18;
+  const headerRowH = 20;
+
+  function drawLineItemHeader(pg: PDFPage, yTop: number) {
+    pg.drawRectangle({
       x: MARGIN,
-      y: y - HEADER_H + 4,
+      y: yTop - headerRowH,
       width: CONTENT_W,
-      height: HEADER_H,
-      color: BLACK,
+      height: headerRowH,
+      color: INK,
     });
-
-    const headerY = y - HEADER_H + 10;
-    let colX = MARGIN + 8;
-
-    page.drawText("MPN", {
-      x: colX,
-      y: headerY,
-      size: 8,
-      font: fontBold,
-      color: WHITE,
-    });
-    colX += COL_MPN_W;
-
-    page.drawText("Description", {
-      x: colX,
-      y: headerY,
-      size: 8,
-      font: fontBold,
-      color: WHITE,
-    });
-    colX += COL_DESC_W;
-
-    const qtyLabel = "Qty";
-    page.drawText(qtyLabel, {
-      x: colX + COL_QTY_W - 8 - fontBold.widthOfTextAtSize(qtyLabel, 8),
-      y: headerY,
-      size: 8,
-      font: fontBold,
-      color: WHITE,
-    });
-    colX += COL_QTY_W;
-
-    const priceLabel = "Unit Price";
-    page.drawText(priceLabel, {
-      x: colX + COL_PRICE_W - 8 - fontBold.widthOfTextAtSize(priceLabel, 8),
-      y: headerY,
-      size: 8,
-      font: fontBold,
-      color: WHITE,
-    });
-    colX += COL_PRICE_W;
-
-    const totalLabel = "Total";
-    page.drawText(totalLabel, {
-      x: colX + COL_TOTAL_W - 8 - fontBold.widthOfTextAtSize(totalLabel, 8),
-      y: headerY,
-      size: 8,
-      font: fontBold,
-      color: WHITE,
-    });
-
-    y -= HEADER_H;
+    const headers: [string, keyof typeof COL, "left" | "center" | "right"][] = [
+      ["#", "num", "center"],
+      ["MANUFACTURER PN", "mpn", "left"],
+      ["MANUFACTURER", "mfr", "left"],
+      ["DC", "dc", "center"],
+      ["QTY", "qty", "right"],
+      ["UNIT PRICE", "unit", "right"],
+      ["EXT PRICE", "ext", "right"],
+    ];
+    for (const [label, key, align] of headers) {
+      const c = COL[key];
+      let tx = c.x + 6;
+      const tw = fontBold.widthOfTextAtSize(label, 8);
+      if (align === "center") tx = c.x + (c.w - tw) / 2;
+      else if (align === "right") tx = c.x + c.w - tw - 6;
+      pg.drawText(label, {
+        x: tx,
+        y: yTop - headerRowH + 6,
+        size: 8,
+        font: fontBold,
+        color: WHITE,
+      });
+    }
+    // Vertical column separators
+    const sepYTop = yTop;
+    const sepYBot = yTop - headerRowH;
+    for (const key of ["mpn", "mfr", "dc", "qty", "unit", "ext"] as const) {
+      const c = COL[key];
+      pg.drawLine({
+        start: { x: c.x, y: sepYTop },
+        end: { x: c.x, y: sepYBot },
+        thickness: 0.3,
+        color: MUTED,
+      });
+    }
   }
 
-  drawTableHeader();
+  drawLineItemHeader(page, tableTop);
+  let rowY = tableTop - headerRowH;
 
-  // ── Table Rows ────────────────────────────────────────────
-  for (let i = 0; i < lines.length; i++) {
-    ensureSpace(TABLE_ROW_H + 4);
+  // Ensure a minimum of 20 rows to match the template look
+  const MIN_ROWS = 20;
+  const rowCount = Math.max(MIN_ROWS, lines.length);
 
-    // If we're at the top of a new page, redraw the header
-    if (y === PAGE_H - MARGIN) {
-      drawTableHeader();
+  // Need space check for continuation (totals + terms footer ~= 160)
+  const FOOTER_RESERVE = 170;
+
+  function ensureRowSpace() {
+    if (rowY - rowH < MARGIN + FOOTER_RESERVE) {
+      // Finish current page: draw bounding box
+      drawTableBorder(page, tableTop, rowY);
+      page = doc.addPage([PAGE_W, PAGE_H]);
+      const newTop = PAGE_H - MARGIN;
+      drawLineItemHeader(page, newTop);
+      rowY = newTop - headerRowH;
+      // Update tableTop reference via closure variable — we shadow in caller
+    }
+  }
+
+  function drawTableBorder(pg: PDFPage, top: number, bottom: number) {
+    pg.drawRectangle({
+      x: MARGIN,
+      y: bottom,
+      width: CONTENT_W,
+      height: top - bottom,
+      borderColor: INK,
+      borderWidth: 1,
+    });
+    // Redraw vertical separators from top to bottom
+    for (const key of ["mpn", "mfr", "dc", "qty", "unit", "ext"] as const) {
+      const c = COL[key];
+      pg.drawLine({
+        start: { x: c.x, y: top },
+        end: { x: c.x, y: bottom },
+        thickness: 0.3,
+        color: LINE,
+      });
+    }
+  }
+
+  let pageTableTop = tableTop;
+
+  for (let i = 0; i < rowCount; i++) {
+    // Check for continuation
+    if (rowY - rowH < MARGIN + FOOTER_RESERVE) {
+      drawTableBorder(page, pageTableTop, rowY);
+      page = doc.addPage([PAGE_W, PAGE_H]);
+      pageTableTop = PAGE_H - MARGIN;
+      drawLineItemHeader(page, pageTableTop);
+      rowY = pageTableTop - headerRowH;
     }
 
-    const line = lines[i];
+    const line: POLine | undefined = lines[i];
+    const bottomY = rowY - rowH;
 
-    // Alternating row background
+    // Alternating zebra background for readability (keep subtle)
     if (i % 2 === 1) {
       page.drawRectangle({
         x: MARGIN,
-        y: y - TABLE_ROW_H + 4,
+        y: bottomY,
         width: CONTENT_W,
-        height: TABLE_ROW_H,
-        color: ROW_ALT,
+        height: rowH,
+        color: BLOCK_BG,
       });
     }
 
     // Bottom border
     page.drawLine({
-      start: { x: MARGIN, y: y - TABLE_ROW_H + 4 },
-      end: { x: PAGE_W - MARGIN, y: y - TABLE_ROW_H + 4 },
-      thickness: 0.5,
-      color: BORDER,
+      start: { x: MARGIN, y: bottomY },
+      end: { x: PAGE_W - MARGIN, y: bottomY },
+      thickness: 0.3,
+      color: LINE_SOFT,
     });
 
-    const rowTextY = y - TABLE_ROW_H + 9;
-    let colX = MARGIN + 8;
+    const textY = bottomY + 5;
+    const size = 9;
 
-    // MPN
-    const mpnText = truncate(line.mpn || "\u2014", 22);
-    page.drawText(mpnText, {
-      x: colX,
-      y: rowTextY,
-      size: 9,
+    // # (row number, always shown)
+    const nStr = String(i + 1);
+    const nw = fontRegular.widthOfTextAtSize(nStr, size);
+    page.drawText(nStr, {
+      x: COL.num.x + (COL.num.w - nw) / 2,
+      y: textY,
+      size,
       font: fontRegular,
-      color: DARK,
-    });
-    colX += COL_MPN_W;
-
-    // Description
-    const descText = truncate(line.description ?? "\u2014", 32);
-    page.drawText(descText, {
-      x: colX,
-      y: rowTextY,
-      size: 9,
-      font: fontRegular,
-      color: DARK,
-    });
-    colX += COL_DESC_W;
-
-    // Qty (right-aligned)
-    const qtyStr = String(line.qty);
-    page.drawText(qtyStr, {
-      x: colX + COL_QTY_W - 8 - fontRegular.widthOfTextAtSize(qtyStr, 9),
-      y: rowTextY,
-      size: 9,
-      font: fontRegular,
-      color: DARK,
-    });
-    colX += COL_QTY_W;
-
-    // Unit Price (right-aligned)
-    const priceStr = fmt(line.unit_price);
-    page.drawText(priceStr, {
-      x: colX + COL_PRICE_W - 8 - fontRegular.widthOfTextAtSize(priceStr, 9),
-      y: rowTextY,
-      size: 9,
-      font: fontRegular,
-      color: DARK,
-    });
-    colX += COL_PRICE_W;
-
-    // Line Total (right-aligned)
-    const totalStr = fmt(line.line_total);
-    page.drawText(totalStr, {
-      x: colX + COL_TOTAL_W - 8 - fontRegular.widthOfTextAtSize(totalStr, 9),
-      y: rowTextY,
-      size: 9,
-      font: fontRegular,
-      color: DARK,
+      color: line ? INK : MUTED,
     });
 
-    y -= TABLE_ROW_H;
+    if (line) {
+      // MPN
+      page.drawText(
+        truncate(line.mpn || "", COL.mpn.w - 10, fontRegular, size),
+        {
+          x: COL.mpn.x + 6,
+          y: textY,
+          size,
+          font: fontRegular,
+          color: INK,
+        }
+      );
+
+      // Manufacturer
+      const mfr = line.manufacturer || "";
+      page.drawText(truncate(mfr, COL.mfr.w - 10, fontRegular, size), {
+        x: COL.mfr.x + 6,
+        y: textY,
+        size,
+        font: fontRegular,
+        color: INK,
+      });
+
+      // DC (date code)
+      const dc = line.dc || "";
+      if (dc) {
+        const dcw = fontRegular.widthOfTextAtSize(dc, size);
+        page.drawText(truncate(dc, COL.dc.w - 6, fontRegular, size), {
+          x: COL.dc.x + (COL.dc.w - dcw) / 2,
+          y: textY,
+          size,
+          font: fontRegular,
+          color: INK,
+        });
+      }
+
+      // Qty (right-aligned)
+      const qtyStr = String(line.qty ?? 0);
+      const qw = fontRegular.widthOfTextAtSize(qtyStr, size);
+      page.drawText(qtyStr, {
+        x: COL.qty.x + COL.qty.w - qw - 6,
+        y: textY,
+        size,
+        font: fontRegular,
+        color: INK,
+      });
+
+      // Unit price (right-aligned)
+      const unitStr = fmtMoney(Number(line.unit_price) || 0);
+      const uw = fontRegular.widthOfTextAtSize(unitStr, size);
+      page.drawText(unitStr, {
+        x: COL.unit.x + COL.unit.w - uw - 6,
+        y: textY,
+        size,
+        font: fontRegular,
+        color: INK,
+      });
+
+      // Ext price (right-aligned)
+      const extStr = fmtMoney(Number(line.line_total) || 0);
+      const ew = fontBold.widthOfTextAtSize(extStr, size);
+      page.drawText(extStr, {
+        x: COL.ext.x + COL.ext.w - ew - 6,
+        y: textY,
+        size,
+        font: fontBold,
+        color: INK,
+      });
+    }
+
+    rowY = bottomY;
   }
 
-  // ── Grand Total ───────────────────────────────────────────
-  ensureSpace(40);
+  // Close the table with a border
+  drawTableBorder(page, pageTableTop, rowY);
+  y = rowY - 10;
 
-  // Top border for total
-  page.drawLine({
-    start: { x: MARGIN, y: y },
-    end: { x: PAGE_W - MARGIN, y: y },
-    thickness: 1.5,
-    color: BLACK,
-  });
-  y -= 18;
-
-  const grandTotalLabel = "Grand Total (CAD)";
-  const grandTotalValue = fmt(totalAmount);
-  const labelW = fontBold.widthOfTextAtSize(grandTotalLabel, 11);
-  const valueW = fontBold.widthOfTextAtSize(grandTotalValue, 11);
-
-  page.drawText(grandTotalLabel, {
-    x: PAGE_W - MARGIN - valueW - 16 - labelW,
-    y: y,
-    size: 11,
-    font: fontBold,
-    color: BLACK,
-  });
-  page.drawText(grandTotalValue, {
-    x: PAGE_W - MARGIN - valueW,
-    y: y,
-    size: 11,
-    font: fontBold,
-    color: BLACK,
-  });
-  y -= 24;
-
-  // ── Terms ─────────────────────────────────────────────────
-  ensureSpace(60);
-
-  page.drawLine({
-    start: { x: MARGIN, y: y },
-    end: { x: PAGE_W - MARGIN, y: y },
-    thickness: 0.5,
-    color: BORDER,
-  });
-  y -= 14;
-
-  const termsLines = [
-    `Please confirm receipt of this purchase order and provide expected ship date.`,
-    `All shipments should reference PO number ${po.po_number}.`,
-    `Ship to: R.S. \u00c9lectronique Inc., 5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9, Canada.`,
-    `All amounts are in Canadian Dollars (CAD).`,
+  // ── Totals panel (right side) ─────────────────────────────────
+  const totalsW = 220;
+  const totalsX = PAGE_W - MARGIN - totalsW;
+  const totalRowH = 16;
+  const totalsRows: { label: string; value: string; emphasize?: boolean }[] = [
+    { label: "SUBTOTAL", value: fmtMoney(subtotal) },
+    { label: "TAX", value: fmtMoney(tax) },
+    { label: "SHIPPING", value: fmtMoney(shipping) },
+    { label: "OTHER", value: fmtMoney(other) },
+    { label: "TOTAL", value: fmtMoney(grandTotal), emphasize: true },
   ];
+
+  let ty = y;
+  for (const r of totalsRows) {
+    const labelW = 110;
+    // Label cell
+    page.drawRectangle({
+      x: totalsX,
+      y: ty - totalRowH,
+      width: labelW,
+      height: totalRowH,
+      color: r.emphasize ? INK : HEADER_BG,
+      borderColor: LINE,
+      borderWidth: 0.5,
+    });
+    page.drawText(r.label, {
+      x: totalsX + 8,
+      y: ty - totalRowH + 5,
+      size: r.emphasize ? 9 : 8,
+      font: fontBold,
+      color: r.emphasize ? WHITE : INK,
+    });
+
+    // Value cell
+    page.drawRectangle({
+      x: totalsX + labelW,
+      y: ty - totalRowH,
+      width: totalsW - labelW,
+      height: totalRowH,
+      color: r.emphasize ? HEADER_BG : WHITE,
+      borderColor: LINE,
+      borderWidth: 0.5,
+    });
+    const valStr = "$ " + r.value;
+    const vw = fontBold.widthOfTextAtSize(valStr, 9);
+    page.drawText(valStr, {
+      x: totalsX + totalsW - vw - 8,
+      y: ty - totalRowH + 5,
+      size: 9,
+      font: fontBold,
+      color: INK,
+    });
+    ty -= totalRowH;
+  }
+
+  // ── Comments / Special Instructions (left side, same vertical band as totals) ──
+  const commentsW = CONTENT_W - totalsW - 12;
+  const commentsH = totalRowH * totalsRows.length;
+  const commentsX = MARGIN;
+  const commentsTop = y;
+
+  page.drawRectangle({
+    x: commentsX,
+    y: commentsTop - 16,
+    width: commentsW,
+    height: 16,
+    color: INK,
+  });
+  page.drawText("Comments or Special Instructions", {
+    x: commentsX + 8,
+    y: commentsTop - 12,
+    size: 8,
+    font: fontBold,
+    color: WHITE,
+  });
+  page.drawRectangle({
+    x: commentsX,
+    y: commentsTop - commentsH,
+    width: commentsW,
+    height: commentsH - 16,
+    color: WHITE,
+    borderColor: LINE,
+    borderWidth: 0.5,
+  });
+
+  // Default comment body: PROC reference + confirm receipt note
+  const commentsBody: string[] = [];
+  if (procCode) commentsBody.push(`PROC: ${procCode}`);
+  commentsBody.push(
+    `Please confirm receipt and provide expected ship date.`
+  );
+  commentsBody.push(
+    `All shipments must reference PO # ${po.po_number} on packing slip and invoice.`
+  );
+  commentsBody.push(`All amounts in Canadian Dollars (CAD).`);
+
+  let cy = commentsTop - 16 - 12;
+  for (const cl of commentsBody) {
+    page.drawText(truncate(cl, commentsW - 16, fontRegular, 8), {
+      x: commentsX + 8,
+      y: cy,
+      size: 8,
+      font: fontRegular,
+      color: SUB,
+    });
+    cy -= 11;
+  }
+
+  y = ty - 18;
+
+  // ── Authorized signature block ───────────────────────────────
+  const sigLineW = 200;
+  page.drawLine({
+    start: { x: MARGIN, y: y },
+    end: { x: MARGIN + sigLineW, y: y },
+    thickness: 0.5,
+    color: INK,
+  });
+  page.drawText("Authorized by", {
+    x: MARGIN,
+    y: y - 11,
+    size: 7.5,
+    font: fontRegular,
+    color: MUTED,
+  });
+  page.drawText("Anas Patel, CEO \u2014 R.S. \u00C9lectronique Inc.", {
+    x: MARGIN,
+    y: y + 4,
+    size: 9,
+    font: fontItalic,
+    color: INK,
+  });
+
+  const dateSigX = PAGE_W - MARGIN - sigLineW;
+  page.drawLine({
+    start: { x: dateSigX, y: y },
+    end: { x: dateSigX + sigLineW, y: y },
+    thickness: 0.5,
+    color: INK,
+  });
+  page.drawText("Date", {
+    x: dateSigX,
+    y: y - 11,
+    size: 7.5,
+    font: fontRegular,
+    color: MUTED,
+  });
+  page.drawText(dateStr, {
+    x: dateSigX,
+    y: y + 4,
+    size: 9,
+    font: fontRegular,
+    color: INK,
+  });
+
+  y -= 30;
+
+  // ── Terms & conditions footer ─────────────────────────────────
+  const termsY = Math.max(y, MARGIN + 40);
+  page.drawLine({
+    start: { x: MARGIN, y: termsY },
+    end: { x: PAGE_W - MARGIN, y: termsY },
+    thickness: 0.5,
+    color: LINE,
+  });
+  const termsLines = [
+    "Terms: Net 30 unless otherwise noted. Supplier to acknowledge receipt of this PO within 24 hours.",
+    "Defective or non-conforming parts may be returned at supplier's expense.",
+    "GST/TPS 840134829 \u00B7 QST/TVQ 1214617001",
+  ];
+  let tlY = termsY - 11;
   for (const tl of termsLines) {
     page.drawText(tl, {
       x: MARGIN,
-      y: y,
-      size: 8,
+      y: tlY,
+      size: 7,
       font: fontRegular,
-      color: LIGHT_GRAY,
+      color: MUTED,
     });
-    y -= 12;
+    tlY -= 9;
   }
 
-  // Draw footer on the last page
-  drawFooter(page, pageNum);
+  // Page label (bottom right)
+  const pageLbl = po.po_number;
+  const plw = fontRegular.widthOfTextAtSize(pageLbl, 7);
+  page.drawText(pageLbl, {
+    x: PAGE_W - MARGIN - plw,
+    y: MARGIN - 10 > 0 ? MARGIN - 10 : 10,
+    size: 7,
+    font: fontRegular,
+    color: MUTED,
+  });
 
-  // Update page footers with total page count (re-draw "Page X of Y")
-  // Since pdf-lib doesn't support dynamic render callbacks, we already drew
-  // "Page N" in drawFooter. For multi-page POs we could overlay, but the
-  // simple "Page N" is sufficient for typical supplier POs.
-
-  // ── Serialize ─────────────────────────────────────────────
+  // ── Serialize ─────────────────────────────────────────────────
   const pdfBytes = await doc.save();
 
   // Upload to Supabase Storage
-  const customerCode =
-    procurement?.jobs?.customers?.code ?? "unknown";
+  const customerCode = procurement?.jobs?.customers?.code ?? "unknown";
   const storagePath = `${customerCode}/${po.po_number}.pdf`;
 
   await supabase.storage.from("procurement").upload(storagePath, pdfBytes, {
