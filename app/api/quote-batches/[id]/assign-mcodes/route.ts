@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { classifyComponent } from "@/lib/mcode/classifier";
+import { classifyComponent, fetchKeywords } from "@/lib/mcode/classifier";
 
 /**
  * POST /api/quote-batches/[id]/assign-mcodes
@@ -57,6 +57,32 @@ export async function POST(
     return NextResponse.json({ error: "Failed to fetch lines" }, { status: 500 });
   }
 
+  // Pre-fetch keywords and component details ONCE for the entire batch
+  // (Without this, Layer 1b keyword lookup was skipped entirely — causing
+  // components with "0402" in description to miss the 0402 M-code keyword)
+  const keywords = await fetchKeywords(admin);
+
+  // Batch-fetch component details (dimensions, package, mounting type) for enrichment
+  const mpns = [...new Set(lines.map((l) => l.mpn).filter(Boolean))];
+  const detailsMap = new Map<string, { mounting_type: string | null; package_case: string | null; category: string | null; length_mm: number | null; width_mm: number | null }>();
+  if (mpns.length > 0) {
+    const { data: compData } = await admin
+      .from("components")
+      .select("mpn, mounting_type, package_case, category, length_mm, width_mm")
+      .in("mpn", mpns);
+    for (const row of compData ?? []) {
+      if (row.mounting_type || row.package_case || row.length_mm || row.width_mm) {
+        detailsMap.set(row.mpn, {
+          mounting_type: row.mounting_type,
+          package_case: row.package_case,
+          category: row.category,
+          length_mm: row.length_mm,
+          width_mm: row.width_mm,
+        });
+      }
+    }
+  }
+
   // Classify each unique component through the 3-layer pipeline
   let classified = 0;
   let unclassified = 0;
@@ -72,7 +98,9 @@ export async function POST(
         cpc: line.cpc ?? "",
         manufacturer: line.manufacturer ?? "",
       },
-      admin
+      admin,
+      keywords,
+      detailsMap
     );
 
     const needsReview = !result.m_code || (result.confidence !== undefined && result.confidence < 0.85);

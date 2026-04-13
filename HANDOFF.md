@@ -453,11 +453,76 @@
 
 ---
 
+### Session 8 — April 13, 2026
+
+**6 UI/UX bugs fixed from Anas's screenshots (6 parallel agents).**
+
+**1. Payment Terms — configurable from settings:**
+- New settings page: `/settings/payment-terms` with add/remove UI
+- Payment terms stored in `app_settings` (key: `payment_terms`)
+- Customer edit form and create customer dialog now fetch terms from settings
+- Fallback to defaults if settings not configured
+
+**2. GMP Autocomplete combobox:**
+- Replaced toggle button (text/dropdown) with single combobox input
+- Type to search — dropdown auto-appears with matching GMPs (gmp_number + board_name)
+- Select existing or type new — no mode switching
+- Click-outside closes dropdown
+
+**3. BOM Description column fix:**
+- Removed "value" from description keyword exact-match and contains-match lists in `lib/bom/column-mapper.ts`
+- Added "value" as last-resort fallback — only used if no actual "Description" column exists
+- Fixes Cevians BOM showing "100nF", "4.7k" in Description instead of actual part descriptions
+
+**4. 0402 M-code classification fix:**
+- Fixed keyword matching in `app/api/quote-batches/[id]/assign-mcodes/route.ts`
+- Components with "0402" in description (like "RES 23.4K OHM 0.1% 1/16W 0402") now correctly classify as 0402, not CP
+- Classifier `classifyComponent` now fetches keywords from DB when none are passed (single-component calls)
+
+**5. Quote tier layout redesign — row-wise with per-tier PCB + NRE breakdown:**
+- Each tier is now a ROW: Board Qty | PCB Unit Price | NRE Programming | NRE Stencil | NRE PCB Fab
+- PCB unit price is per-tier (different quantities = different PCB prices)
+- NRE split into 3 categories: Programming (dynamic), Stencil ($400 default), PCB Fabrication (dynamic)
+- Shipping remains a single shared field below the tier table
+- Preview API updated to accept per-tier PCB prices and NRE breakdown
+- Quote creation API updated to store per-tier pricing
+- Pricing engine updated to accept per-tier NRE values
+
+**6. BOM PCB line auto-creation:**
+- Parser now always creates a PCB line if BOM doesn't have one
+- 3-tier fallback: filename extraction → GMP info (board_name/gmp_number) → generic "PCB1"
+- `AUTO-PCB` logged in parse result with source detail
+- GMP record fetched before parsing to provide board name
+
+**Files changed:**
+- `lib/bom/column-mapper.ts` — description keyword priority fix
+- `lib/bom/parser.ts` — PCB auto-creation with GMP fallback
+- `app/api/bom/parse/route.ts` — pass GMP info to parser
+- `components/bom/upload-form.tsx` — GMP autocomplete combobox
+- `components/customers/customer-edit-form.tsx` — dynamic payment terms from settings
+- `components/customers/create-customer-dialog.tsx` — dynamic payment terms from settings
+- `components/customers/customer-edit-toggle.tsx` — payment terms prop
+- `app/(dashboard)/customers/[id]/page.tsx` — pass payment terms to edit form
+- `app/(dashboard)/settings/page.tsx` — link to payment terms settings
+- `app/(dashboard)/settings/payment-terms/page.tsx` — new settings page
+- `components/settings/payment-terms-settings.tsx` — new settings component
+- `app/api/settings/route.ts` — payment terms CRUD
+- `components/quotes/new-quote-form.tsx` — row-wise tier layout with per-tier PCB + NRE
+- `app/api/quotes/preview/route.ts` — accept per-tier PCB prices and NRE breakdown
+- `app/api/quotes/route.ts` — store per-tier pricing
+- `lib/pricing/engine.ts` — per-tier NRE calculation
+- `lib/pricing/types.ts` — updated QuoteInput types
+- `app/api/quote-batches/[id]/assign-mcodes/route.ts` — 0402 classification fix
+- `lib/mcode/classifier.ts` — keyword fetch fallback for single-component calls
+
+**End state:** 29 tables, 65+ API routes, 40 pages, ~38K lines TypeScript. AI agent: 39 tools.
+
+---
+
 ## Known Issues / Tech Debt
 
 ### Must Fix Soon
 - [ ] **Duplicate PAR rules** between `rules.ts` (in-code) and `m_code_rules` DB table — classifier uses in-code rules. Need to consolidate to DB-only
-- [ ] **M-code classification still has inaccuracies** — Anas reported wrong M-codes. Need specific examples to trace which rule/keyword is wrong
 
 ### Fixed (was broken)
 - [x] **Security: /api/pricing/[mpn]** — auth check added (Session 5)
@@ -470,6 +535,12 @@
 - [x] **Production scheduling** — Kanban, weekly schedule, dashboard, job scheduler built (Session 7)
 - [x] **Procurement merge-split cycle 2** — batch ordering with cross-job dedup built (Session 7)
 - [x] **Proc batch code format** — fixed to match VBA YYMMDD CUST-XYNNN format (Session 7)
+- [x] **Payment terms hardcoded** — now configurable from settings (Session 8)
+- [x] **GMP field clunky toggle** — replaced with autocomplete combobox (Session 8)
+- [x] **BOM Description mapped wrong** — "Value" no longer overrides actual Description (Session 8)
+- [x] **0402 M-code misclassification** — components with "0402" in description now classify correctly (Session 8)
+- [x] **Quote tiers horizontal** — redesigned to row-wise with per-tier PCB price + 3 NRE categories (Session 8)
+- [x] **BOM missing PCB line** — parser now auto-creates PCB line with 3-tier fallback (Session 8)
 
 ### Nice to Have
 - [ ] Copy button on M-code override cells (Anas requested)
@@ -477,7 +548,6 @@
 - [ ] Email integration (send quotes/invoices)
 - [ ] AI chat memory persistence
 - [ ] Mobile responsiveness
-- [ ] Volume-based price breaks from DigiKey/Mouser (per-tier pricing)
 - [ ] Dashboard quick action buttons (New Quote, New Job)
 - [ ] Loading states on slow operations (pricing, classification)
 - [ ] QC verification workflow (PROC Verification V3 equivalent)
@@ -487,26 +557,27 @@
 ## How to Start Next Session
 
 ```
-Read HANDOFF.md first, then CLAUDE.md, then BUILD_PROMPT.md.
+Read HANDOFF.md first, then CLAUDE.md.
 
 Key context:
-- App is ~75% complete toward replacing 11 Excel/VBA workbooks
+- App is ~80% complete toward replacing 11 Excel/VBA workbooks
 - 4,026 components pre-loaded for M-code classification
 - Quote flow works end-to-end (BOM → classify → price → PDF)
+- Quote tiers are row-wise with per-tier PCB price + 3 NRE categories
 - Labour costing built with VBA TIME File rates ($130/hr labour, $165/hr SMT)
 - Production scheduling: Kanban + weekly view + dashboard
 - Procurement ordering/receiving + batch merge-split cycle 2 built
 - All PDFs use pdf-lib (pure JS)
 - All API routes have auth checks
+- Full audit trail on 31 tables via DB triggers
+- Classification 10x faster (parallel batches) + size rules working
 - Abdul's Wiki (ABDULS_WIKI.md) documents every table, API, page, button
 
 What needs work next:
-1. M-code classification accuracy — Anas says some are still wrong, need specific examples
-2. Duplicate PAR rules consolidation (in-code vs DB)
-3. Apply migrations 020 + 023 to Supabase production
-4. Test all new features end-to-end
-5. Email integration
-6. QC verification workflow
+1. Duplicate PAR rules consolidation (in-code vs DB)
+2. Test all new features end-to-end
+3. Email integration
+4. QC verification workflow
 
 IMPORTANT RULES:
 - Update HANDOFF.md after EVERY change AND push — Anas requires this
@@ -515,4 +586,4 @@ IMPORTANT RULES:
 - The VBA code IS the spec. If BUILD_PROMPT.md says one thing and VBA does another, VBA wins.
 ```
 
-*Last updated: April 11, 2026, Session 7*
+*Last updated: April 13, 2026, Session 8*

@@ -4,17 +4,28 @@ import { calculateQuote } from "@/lib/pricing/engine";
 import { searchPartPrice } from "@/lib/pricing/digikey";
 import { searchMouserPrice } from "@/lib/pricing/mouser";
 import { searchLCSCPrice } from "@/lib/pricing/lcsc";
-import type { PricingLine, OverageTier, PricingSettings } from "@/lib/pricing/types";
+import type { PricingLine, OverageTier, PricingSettings, TierInput } from "@/lib/pricing/types";
 
 // ---------------------------------------------------------------------------
 // POST /api/quotes/preview — Calculate pricing with live API lookups
 // ---------------------------------------------------------------------------
 
+interface PreviewTierInput {
+  qty: number;
+  pcb_unit_price: number;
+  nre_programming: number;
+  nre_stencil: number;
+  nre_pcb_fab: number;
+}
+
 interface PreviewBody {
   bom_id: string;
-  quantities: number[];
-  pcb_unit_price: number;
-  nre_charge: number;
+  /** New per-tier inputs */
+  tiers?: PreviewTierInput[];
+  /** @deprecated — legacy flat fields for backward compat */
+  quantities?: number[];
+  pcb_unit_price?: number;
+  nre_charge?: number;
   shipping_flat: number;
 }
 
@@ -29,19 +40,36 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json()) as PreviewBody;
-  const { bom_id, quantities, pcb_unit_price, nre_charge, shipping_flat } =
+  const { bom_id, tiers: tierInputs, quantities: legacyQuantities, pcb_unit_price: legacyPcbPrice, nre_charge: legacyNreCharge, shipping_flat } =
     body;
 
-  if (
-    !bom_id ||
-    !Array.isArray(quantities) ||
-    quantities.length < 1
-  ) {
+  // Support both new per-tier format and legacy flat format
+  const hasTiers = Array.isArray(tierInputs) && tierInputs.length > 0;
+  const hasLegacy = Array.isArray(legacyQuantities) && legacyQuantities.length > 0;
+
+  if (!bom_id || (!hasTiers && !hasLegacy)) {
     return NextResponse.json(
-      { error: "Missing required fields: bom_id, quantities (array of 1+ numbers)" },
+      { error: "Missing required fields: bom_id, tiers (array) or quantities (array)" },
       { status: 400 }
     );
   }
+
+  // Resolve to the unified TierInput format
+  const resolvedTiers: TierInput[] = hasTiers
+    ? tierInputs!.map((t) => ({
+        qty: t.qty,
+        pcb_unit_price: t.pcb_unit_price ?? 0,
+        nre_programming: t.nre_programming ?? 0,
+        nre_stencil: t.nre_stencil ?? 0,
+        nre_pcb_fab: t.nre_pcb_fab ?? 0,
+      }))
+    : legacyQuantities!.map((qty) => ({
+        qty,
+        pcb_unit_price: legacyPcbPrice ?? 0,
+        nre_programming: 0,
+        nre_stencil: 0,
+        nre_pcb_fab: 0,
+      }));
 
   // --- Fetch BOM lines (non-PCB only) ---
   const { data: bomLines, error: bomError } = await supabase
@@ -219,12 +247,10 @@ export async function POST(req: NextRequest) {
   // --- Calculate pricing ---
   const pricing = calculateQuote({
     lines: pricingLines,
-    quantities,
-    pcb_unit_price,
-    nre_charge,
     shipping_flat,
     overages: overageTiers,
     settings,
+    tier_inputs: resolvedTiers,
   });
 
   return NextResponse.json({

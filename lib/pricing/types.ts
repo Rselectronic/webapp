@@ -83,14 +83,28 @@ export interface LabourBreakdown {
   th_placement_sum: number;         // Sum of qty for TH
 }
 
+/** Per-tier input: each quantity tier can have its own PCB price and NRE breakdown */
+export interface TierInput {
+  qty: number;
+  pcb_unit_price: number;
+  nre_programming: number;
+  nre_stencil: number;
+  nre_pcb_fab: number;
+}
+
 export interface QuoteInput {
   lines: PricingLine[];
-  quantities: number[];
-  pcb_unit_price: number;
-  nre_charge: number;
+  /** @deprecated Use `tier_inputs` instead. Kept for backward compatibility. */
+  quantities?: number[];
+  /** @deprecated Use per-tier values in `tier_inputs` instead. */
+  pcb_unit_price?: number;
+  /** @deprecated Use per-tier NRE breakdown in `tier_inputs` instead. */
+  nre_charge?: number;
   shipping_flat: number;
   overages: OverageTier[];
   settings: PricingSettings;
+  /** New per-tier input with individual PCB prices and NRE breakdown */
+  tier_inputs?: TierInput[];
 }
 
 export interface MissingPriceComponent {

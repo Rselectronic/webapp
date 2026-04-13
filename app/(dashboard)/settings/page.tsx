@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database } from "lucide-react";
+import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database, CreditCard } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const settingsLinks = [
@@ -9,6 +9,13 @@ const settingsLinks = [
       "Adjust markup rates, assembly costs, labour rates, and NRE defaults.",
     href: "/settings/pricing",
     icon: DollarSign,
+  },
+  {
+    title: "Payment Terms",
+    description:
+      "Manage the list of payment terms available in customer forms (Net 30, Net 60, etc.).",
+    href: "/settings/payment-terms",
+    icon: CreditCard,
   },
   {
     title: "Customer BOM Configs",

@@ -102,6 +102,13 @@ export async function POST(request: Request) {
 
   const bomConfig = (customer.bom_config as BomConfig) ?? { columns: "auto_detect" };
 
+  // Fetch GMP record for auto-PCB fallback (board name / GMP number)
+  const { data: gmp } = await admin
+    .from("gmps")
+    .select("gmp_number, board_name")
+    .eq("id", gmpId)
+    .single();
+
   try {
     const buffer = await file.arrayBuffer();
     const fileName = file.name;
@@ -210,7 +217,14 @@ export async function POST(request: Request) {
         suggestion: "Set bom_config on the customer with explicit column mappings, e.g.: {\"columns\": {\"qty\": \"Your Qty Column\", \"mpn\": \"Your Part Number Column\", \"designator\": \"Your Ref Des Column\"}}",
       }, { status: 400 });
     }
-    const parseResult = parseBom(rawRows, mapping, headers, bomConfig, fileName);
+    const parseResult = parseBom(
+      rawRows,
+      mapping,
+      headers,
+      bomConfig,
+      fileName,
+      gmp ? { gmp_number: gmp.gmp_number, board_name: gmp.board_name } : undefined
+    );
 
     // Upload file to Supabase Storage (admin bypasses RLS)
     const filePath = `${customer.code}/${gmpId}/${fileName}`;

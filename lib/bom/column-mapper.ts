@@ -6,7 +6,7 @@ const EXACT_KEYWORDS: Record<keyof ColumnMapping, string[]> = {
   designator: ["designator", "designation", "ref des", "ref. des.", "reference designator", "refdes", "ref_des", "r des.", "position sur circuit", "part reference", "references", "index", "ref", "component reference", "component"],
   mpn: ["mpn", "manufacturer part number", "manufacturer_pn", "mfr#", "manufacturer part", "part number", "partnumber", "mfg p/n", "manufacturer p/n", "part_number", "manufacturer part number 1", "mfr part number", "mfr part no", "mfg part no", "mfg part number", "mfr p/n", "p/n", "pn", "part no", "part no.", "part#", "part #", "component part number"],
   manufacturer: ["manufacturer", "mfg name", "manufacturier", "mfr name", "manufacturer name", "manufacturer 1", "mfg", "mfr", "vendor", "brand", "supplier"],
-  description: ["description", "desc", "part description", "value", "name", "schematic value", "comment", "component name", "comp description", "spec", "specification"],
+  description: ["description", "desc", "part description", "name", "schematic value", "comment", "component name", "comp description", "spec", "specification"],
   cpc: ["cpc", "erp_pn", "isc p/n", "legend p/n", "fiso#", "customer part", "customer pn", "internal pn", "internal part"],
 };
 
@@ -16,7 +16,7 @@ const CONTAINS_KEYWORDS: Record<keyof ColumnMapping, string[]> = {
   designator: ["designat", "ref des", "refdes", "reference", "ref."],
   mpn: ["manufacturer p", "mfr p", "mfg p", "part number", "part#", "part #", "manufacturer_pn", "part no", "mfr no", "mfg no", "p/n"],
   manufacturer: ["manufactur", "mfr name", "mfg name", "vendor", "supplier"],
-  description: ["descript", "value", "comment", "spec"],
+  description: ["descript", "comment", "spec"],
   cpc: ["cpc", "erp", "customer part", "internal p"],
 };
 
@@ -82,6 +82,21 @@ export function autoDetectColumns(headers: string[]): ColumnMapping {
       if (alreadyUsed) continue;
       if (substrings.some((sub) => normalizedHeaders[i].includes(sub))) {
         (mapping as Record<string, number>)[field] = i;
+        break;
+      }
+    }
+  }
+
+  // Fallback: if no description column found, use "value" as a low-priority fallback.
+  // "value" columns (e.g. "100nF", "4.7k") are not true descriptions, but when there
+  // is no actual "Description" column they are the closest substitute.
+  if (mapping.description === undefined) {
+    const usedIndices = new Set(Object.values(mapping).filter((v): v is number => v !== undefined));
+    for (let i = 0; i < normalizedHeaders.length; i++) {
+      if (usedIndices.has(i)) continue;
+      const h = normalizedHeaders[i];
+      if (h === "value" || h === "val") {
+        (mapping as Record<string, number>).description = i;
         break;
       }
     }

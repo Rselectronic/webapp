@@ -31,6 +31,15 @@ interface Address {
   is_default: boolean;
 }
 
+const DEFAULT_PAYMENT_TERMS = [
+  "Net 30",
+  "Net 15",
+  "Net 45",
+  "Net 60",
+  "Due on receipt",
+  "Prepaid",
+];
+
 interface CustomerEditFormProps {
   customerId: string;
   initialData: {
@@ -44,13 +53,14 @@ interface CustomerEditFormProps {
     shipping_addresses: Address[];
     bom_config: Record<string, unknown> | null;
   };
+  paymentTermsOptions?: string[];
   onClose: () => void;
 }
 
 const emptyContact: Contact = { name: "", email: "", phone: "", role: "", is_primary: false };
 const emptyAddress: Address = { label: "", street: "", city: "", province: "", postal_code: "", country: "Canada", is_default: false };
 
-export function CustomerEditForm({ customerId, initialData, onClose }: CustomerEditFormProps) {
+export function CustomerEditForm({ customerId, initialData, paymentTermsOptions, onClose }: CustomerEditFormProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,12 +193,11 @@ export function CustomerEditForm({ customerId, initialData, onClose }: CustomerE
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Net 30">Net 30</SelectItem>
-              <SelectItem value="Net 15">Net 15</SelectItem>
-              <SelectItem value="Net 45">Net 45</SelectItem>
-              <SelectItem value="Net 60">Net 60</SelectItem>
-              <SelectItem value="Due on receipt">Due on receipt</SelectItem>
-              <SelectItem value="Prepaid">Prepaid</SelectItem>
+              {(paymentTermsOptions ?? DEFAULT_PAYMENT_TERMS).map((term) => (
+                <SelectItem key={term} value={term}>
+                  {term}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

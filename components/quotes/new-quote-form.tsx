@@ -36,6 +36,25 @@ interface PreviewResult {
   warnings: string[];
 }
 
+/** Per-tier form row state */
+interface TierRow {
+  qty: string;
+  pcb_unit_price: string;
+  nre_programming: string;
+  nre_stencil: string;
+  nre_pcb_fab: string;
+}
+
+function defaultTierRow(qty = ""): TierRow {
+  return {
+    qty,
+    pcb_unit_price: "",
+    nre_programming: "0",
+    nre_stencil: "400",
+    nre_pcb_fab: "0",
+  };
+}
+
 interface NewQuoteFormProps {
   customers: Customer[];
 }
@@ -46,9 +65,12 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
   const [customerId, setCustomerId] = useState("");
   const [boms, setBoms] = useState<Bom[]>([]);
   const [bomId, setBomId] = useState("");
-  const [quantities, setQuantities] = useState<string[]>(["50", "100", "250", "500"]);
-  const [pcbPrice, setPcbPrice] = useState("");
-  const [nre, setNre] = useState("350");
+  const [tierRows, setTierRows] = useState<TierRow[]>([
+    defaultTierRow("50"),
+    defaultTierRow("100"),
+    defaultTierRow("250"),
+    defaultTierRow("500"),
+  ]);
   const [shipping, setShipping] = useState("200");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,32 +102,39 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
     setPreview(null);
   }, []);
 
-  const updateQuantity = (index: number, value: string) => {
-    setQuantities((prev) => {
+  const updateTierField = (index: number, field: keyof TierRow, value: string) => {
+    setTierRows((prev) => {
       const next = [...prev];
-      next[index] = value;
+      next[index] = { ...next[index], [field]: value };
       return next;
     });
-  };
-
-  const addQuantity = () => {
-    setQuantities((prev) => [...prev, ""]);
     setPreview(null);
   };
 
-  const removeQuantity = (index: number) => {
-    if (quantities.length <= 1) return;
-    setQuantities((prev) => prev.filter((_, i) => i !== index));
+  const addTierRow = () => {
+    setTierRows((prev) => [...prev, defaultTierRow()]);
+    setPreview(null);
+  };
+
+  const removeTierRow = (index: number) => {
+    if (tierRows.length <= 1) return;
+    setTierRows((prev) => prev.filter((_, i) => i !== index));
     setPreview(null);
   };
 
   const selectedBom = boms.find((b) => b.id === bomId);
 
-  const parsedQuantities = quantities.map((q) => parseInt(q, 10) || 0);
-  const validQuantities = parsedQuantities.length > 0 && parsedQuantities.every((q) => q > 0);
+  const parsedTiers = tierRows.map((row) => ({
+    qty: parseInt(row.qty, 10) || 0,
+    pcb_unit_price: parseFloat(row.pcb_unit_price) || 0,
+    nre_programming: parseFloat(row.nre_programming) || 0,
+    nre_stencil: parseFloat(row.nre_stencil) || 0,
+    nre_pcb_fab: parseFloat(row.nre_pcb_fab) || 0,
+  }));
+  const validTiers = parsedTiers.length > 0 && parsedTiers.every((t) => t.qty > 0);
 
   const handleCalculate = async () => {
-    if (!bomId || !validQuantities) return;
+    if (!bomId || !validTiers) return;
     setLoading(true);
     setError(null);
     setPreview(null);
@@ -116,9 +145,7 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bom_id: bomId,
-          quantities: parsedQuantities,
-          pcb_unit_price: parseFloat(pcbPrice) || 0,
-          nre_charge: parseFloat(nre) || 0,
+          tiers: parsedTiers,
           shipping_flat: parseFloat(shipping) || 0,
         }),
       });
@@ -150,9 +177,7 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
           bom_id: bomId,
           gmp_id: selectedBom.gmp_id,
           customer_id: customerId,
-          quantities: parsedQuantities,
-          pcb_unit_price: parseFloat(pcbPrice) || 0,
-          nre_charge: parseFloat(nre) || 0,
+          tiers: parsedTiers,
           shipping_flat: parseFloat(shipping) || 0,
         }),
       });
@@ -228,87 +253,121 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
         </Card>
       )}
 
-      {/* Step 3: Quantities & Costs */}
+      {/* Step 3: Tier Inputs (row-wise) */}
       {bomId && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              3. Quantities & Cost Inputs
+              3. Pricing Tiers ({tierRows.length} tier{tierRows.length !== 1 ? "s" : ""})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label>Board Quantities ({quantities.length} tier{quantities.length !== 1 ? "s" : ""})</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addQuantity}
-                >
-                  <Plus className="mr-1 h-3 w-3" />
-                  Add Tier
-                </Button>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {quantities.map((q, i) => (
-                  <div key={i} className="relative">
-                    <Label className="mb-1 block text-xs text-gray-500">
-                      Tier {i + 1}
-                    </Label>
-                    <div className="flex gap-1">
-                      <Input
-                        type="number"
-                        min="1"
-                        value={q}
-                        onChange={(e) => updateQuantity(i, e.target.value)}
-                        placeholder={`Qty ${i + 1}`}
-                      />
-                      {quantities.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 w-9 p-0 shrink-0 text-gray-400 hover:text-red-500"
-                          onClick={() => removeQuantity(i)}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {/* Tier table */}
+            <div className="overflow-x-auto rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-12">Tier</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Board Qty</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">PCB Unit Price ($)</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">NRE Programming ($)</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">NRE Stencil ($)</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">NRE PCB Fab ($)</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-12"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tierRows.map((row, i) => (
+                    <tr key={i} className="border-b dark:border-gray-800">
+                      <td className="px-3 py-2 text-center text-xs font-medium text-gray-400">
+                        {i + 1}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={row.qty}
+                          onChange={(e) => updateTierField(i, "qty", e.target.value)}
+                          placeholder="Qty"
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={row.pcb_unit_price}
+                          onChange={(e) => updateTierField(i, "pcb_unit_price", e.target.value)}
+                          placeholder="0.00"
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.nre_programming}
+                          onChange={(e) => updateTierField(i, "nre_programming", e.target.value)}
+                          placeholder="0"
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.nre_stencil}
+                          onChange={(e) => updateTierField(i, "nre_stencil", e.target.value)}
+                          placeholder="400"
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.nre_pcb_fab}
+                          onChange={(e) => updateTierField(i, "nre_pcb_fab", e.target.value)}
+                          placeholder="0"
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        {tierRows.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-500"
+                            onClick={() => removeTierRow(i)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="mb-1 block text-xs text-gray-500">
-                  PCB Unit Price ($)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={pcbPrice}
-                  onChange={(e) => setPcbPrice(e.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <Label className="mb-1 block text-xs text-gray-500">
-                  NRE Charge ($)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={nre}
-                  onChange={(e) => setNre(e.target.value)}
-                  placeholder="350"
-                />
-              </div>
-              <div>
+            {/* Add tier + Shipping row */}
+            <div className="flex items-end justify-between gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addTierRow}
+              >
+                <Plus className="mr-1 h-3 w-3" />
+                Add Tier
+              </Button>
+
+              <div className="w-48">
                 <Label className="mb-1 block text-xs text-gray-500">
                   Shipping ($)
                 </Label>
@@ -325,7 +384,7 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
 
             <Button
               onClick={handleCalculate}
-              disabled={loading || !validQuantities}
+              disabled={loading || !validTiers}
               className="w-full"
             >
               {loading ? (

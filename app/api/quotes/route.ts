@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calculateQuote } from "@/lib/pricing/engine";
-import type { PricingLine, OverageTier, PricingSettings } from "@/lib/pricing/types";
+import type { PricingLine, OverageTier, PricingSettings, TierInput } from "@/lib/pricing/types";
 
 // ---------------------------------------------------------------------------
 // GET /api/quotes — List quotes with optional filters
@@ -48,13 +48,24 @@ export async function GET(req: NextRequest) {
 // POST /api/quotes — Create a new quote from a parsed BOM
 // ---------------------------------------------------------------------------
 
+interface CreateQuoteTierInput {
+  qty: number;
+  pcb_unit_price: number;
+  nre_programming: number;
+  nre_stencil: number;
+  nre_pcb_fab: number;
+}
+
 interface CreateQuoteBody {
   bom_id: string;
   gmp_id: string;
   customer_id: string;
-  quantities: number[];
-  pcb_unit_price: number;
-  nre_charge: number;
+  /** New per-tier inputs */
+  tiers?: CreateQuoteTierInput[];
+  /** @deprecated — legacy flat fields */
+  quantities?: number[];
+  pcb_unit_price?: number;
+  nre_charge?: number;
   shipping_flat: number;
   notes?: string;
 }
@@ -74,28 +85,45 @@ export async function POST(req: NextRequest) {
     bom_id,
     gmp_id,
     customer_id,
-    quantities,
-    pcb_unit_price,
-    nre_charge,
+    tiers: tierInputs,
+    quantities: legacyQuantities,
+    pcb_unit_price: legacyPcbPrice,
+    nre_charge: legacyNreCharge,
     shipping_flat,
     notes,
   } = body;
 
-  if (
-    !bom_id ||
-    !gmp_id ||
-    !customer_id ||
-    !Array.isArray(quantities) ||
-    quantities.length < 1
-  ) {
+  const hasTiers = Array.isArray(tierInputs) && tierInputs.length > 0;
+  const hasLegacy = Array.isArray(legacyQuantities) && legacyQuantities.length > 0;
+
+  if (!bom_id || !gmp_id || !customer_id || (!hasTiers && !hasLegacy)) {
     return NextResponse.json(
       {
         error:
-          "Missing required fields: bom_id, gmp_id, customer_id, quantities (array of 1+ numbers)",
+          "Missing required fields: bom_id, gmp_id, customer_id, tiers (array) or quantities (array)",
       },
       { status: 400 }
     );
   }
+
+  // Resolve to unified TierInput format
+  const resolvedTiers: TierInput[] = hasTiers
+    ? tierInputs!.map((t) => ({
+        qty: t.qty,
+        pcb_unit_price: t.pcb_unit_price ?? 0,
+        nre_programming: t.nre_programming ?? 0,
+        nre_stencil: t.nre_stencil ?? 0,
+        nre_pcb_fab: t.nre_pcb_fab ?? 0,
+      }))
+    : legacyQuantities!.map((qty) => ({
+        qty,
+        pcb_unit_price: legacyPcbPrice ?? 0,
+        nre_programming: 0,
+        nre_stencil: 0,
+        nre_pcb_fab: 0,
+      }));
+
+  const quantities = resolvedTiers.map((t) => t.qty);
 
   // --- Fetch BOM lines (non-PCB only) ---
   const { data: bomLines, error: bomError } = await supabase
@@ -177,12 +205,10 @@ export async function POST(req: NextRequest) {
   // --- Calculate pricing ---
   const pricing = calculateQuote({
     lines: pricingLines,
-    quantities,
-    pcb_unit_price,
-    nre_charge,
     shipping_flat,
     overages: overageTiers,
     settings,
+    tier_inputs: resolvedTiers,
   });
 
   // --- Generate quote number: QT-YYMM-NNN ---
@@ -211,11 +237,16 @@ export async function POST(req: NextRequest) {
       quantities: Object.fromEntries(
         quantities.map((q, i) => [`qty_${i + 1}`, q])
       ),
-      pricing: { tiers: pricing.tiers, warnings: pricing.warnings, missing_price_components: pricing.missing_price_components },
+      pricing: {
+        tiers: pricing.tiers,
+        warnings: pricing.warnings,
+        missing_price_components: pricing.missing_price_components,
+        tier_inputs: resolvedTiers,
+      },
       component_markup: settings.component_markup_pct ?? 20,
-      pcb_cost_per_unit: pcb_unit_price,
+      pcb_cost_per_unit: resolvedTiers[0]?.pcb_unit_price ?? 0,
       assembly_cost: pricing.tiers[0]?.assembly_cost ?? 0,
-      nre_charge,
+      nre_charge: pricing.tiers[0]?.nre_charge ?? 0,
       labour_rate: settings.labour_rate_per_hour ?? null,
       smt_rate: settings.smt_cost_per_placement ?? null,
       validity_days: settings.quote_validity_days ?? 30,

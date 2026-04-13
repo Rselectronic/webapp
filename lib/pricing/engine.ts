@@ -1,4 +1,4 @@
-import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent, LabourBreakdown } from "./types";
+import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent, LabourBreakdown, TierInput } from "./types";
 import { getOrderQty } from "./overage";
 
 const SMT_MCODES = new Set(["CP", "CPEXP", "0402", "0201", "IP"]);
@@ -15,13 +15,25 @@ const IP_FEEDER_MCODES = new Set(["IP"]);
 export function calculateQuote(input: QuoteInput): QuotePricing {
   const {
     lines,
-    quantities,
-    pcb_unit_price,
-    nre_charge,
+    quantities: legacyQuantities,
+    pcb_unit_price: legacyPcbPrice,
+    nre_charge: legacyNreCharge,
     shipping_flat,
     overages,
     settings,
+    tier_inputs,
   } = input;
+
+  // Resolve per-tier inputs: prefer new tier_inputs, fall back to legacy flat values
+  const resolvedTiers: TierInput[] = tier_inputs && tier_inputs.length > 0
+    ? tier_inputs
+    : (legacyQuantities ?? []).map((qty) => ({
+        qty,
+        pcb_unit_price: legacyPcbPrice ?? 0,
+        nre_programming: 0,
+        nre_stencil: 0,
+        nre_pcb_fab: 0,
+      }));
 
   const markupMultiplier = 1 + settings.component_markup_pct / 100;
   const pcbMarkupMultiplier = 1 + settings.pcb_markup_pct / 100;
@@ -62,25 +74,32 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
 
   const totalSmtPlacements = cpPlacementSum + ipPlacementSum + mansmtCountSum;
 
-  // NRE breakdown — use granular settings if available, fall back to nre_charge
-  const nreProgramming = settings.nre_programming ?? 0;
-  const nreStencil = settings.nre_stencil ?? 0;
-  const nreSetup = settings.nre_setup ?? 0;
-  const nrePcbFab = settings.nre_pcb_fab ?? 0;
-  const nreMisc = settings.nre_misc ?? 0;
-  // If granular NRE values are all 0 but nre_charge is provided, use nre_charge as the total
-  const nreTotal = (nreProgramming + nreStencil + nreSetup + nrePcbFab + nreMisc) > 0
-    ? nreProgramming + nreStencil + nreSetup + nrePcbFab + nreMisc
-    : nre_charge;
-
-  // Setup & programming time costs
+  // Setup & programming time costs (from settings, shared across tiers)
   const labourRate = settings.labour_rate_per_hour ?? 130;
   const setupTimeHours = settings.setup_time_hours ?? 0;
   const programmingTimeHours = settings.programming_time_hours ?? 0;
   const setupCost = round2(setupTimeHours * labourRate);
   const programmingCost = round2(programmingTimeHours * labourRate);
 
-  for (const boardQty of quantities) {
+  // NRE settings-level defaults (setup + misc — not per-tier)
+  const nreSetup = settings.nre_setup ?? 0;
+  const nreMisc = settings.nre_misc ?? 0;
+
+  for (const tierInput of resolvedTiers) {
+    const boardQty = tierInput.qty;
+
+    // Per-tier NRE values
+    const nreProgramming = tierInput.nre_programming ?? 0;
+    const nreStencil = tierInput.nre_stencil ?? 0;
+    const nrePcbFab = tierInput.nre_pcb_fab ?? 0;
+    const perTierNreTotal = nreProgramming + nreStencil + nrePcbFab + nreSetup + nreMisc;
+
+    // If new per-tier NRE is all 0 AND we have a legacy nre_charge, use that
+    const nreTotal = perTierNreTotal > 0
+      ? perTierNreTotal
+      : (legacyNreCharge ?? 0);
+
+    const pcb_unit_price = tierInput.pcb_unit_price ?? 0;
     let componentCost = 0;
     let smtPlacements = 0;
     let thPlacements = 0;

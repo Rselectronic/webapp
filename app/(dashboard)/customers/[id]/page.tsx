@@ -42,7 +42,7 @@ export default async function CustomerDetailPage({
   const billingAddresses = (customer.billing_addresses as AddressItem[] | null) ?? [];
   const shippingAddresses = (customer.shipping_addresses as AddressItem[] | null) ?? [];
 
-  const [quotesResult, jobsResult, invoicesResult, gmpsResult, bomsResult] = await Promise.all([
+  const [quotesResult, jobsResult, invoicesResult, gmpsResult, bomsResult, paymentTermsResult] = await Promise.all([
     supabase
       .from("quotes")
       .select("id, quote_number, status, created_at, gmps(gmp_number)")
@@ -71,6 +71,11 @@ export default async function CustomerDetailPage({
       .select("id, gmp_id, file_name, revision, status, component_count, created_at")
       .eq("customer_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "payment_terms")
+      .single(),
   ]);
 
   type QuoteRow = {
@@ -118,6 +123,9 @@ export default async function CustomerDetailPage({
   const invoices = (invoicesResult.data ?? []) as unknown as InvoiceRow[];
   const gmps = (gmpsResult.data ?? []) as unknown as GmpRow[];
   const allBoms = (bomsResult.data ?? []) as unknown as BomRow[];
+  const paymentTermsOptions = Array.isArray(paymentTermsResult.data?.value)
+    ? (paymentTermsResult.data.value as string[])
+    : undefined;
 
   // Group BOMs by GMP
   const bomsByGmp = new Map<string, BomRow[]>();
@@ -151,6 +159,7 @@ export default async function CustomerDetailPage({
           shipping_addresses: shippingAddresses,
           bom_config: bomConfig,
         }}
+        paymentTermsOptions={paymentTermsOptions}
       >
 
       <div className="flex items-center justify-between">

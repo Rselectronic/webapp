@@ -36,10 +36,11 @@ interface CustomerEditToggleProps {
     shipping_addresses: Address[];
     bom_config: Record<string, unknown> | null;
   };
+  paymentTermsOptions?: string[];
   children: React.ReactNode;
 }
 
-export function CustomerEditToggle({ customerId, customerData, children }: CustomerEditToggleProps) {
+export function CustomerEditToggle({ customerId, customerData, paymentTermsOptions, children }: CustomerEditToggleProps) {
   const [editing, setEditing] = useState(false);
 
   if (editing) {
@@ -47,6 +48,7 @@ export function CustomerEditToggle({ customerId, customerData, children }: Custo
       <CustomerEditForm
         customerId={customerId}
         initialData={customerData}
+        paymentTermsOptions={paymentTermsOptions}
         onClose={() => setEditing(false)}
       />
     );

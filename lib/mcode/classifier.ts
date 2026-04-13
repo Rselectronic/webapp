@@ -61,7 +61,9 @@ export async function classifyComponent(
   }
 
   // Layer 1b: Keyword lookup (240+ common terms from mcode_keyword_lookup table)
-  const keywordResult = matchKeywords(enrichedInput, cachedKeywords ?? null);
+  // If no keywords were passed (e.g. single-component call), fetch them from DB
+  const keywords = cachedKeywords !== undefined ? cachedKeywords : await fetchKeywords(supabase);
+  const keywordResult = matchKeywords(enrichedInput, keywords ?? null);
   if (keywordResult) return keywordResult;
 
   // Layer 2: Rule engine (PAR rules) — now with enriched dimensions/package data

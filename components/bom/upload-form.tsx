@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Upload, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Upload, FileSpreadsheet, Loader2, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Customer {
   id: string;
@@ -35,25 +36,37 @@ export function UploadForm({ customers }: UploadFormProps) {
   const [customerId, setCustomerId] = useState("");
   const [gmps, setGmps] = useState<Gmp[]>([]);
   const [gmpId, setGmpId] = useState("");
-  const [newGmpNumber, setNewGmpNumber] = useState("");
-  const [isNewGmp, setIsNewGmp] = useState(false);
+  const [gmpInput, setGmpInput] = useState("");
+  const [gmpDropdownOpen, setGmpDropdownOpen] = useState(false);
+  const gmpWrapperRef = useRef<HTMLDivElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (gmpWrapperRef.current && !gmpWrapperRef.current.contains(e.target as Node)) {
+        setGmpDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handleCustomerChange = useCallback(async (id: string | null) => {
     if (!id) return;
     setCustomerId(id);
     setGmpId("");
-    setIsNewGmp(false);
+    setGmpInput("");
+    setGmpDropdownOpen(false);
     setGmps([]);
 
     const res = await fetch(`/api/gmps?customer_id=${id}`);
     if (res.ok) {
       const data = await res.json();
       setGmps(data.gmps ?? []);
-      if ((data.gmps ?? []).length === 0) setIsNewGmp(true);
     }
   }, []);
 
@@ -64,6 +77,42 @@ export function UploadForm({ customers }: UploadFormProps) {
     if (dropped) setFile(dropped);
   }, []);
 
+  // Filtered GMPs based on input text
+  const filteredGmps = gmps.filter((g) => {
+    if (!gmpInput.trim()) return true;
+    const q = gmpInput.toLowerCase();
+    return (
+      g.gmp_number.toLowerCase().includes(q) ||
+      (g.board_name && g.board_name.toLowerCase().includes(q))
+    );
+  });
+
+  // Whether the input exactly matches an existing GMP (case-insensitive)
+  const exactMatch = gmps.find(
+    (g) => g.gmp_number.toLowerCase() === gmpInput.trim().toLowerCase()
+  );
+
+  const handleGmpSelect = (gmp: Gmp) => {
+    setGmpId(gmp.id);
+    setGmpInput(gmp.gmp_number);
+    setGmpDropdownOpen(false);
+  };
+
+  const handleGmpInputChange = (value: string) => {
+    setGmpInput(value);
+    // If the user edits the text, clear the selected ID so we know it's a "new" GMP
+    // unless the typed text exactly matches an existing GMP number
+    const match = gmps.find(
+      (g) => g.gmp_number.toLowerCase() === value.trim().toLowerCase()
+    );
+    if (match) {
+      setGmpId(match.id);
+    } else {
+      setGmpId("");
+    }
+    setGmpDropdownOpen(true);
+  };
+
   const handleUpload = async () => {
     if (!file || !customerId) return;
     setUploading(true);
@@ -72,16 +121,17 @@ export function UploadForm({ customers }: UploadFormProps) {
     try {
       let resolvedGmpId = gmpId;
 
-      if (isNewGmp && newGmpNumber) {
+      // If no existing GMP was selected, create a new one
+      if (!resolvedGmpId && gmpInput.trim()) {
         const gmpRes = await fetch("/api/gmps", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ customer_id: customerId, gmp_number: newGmpNumber }),
+          body: JSON.stringify({ customer_id: customerId, gmp_number: gmpInput.trim() }),
         });
         if (gmpRes.status === 409) {
           // GMP already exists — look it up and use it (new BOM revision under existing GMP)
           const existingGmp = gmps.find(
-            (g) => g.gmp_number.toLowerCase() === newGmpNumber.trim().toLowerCase()
+            (g) => g.gmp_number.toLowerCase() === gmpInput.trim().toLowerCase()
           );
           if (existingGmp) {
             resolvedGmpId = existingGmp.id;
@@ -92,12 +142,12 @@ export function UploadForm({ customers }: UploadFormProps) {
               const lookupData = await lookupRes.json();
               const match = (lookupData.gmps ?? []).find(
                 (g: { id: string; gmp_number: string }) =>
-                  g.gmp_number.toLowerCase() === newGmpNumber.trim().toLowerCase()
+                  g.gmp_number.toLowerCase() === gmpInput.trim().toLowerCase()
               );
               if (match) resolvedGmpId = match.id;
             }
           }
-          if (!resolvedGmpId) throw new Error("GMP exists but could not be found. Try selecting it from the dropdown.");
+          if (!resolvedGmpId) throw new Error("GMP exists but could not be found. Please try again.");
         } else if (!gmpRes.ok) {
           const err = await gmpRes.json();
           throw new Error(err.error ?? "Failed to create GMP");
@@ -107,7 +157,7 @@ export function UploadForm({ customers }: UploadFormProps) {
         }
       }
 
-      if (!resolvedGmpId) throw new Error("Please select or create a GMP");
+      if (!resolvedGmpId) throw new Error("Please enter a GMP number");
 
       const formData = new FormData();
       formData.append("file", file);
@@ -128,7 +178,7 @@ export function UploadForm({ customers }: UploadFormProps) {
     }
   };
 
-  const gmpReady = gmpId || (isNewGmp && newGmpNumber.trim().length > 0);
+  const gmpReady = gmpId || gmpInput.trim().length > 0;
 
   return (
     <div className="space-y-6">
@@ -155,42 +205,53 @@ export function UploadForm({ customers }: UploadFormProps) {
       {customerId && (
         <div className="space-y-2">
           <Label>GMP (Board / Product)</Label>
-          {gmps.length > 0 && !isNewGmp ? (
-            <div className="flex gap-2">
-              <Select value={gmpId} onValueChange={(v) => v && setGmpId(v)}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select existing GMP...">
-                    {gmpId ? (() => { const g = gmps.find(g => g.id === gmpId); return g ? `${g.gmp_number}${g.board_name ? ` — ${g.board_name}` : ""}` : gmpId; })() : undefined}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {gmps.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.gmp_number}
-                      {g.board_name ? ` — ${g.board_name}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" onClick={() => setIsNewGmp(true)}>
-                New GMP
-              </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g. TL265-5040-000-T"
-                value={newGmpNumber}
-                onChange={(e) => setNewGmpNumber(e.target.value)}
-                className="flex-1"
-              />
-              {gmps.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => setIsNewGmp(false)}>
-                  Existing
-                </Button>
-              )}
-            </div>
-          )}
+          <div className="relative" ref={gmpWrapperRef}>
+            <Input
+              placeholder={gmps.length > 0 ? "Type to search or enter new GMP..." : "e.g. TL265-5040-000-T"}
+              value={gmpInput}
+              onChange={(e) => handleGmpInputChange(e.target.value)}
+              onFocus={() => { if (gmps.length > 0) setGmpDropdownOpen(true); }}
+              autoComplete="off"
+            />
+            {/* Dropdown list */}
+            {gmpDropdownOpen && gmps.length > 0 && (
+              <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                <div className="max-h-48 overflow-y-auto p-1">
+                  {filteredGmps.length > 0 ? (
+                    filteredGmps.map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left hover:bg-muted transition-colors",
+                          gmpId === g.id && "bg-muted"
+                        )}
+                        onMouseDown={(e) => {
+                          // Use mousedown to fire before input blur
+                          e.preventDefault();
+                          handleGmpSelect(g);
+                        }}
+                      >
+                        <Check className={cn("h-3.5 w-3.5 shrink-0", gmpId === g.id ? "opacity-100" : "opacity-0")} />
+                        <span className="font-medium">{g.gmp_number}</span>
+                        {g.board_name && <span className="text-muted-foreground truncate">— {g.board_name}</span>}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+                      No matching GMPs — press Upload to create <span className="font-medium">{gmpInput.trim()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Hint text below input */}
+            {gmpInput.trim() && !gmpId && !exactMatch && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                New GMP will be created: <span className="font-medium">{gmpInput.trim()}</span>
+              </p>
+            )}
+          </div>
         </div>
       )}
 

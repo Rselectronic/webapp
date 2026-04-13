@@ -1,10 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +21,15 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, X, User, MapPin } from "lucide-react";
+
+const DEFAULT_PAYMENT_TERMS = [
+  "Net 30",
+  "Net 15",
+  "Net 45",
+  "Net 60",
+  "Due on receipt",
+  "Prepaid",
+];
 
 interface Contact {
   name: string;
@@ -46,11 +62,26 @@ export function CreateCustomerDialog() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentTermsOptions, setPaymentTermsOptions] = useState<string[]>(DEFAULT_PAYMENT_TERMS);
 
   const [code, setCode] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("Net 30");
   const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/settings?key=payment_terms")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPaymentTermsOptions(data);
+        }
+      })
+      .catch(() => {
+        // Fallback to defaults on error — already set
+      });
+  }, [open]);
   const [contacts, setContacts] = useState<Contact[]>([{ ...emptyContact(), is_primary: true }]);
   const [billingAddresses, setBillingAddresses] = useState<Address[]>([{ ...emptyAddress(), label: "Primary", is_default: true }]);
   const [shippingAddresses, setShippingAddresses] = useState<Address[]>([{ ...emptyAddress(), label: "Primary", is_default: true }]);
@@ -234,8 +265,18 @@ export function CreateCustomerDialog() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Payment Terms</label>
-                <Input placeholder="Net 30" value={paymentTerms}
-                  onChange={e => setPaymentTerms(e.target.value)} />
+                <Select value={paymentTerms} onValueChange={(v) => { if (v) setPaymentTerms(v); }}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentTermsOptions.map((term) => (
+                      <SelectItem key={term} value={term}>
+                        {term}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div>

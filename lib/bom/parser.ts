@@ -46,7 +46,9 @@ export function parseBom(
   headers: string[],
   config: BomConfig,
   /** Optional: BOM filename, used for Auto-PCB fallback (Rule 8) when no PCB row found */
-  bomFileName?: string
+  bomFileName?: string,
+  /** Optional: GMP number, used as final Auto-PCB fallback when filename extraction fails */
+  gmpInfo?: { gmp_number: string; board_name?: string | null }
 ): ParseResult {
   const log: ParseLogEntry[] = [];
   const included: ParsedLine[] = [];
@@ -179,9 +181,18 @@ export function parseBom(
   // Rule 7: MPN Merge — same MPN → combine rows
   const merged = mergeSameMpn(included, log, stats);
 
-  // Rule 8: Auto-PCB from filename — if no PCB row found in BOM, derive from file name
-  if (!pcbRow && bomFileName) {
-    const pcbName = extractPcbNameFromFile(bomFileName);
+  // Rule 8: Auto-PCB — if no PCB row found in BOM, create one from available info
+  if (!pcbRow) {
+    // Try filename first
+    let pcbName: string | null = bomFileName ? extractPcbNameFromFile(bomFileName) : null;
+    let pcbSource: string | null = pcbName ? `filename: ${bomFileName}` : null;
+
+    // Fallback to GMP info if filename extraction failed
+    if (!pcbName && gmpInfo) {
+      pcbName = gmpInfo.board_name || gmpInfo.gmp_number;
+      pcbSource = `GMP: ${pcbName}`;
+    }
+
     if (pcbName) {
       pcbRow = {
         line_number: 0,
@@ -195,9 +206,22 @@ export function parseBom(
         is_dni: false,
       };
       stats.auto_pcb = true;
-      log.push({ raw_row_index: -1, action: "AUTO-PCB", detail: `Derived from filename: ${bomFileName}` });
+      log.push({ raw_row_index: -1, action: "AUTO-PCB", detail: `Derived from ${pcbSource}` });
     } else {
-      log.push({ raw_row_index: -1, action: "AUTO-PCB-FAIL", detail: `Could not derive PCB name from: ${bomFileName}` });
+      // Final fallback: create a generic PCB row so there is always a PCB line
+      pcbRow = {
+        line_number: 0,
+        quantity: 1,
+        reference_designator: "PCB1",
+        cpc: "",
+        description: "Printed Circuit Board",
+        mpn: "",
+        manufacturer: "",
+        is_pcb: true,
+        is_dni: false,
+      };
+      stats.auto_pcb = true;
+      log.push({ raw_row_index: -1, action: "AUTO-PCB", detail: "Generic PCB row — no filename or GMP info available" });
     }
   }
 
