@@ -9,6 +9,7 @@ import {
   drawTableHeaderRow,
   drawSignatureBlock,
   truncate,
+  sanitizeForPdf,
   fmtDate,
   A4_WIDTH,
   A4_HEIGHT,
@@ -230,11 +231,20 @@ export async function GET(
       });
 
       pdfBytes = await generateJobCard({
-        procBatchCode,
-        jobNumber: job.job_number,
-        customerName,
-        customerCode,
-        rows,
+        procBatchCode: procBatchCode ? sanitizeForPdf(procBatchCode) : null,
+        jobNumber: sanitizeForPdf(job.job_number),
+        customerName: sanitizeForPdf(customerName),
+        customerCode: sanitizeForPdf(customerCode),
+        rows: rows.map((r) => ({
+          poNumber: sanitizeForPdf(r.poNumber),
+          productName: sanitizeForPdf(r.productName),
+          bl: sanitizeForPdf(r.bl),
+          qty: sanitizeForPdf(r.qty),
+          bomName: sanitizeForPdf(r.bomName),
+          gerberName: sanitizeForPdf(r.gerberName),
+          stencilName: sanitizeForPdf(r.stencilName),
+          mCodeSummary: sanitizeForPdf(r.mCodeSummary),
+        })),
       });
       fileName = `${job.job_number}-Job-Card.pdf`;
       break;
@@ -242,16 +252,16 @@ export async function GET(
 
     case "traveller": {
       pdfBytes = await generateTraveller({
-        jobNumber: job.job_number,
-        customerName,
-        customerCode,
-        gmpNumber,
-        boardName,
+        jobNumber: sanitizeForPdf(job.job_number),
+        customerName: sanitizeForPdf(customerName),
+        customerCode: sanitizeForPdf(customerCode),
+        gmpNumber: sanitizeForPdf(gmpNumber),
+        boardName: boardName ? sanitizeForPdf(boardName) : boardName,
         boardQty: job.quantity,
         assemblyType: job.assembly_type ?? "TB",
-        poNumber: job.po_number,
-        procBatchCode,
-        bomName: bom?.file_name ?? "",
+        poNumber: job.po_number ? sanitizeForPdf(job.po_number) : null,
+        procBatchCode: procBatchCode ? sanitizeForPdf(procBatchCode) : null,
+        bomName: bom?.file_name ? sanitizeForPdf(bom.file_name) : "",
       });
       fileName = `${job.job_number}-Production-Traveller.pdf`;
       break;
@@ -311,16 +321,16 @@ export async function GET(
       const boardQtyPB = job.quantity;
 
       pdfBytes = await generatePrintBom({
-        jobNumber: job.job_number,
-        customerName,
-        customerCode,
-        gmpNumber,
-        boardName,
+        jobNumber: sanitizeForPdf(job.job_number),
+        customerName: sanitizeForPdf(customerName),
+        customerCode: sanitizeForPdf(customerCode),
+        gmpNumber: sanitizeForPdf(gmpNumber),
+        boardName: boardName ? sanitizeForPdf(boardName) : boardName,
         quantity: boardQtyPB,
-        bomFileName: bom.file_name,
-        bomRevision: bom.revision,
-        poNumber: job.po_number,
-        procBatchCode,
+        bomFileName: sanitizeForPdf(bom.file_name),
+        bomRevision: sanitizeForPdf(bom.revision),
+        poNumber: job.po_number ? sanitizeForPdf(job.po_number) : null,
+        procBatchCode: procBatchCode ? sanitizeForPdf(procBatchCode) : null,
         lines: (bomLines ?? []).map((l) => {
           const qtyPerBoard = l.quantity;
           const baseNeeded = qtyPerBoard * boardQtyPB;
@@ -330,12 +340,12 @@ export async function GET(
             quantity: qtyPerBoard,
             extras,
             orderQty: baseNeeded + extras,
-            referenceDesignator: l.reference_designator,
-            cpc: l.cpc,
-            description: l.description,
-            mpn: l.mpn,
-            manufacturer: l.manufacturer,
-            mCode: l.m_code,
+            referenceDesignator: sanitizeForPdf(l.reference_designator),
+            cpc: sanitizeForPdf(l.cpc),
+            description: sanitizeForPdf(l.description),
+            mpn: sanitizeForPdf(l.mpn),
+            manufacturer: sanitizeForPdf(l.manufacturer),
+            mCode: l.m_code ? sanitizeForPdf(l.m_code) : null,
             isPcb: l.is_pcb ?? false,
             isDni: l.is_dni ?? false,
           };
@@ -484,16 +494,31 @@ export async function GET(
         });
       }
 
+      // Sanitize all string fields for WinAnsi encoding (BOM descriptions
+      // often contain Greek letters like Ω, μ that crash standard PDF fonts).
+      const sanitizedReceptionLines = receptionLines.map((l) => ({
+        ...l,
+        mpn: l.mpn ? sanitizeForPdf(l.mpn) : null,
+        description: l.description ? sanitizeForPdf(l.description) : null,
+        manufacturer: l.manufacturer ? sanitizeForPdf(l.manufacturer) : null,
+        referenceDesignator: l.referenceDesignator
+          ? sanitizeForPdf(l.referenceDesignator)
+          : l.referenceDesignator,
+        mCode: l.mCode ? sanitizeForPdf(l.mCode) : null,
+        supplier: l.supplier ? sanitizeForPdf(l.supplier) : l.supplier,
+        supplierPn: l.supplierPn ? sanitizeForPdf(l.supplierPn) : l.supplierPn,
+      }));
+
       pdfBytes = await generateReception({
-        jobNumber: job.job_number,
-        customerName,
-        customerCode,
-        gmpNumber,
-        boardName,
+        jobNumber: sanitizeForPdf(job.job_number),
+        customerName: sanitizeForPdf(customerName),
+        customerCode: sanitizeForPdf(customerCode),
+        gmpNumber: sanitizeForPdf(gmpNumber),
+        boardName: boardName ? sanitizeForPdf(boardName) : boardName,
         quantity: job.quantity,
-        procBatchCode,
-        poNumber: job.po_number,
-        lines: receptionLines,
+        procBatchCode: procBatchCode ? sanitizeForPdf(procBatchCode) : null,
+        poNumber: job.po_number ? sanitizeForPdf(job.po_number) : null,
+        lines: sanitizedReceptionLines,
       });
       fileName = `${job.job_number}-Reception.pdf`;
       break;

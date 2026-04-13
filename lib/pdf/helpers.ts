@@ -191,7 +191,43 @@ export function drawTableHeaderRow(
 }
 
 /**
+ * Sanitize text for WinAnsi encoding (standard PDF fonts like Helvetica).
+ * Replaces common non-Latin-1 characters with safe equivalents.
+ * WITHOUT this, pdf-lib throws on Greek letters (Ω, μ), typographic
+ * quotes, em-dashes, superscripts, etc. — which appear constantly in
+ * component descriptions like "1kΩ" or "0.1μF".
+ */
+export function sanitizeForPdf(text: string | null | undefined): string {
+  if (!text) return "";
+  const replacements: Record<string, string> = {
+    // Greek / math
+    "Ω": "Ohm", "μ": "u", "π": "pi", "Δ": "D", "Σ": "Sum",
+    "α": "a", "β": "b", "γ": "g", "θ": "th", "λ": "lambda",
+    // Math symbols
+    "±": "+/-", "×": "x", "÷": "/", "≈": "~", "≤": "<=", "≥": ">=",
+    "≠": "!=", "∞": "inf", "√": "sqrt", "°": " deg",
+    // Superscripts / subscripts
+    "²": "^2", "³": "^3", "¹": "^1", "⁰": "^0", "⁴": "^4", "⁵": "^5",
+    "⁶": "^6", "⁷": "^7", "⁸": "^8", "⁹": "^9",
+    // Typographic punctuation
+    "—": "-", "–": "-", "―": "-",
+    "\u2018": "'", "\u2019": "'", "\u201C": '"', "\u201D": '"',
+    "…": "...", "•": "*", "·": ".",
+    // Non-breaking space + other whitespace
+    "\u00A0": " ", "\u2009": " ", "\u200B": "",
+  };
+  let out = text;
+  for (const [from, to] of Object.entries(replacements)) {
+    out = out.split(from).join(to);
+  }
+  // Strip anything remaining that isn't printable ASCII or Latin-1
+  out = out.replace(/[^\x20-\xFF]/g, "?");
+  return out;
+}
+
+/**
  * Truncate text to fit within a given width.
+ * Automatically sanitizes for WinAnsi encoding so Greek letters etc. won't crash.
  */
 export function truncate(
   text: string,
@@ -200,8 +236,9 @@ export function truncate(
   size: number
 ): string {
   if (!text) return "";
-  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
-  let t = text;
+  const safe = sanitizeForPdf(text);
+  if (font.widthOfTextAtSize(safe, size) <= maxWidth) return safe;
+  let t = safe;
   while (t.length > 0 && font.widthOfTextAtSize(t + "...", size) > maxWidth) {
     t = t.slice(0, -1);
   }
