@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 const VALID_STATUSES = [
   "created",
@@ -137,4 +137,63 @@ export async function PATCH(
   }
 
   return NextResponse.json(updated);
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: jobId } = await params;
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data: profile } = await supabase.from("users").select("role").eq("id", user.id).single();
+  if (profile?.role !== "ceo") {
+    return NextResponse.json({ error: "Permission denied — only CEO can delete jobs" }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+
+  // Check if job exists
+  const { data: job } = await admin.from("jobs").select("id, job_number").eq("id", jobId).single();
+  if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+
+  // Block delete if invoices reference this job
+  const { count: invoiceCount } = await admin
+    .from("invoices")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", jobId);
+
+  if ((invoiceCount ?? 0) > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete — ${invoiceCount} invoice(s) reference this job. Delete the invoices first.` },
+      { status: 409 }
+    );
+  }
+
+  // Block delete if procurements reference this job
+  const { count: procCount } = await admin
+    .from("procurements")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", jobId);
+
+  if ((procCount ?? 0) > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete — ${procCount} procurement(s) reference this job. Delete the procurements first.` },
+      { status: 409 }
+    );
+  }
+
+  // Delete dependent records first (CASCADE would handle these, but be explicit)
+  await admin.from("job_status_log").delete().eq("job_id", jobId);
+  await admin.from("production_events").delete().eq("job_id", jobId);
+  await admin.from("serial_numbers").delete().eq("job_id", jobId);
+
+  // Delete the job record
+  const { error } = await admin.from("jobs").delete().eq("id", jobId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ success: true, deleted: jobId });
 }

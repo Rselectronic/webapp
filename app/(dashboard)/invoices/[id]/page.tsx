@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
+import { DeleteInvoiceButton } from "@/components/invoices/delete-invoice-button";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/format";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
@@ -129,6 +130,10 @@ export default async function InvoiceDetailPage({
               Download PDF
             </Button>
           </Link>
+          <DeleteInvoiceButton
+            invoiceId={id}
+            invoiceNumber={invoice.invoice_number}
+          />
         </div>
       </div>
 

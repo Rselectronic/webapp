@@ -528,14 +528,22 @@
 - Removed `console.log` in login action that leaked user email to server logs
 - Audit found codebase is clean: no unused files, no unused deps, no orphaned routes
 
-**9. Delete BOM feature:**
-- New `DELETE /api/bom/[id]` — deletes BOM + all bom_lines + storage file
-- Blocks delete if quotes or jobs reference the BOM (409 error with message)
-- New `DeleteBomButton` component with confirmation dialog
-- Added to BOM detail page header next to Export button
-- CEO + Operations Manager only
+**9. Delete functionality on ALL entities (BOM, Quotes, Jobs, Procurements, Invoices, Customers, NCRs):**
+- Every entity now has a `DELETE` API endpoint + confirmation dialog button on its detail page
+- All deletes check referential integrity — blocks with clear error if downstream records exist
+- Each uses `AlertDialog` confirmation, shows inline error if blocked
 
-**End state:** 29 tables, 68+ API routes, 40 pages, ~38K lines TypeScript. AI agent: 39 tools.
+| Entity | API Route | Who Can Delete | Safety Checks |
+|--------|-----------|---------------|---------------|
+| BOM | `DELETE /api/bom/[id]` | CEO + Ops | Blocks if quotes/jobs reference it |
+| Quote | `DELETE /api/quotes/[id]` | CEO + Ops | Blocks if jobs reference it. Deletes PDF from storage |
+| Job | `DELETE /api/jobs/[id]` | CEO only | Blocks if invoices/procurements reference it. Cascades: status_log, events, serials |
+| Procurement | `DELETE /api/procurements/[id]` | CEO + Ops | Blocks if supplier POs reference it. Cascades: procurement_lines |
+| Invoice | `DELETE /api/invoices/[id]` | CEO only | Blocks if status is "paid". Deletes PDF, cascades payments |
+| Customer | `DELETE /api/customers/[id]` | CEO only | Soft-delete (is_active=false). Blocks hard delete if quotes/jobs/BOMs exist |
+| NCR | `DELETE /api/ncr/[id]` | CEO + Ops | Only deletable when status is "open" (closed NCRs are quality records) |
+
+**End state:** 29 tables, 74+ API routes, 40 pages, ~39K lines TypeScript. AI agent: 39 tools.
 
 ---
 

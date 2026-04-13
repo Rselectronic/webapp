@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Mail, Phone, User, MapPin, CircuitBoard, Plus, FileText } from "lucide-react";
 import { formatPhone, formatDate, formatCurrency } from "@/lib/utils/format";
 import { CustomerEditToggle } from "@/components/customers/customer-edit-toggle";
+import { DeleteCustomerButton } from "@/components/customers/delete-customer-button";
 
 export default async function CustomerDetailPage({
   params,
@@ -174,6 +175,10 @@ export default async function CustomerDetailPage({
           </div>
           <p className="font-mono text-gray-500">{customer.code}</p>
         </div>
+        <DeleteCustomerButton
+          customerId={id}
+          customerName={customer.company_name}
+        />
       </div>
 
       {/* Contacts */}

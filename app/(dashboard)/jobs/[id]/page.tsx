@@ -9,6 +9,7 @@ import { JobActions } from "@/components/jobs/job-actions";
 import { ShippingActions } from "@/components/shipping/shipping-actions";
 import { NCRCreateDialog } from "@/components/ncr/ncr-create-dialog";
 import { PoPricingSection } from "@/components/jobs/po-pricing-section";
+import { DeleteJobButton } from "@/components/jobs/delete-job-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import { JobScheduler } from "@/components/production/job-scheduler";
 
@@ -179,6 +180,7 @@ export default async function JobDetailPage({
               </Button>
             </Link>
           )}
+          <DeleteJobButton jobId={id} jobNumber={job.job_number} />
         </div>
       </div>
 

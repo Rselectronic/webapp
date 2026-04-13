@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 export async function GET(
   _req: NextRequest,
@@ -257,4 +257,48 @@ export async function PATCH(
     );
 
   return NextResponse.json(updated);
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: procId } = await params;
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data: profile } = await supabase.from("users").select("role").eq("id", user.id).single();
+  if (profile?.role !== "ceo" && profile?.role !== "operations_manager") {
+    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+
+  // Check if procurement exists
+  const { data: proc } = await admin.from("procurements").select("id").eq("id", procId).single();
+  if (!proc) return NextResponse.json({ error: "Procurement not found" }, { status: 404 });
+
+  // Check if any supplier POs reference this procurement
+  const { count: poCount } = await admin
+    .from("supplier_pos")
+    .select("id", { count: "exact", head: true })
+    .eq("procurement_id", procId);
+
+  if ((poCount ?? 0) > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete — ${poCount} supplier PO(s) reference this procurement. Delete the POs first.` },
+      { status: 409 }
+    );
+  }
+
+  // Delete procurement_lines first
+  await admin.from("procurement_lines").delete().eq("procurement_id", procId);
+
+  // Delete the procurement record
+  const { error } = await admin.from("procurements").delete().eq("id", procId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ success: true, deleted: procId });
 }

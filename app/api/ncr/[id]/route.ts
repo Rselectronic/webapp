@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 // ---------------------------------------------------------------------------
 // GET /api/ncr/[id] — Fetch a single NCR with joins
@@ -119,4 +119,62 @@ export async function PATCH(
   }
 
   return NextResponse.json(ncr);
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/ncr/[id] — Delete an NCR (only if status is "open")
+// ---------------------------------------------------------------------------
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // CEO + operations_manager only
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "ceo" && profile?.role !== "operations_manager") {
+    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+
+  // Fetch the NCR to check status
+  const { data: ncr } = await admin
+    .from("ncr_reports")
+    .select("id, ncr_number, status")
+    .eq("id", id)
+    .single();
+
+  if (!ncr) {
+    return NextResponse.json({ error: "NCR not found" }, { status: 404 });
+  }
+
+  // Only allow deleting open NCRs — closed NCRs are quality records
+  if (ncr.status !== "open") {
+    return NextResponse.json(
+      {
+        error: `Cannot delete NCR ${ncr.ncr_number} — status is "${ncr.status}". Only open NCRs can be deleted.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  const { error } = await admin.from("ncr_reports").delete().eq("id", id);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true, deleted: id });
 }

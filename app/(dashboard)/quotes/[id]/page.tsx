@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QuoteStatusBadge } from "@/components/quotes/quote-status-badge";
 import { PricingTable } from "@/components/quotes/pricing-table";
 import { QuoteActions } from "@/components/quotes/quote-actions";
+import { DeleteQuoteButton } from "@/components/quotes/delete-quote-button";
 import {
   formatCurrency,
   formatDate,
@@ -163,6 +164,7 @@ export default async function QuoteDetailPage({
               Download PDF
             </Button>
           </Link>
+          <DeleteQuoteButton quoteId={id} quoteName={quote.quote_number} />
         </div>
       </div>
 

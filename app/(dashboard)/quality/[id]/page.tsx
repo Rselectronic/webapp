@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NCRStatusBadge } from "@/components/ncr/ncr-status-badge";
 import { NCRSeverityBadge } from "@/components/ncr/ncr-severity-badge";
 import { NCRActions } from "@/components/ncr/ncr-actions";
+import { DeleteNCRButton } from "@/components/ncr/delete-ncr-button";
 import { NCREditForm } from "@/components/ncr/ncr-edit-form";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
 
@@ -79,7 +80,12 @@ export default async function NCRDetailPage({
           </p>
         </div>
 
-        <NCRActions ncrId={id} currentStatus={ncr.status} />
+        <div className="flex items-center gap-2">
+          <NCRActions ncrId={id} currentStatus={ncr.status} />
+          {ncr.status === "open" && (
+            <DeleteNCRButton ncrId={id} ncrNumber={ncr.ncr_number} />
+          )}
+        </div>
       </div>
 
       {/* Info cards */}
