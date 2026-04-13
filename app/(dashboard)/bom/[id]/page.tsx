@@ -12,6 +12,7 @@ import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import { MCodeChart } from "@/components/bom/mcode-chart";
 import { ExportBomButton } from "@/components/bom/export-bom-button";
+import { DeleteBomButton } from "@/components/bom/delete-bom-button";
 import { formatDateTime } from "@/lib/utils/format";
 
 export default async function BomDetailPage({
@@ -107,6 +108,7 @@ export default async function BomDetailPage({
         </div>
         <div className="flex items-center gap-2">
           <ExportBomButton bomId={id} fileName={bom.file_name} gmpNumber={gmp?.gmp_number ?? ""} />
+          <DeleteBomButton bomId={id} bomName={gmp?.gmp_number ?? bom.file_name} />
           <Badge variant={statusVariant}>{bom.status}</Badge>
         </div>
       </div>

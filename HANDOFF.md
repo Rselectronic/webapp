@@ -528,7 +528,14 @@
 - Removed `console.log` in login action that leaked user email to server logs
 - Audit found codebase is clean: no unused files, no unused deps, no orphaned routes
 
-**End state:** 29 tables, 67+ API routes, 40 pages, ~38K lines TypeScript. AI agent: 39 tools.
+**9. Delete BOM feature:**
+- New `DELETE /api/bom/[id]` — deletes BOM + all bom_lines + storage file
+- Blocks delete if quotes or jobs reference the BOM (409 error with message)
+- New `DeleteBomButton` component with confirmation dialog
+- Added to BOM detail page header next to Export button
+- CEO + Operations Manager only
+
+**End state:** 29 tables, 68+ API routes, 40 pages, ~38K lines TypeScript. AI agent: 39 tools.
 
 ---
 
