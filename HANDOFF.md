@@ -572,7 +572,38 @@ Anas added `/Users/rselectronicpc/Downloads/6. BACKEND/` with the actual Excel t
 - Added URL alias map in production-docs route: `?type=job_card`, `?type=print_bom`, `?type=reception_file` (underscored versions from chat API) now work alongside hyphenated forms
 - Fixed pre-existing type errors in print_bom and reception branches
 
-**End state:** 29 tables, 74+ API routes, 40 pages, ~41K lines TypeScript. All 9 PDFs match Excel templates. RS logo embedded in invoice.
+**12. Invoice PDF polish:**
+- Removed all red accent colors (ELECTRONIQUE INC. header, email/web, BILL TO/SHIP TO, TERMS headers) — unified dark slate
+- BILL TO / SHIP TO addresses now word-wrap instead of truncating with "..."
+- Block height auto-expands to fit longer block
+- Font size 8.5pt so long emails fit cleanly
+
+**13. Print BOM + Reception File crash fix (Greek letters):**
+- Root cause: pdf-lib's standard Helvetica uses WinAnsi encoding which can't encode `Ω`, `μ`, `±`, `²`, etc. Lanka BOMs have `1kΩ`, `0.1μF` in descriptions — first unsupported char crashed widthOfTextAtSize → entire PDF blew up.
+- Added `sanitizeForPdf()` helper in `lib/pdf/helpers.ts` with a full replacement map:
+  - Greek: Ω→Ohm, μ→u, π→pi, Δ→D, α/β/γ/θ/λ → latin
+  - Math: ±→+/-, ×→x, ÷→/, ≈→~, ≤→<=, ≥→>=, ∞→inf, √→sqrt, °→ deg
+  - Superscripts: ²→^2, ³→^3, etc.
+  - Typographic: — – ― → -, smart quotes → straight, … → ..., • → *
+  - Non-printable: replaced with "?"
+- Called on every string field before it enters Print BOM, Reception, Job Card, and Traveller generators
+- `truncate()` helper also wraps with sanitize automatically
+
+**14. ABDULS_WIKI.md Part 16 — Supplier APIs:**
+- Full documentation of how DigiKey/Mouser/LCSC are implemented
+- Auth flows, endpoints, request/response shapes, rate limits
+- Caching strategy (api_pricing_cache, 7-day TTL)
+- How M-code classification uses DigiKey's enrichment data
+- Failure modes and fallbacks
+- All API routes that call suppliers
+
+**15. Session 8 — in-progress work (4 agents running in parallel):**
+- Agent 1: Verify supplier APIs actually work live (DigiKey OAuth, Mouser query, LCSC signature) — testing with real MPN, reporting status per supplier
+- Agent 2: Fix AI chat file upload — BOMs, PDFs, images with vision support via Claude
+- Agent 3: AI chat page-context awareness — when user is on /quotes/123, AI knows it and can take over
+- Agent 4: Audit + fix MCP server — real @modelcontextprotocol/sdk implementation for Claude Desktop integration
+
+**End state:** 29 tables, 74+ API routes, 40 pages, ~41K lines TypeScript. All 9 PDFs match Excel templates. RS logo embedded in invoice. Greek letters sanitized. Supplier APIs documented in Abdul's Wiki Part 16.
 
 ---
 

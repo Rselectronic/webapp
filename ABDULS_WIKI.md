@@ -2966,3 +2966,204 @@ Costs:
 ### 15.9 Known Discrepancy
 
 The batch send-back route (`app/api/quote-batches/[id]/send-back/route.ts`) hardcodes SMT at **$0.35/placement** instead of reading the settings value of **$0.035/placement**. That's a 10x difference. The main pricing engine uses the correct value from settings.
+
+---
+
+## Part 16 — Supplier APIs: DigiKey, Mouser, LCSC
+
+Every quote and every procurement gets real-time pricing from three suppliers in parallel. Here's how each one is wired up.
+
+### 16.1 DigiKey (primary)
+
+**Client:** `lib/pricing/digikey.ts`
+**API Version:** v4 (keyword search)
+**Base URLs:**
+- Token: `https://api.digikey.com/v1/oauth2/token`
+- Search: `https://api.digikey.com/products/v4/search/keyword`
+
+**Auth:** OAuth 2.0 client_credentials flow
+- Env vars: `DIGIKEY_CLIENT_ID`, `DIGIKEY_CLIENT_SECRET`
+- Access token cached in memory, 1-minute buffer before refresh
+- `Authorization: Bearer <token>` + `X-DIGIKEY-Client-Id: <id>` headers
+- Locale headers: `X-DIGIKEY-Locale-Site: CA`, `Locale-Language: en`, `Locale-Currency: CAD`
+
+**Rate limit:** 1,000 requests/day (free tier)
+
+**Request:**
+```json
+{
+  "Keywords": "ERJ-2GE0R00X",
+  "Limit": 1,
+  "Offset": 0,
+  "FilterOptionsRequest": {},
+  "SortOptions": { "Field": "None", "SortOrder": "Ascending" }
+}
+```
+
+**Response fields extracted** (v4 uses different names than v3 — easy to get wrong):
+- `ManufacturerProductNumber` → mpn (NOT `ManufacturerPartNumber` — that's v3)
+- `Description.ProductDescription` → description
+- `UnitPrice` → unit_price (CAD)
+- `QuantityAvailable` → stock_qty
+- `ProductVariations[0].DigiKeyProductNumber` → supplier_pn (moved out of top level in v4)
+- `Parameters[]` — each param has `ParameterText` + `ValueText` (not `Parameter`/`Value`):
+  - "Mounting Type" → `mounting_type` (Surface Mount / Through Hole). If missing, **inferred from category name** — DigiKey doesn't populate this param for chip resistors/caps, so we check if Category contains "Surface Mount" or "Through Hole"
+  - "Package / Case" → `package_case` (0402, 0603, SOIC-8, etc.). Falls back to "Supplier Device Package"
+  - "Size / Dimension" → `length_mm`, `width_mm`. Format: `0.039" L x 0.020" W (1.00mm x 0.50mm)`. Parenthetical mm preferred; falls back to plain `1.0mm x 0.5mm` if no parenthetical
+  - "Height - Seated (Max)" → `height_mm`. Also parses parenthetical mm format
+- `Category.ChildCategories[0].Name` → category (most specific, e.g. "Chip Resistor - Surface Mount"). Falls back to top-level `Category.Name`
+
+**Why DigiKey is primary:** It's the only supplier that returns component dimensions in its keyword search response. Those dimensions feed the size-based PAR rules (PAR-20 through PAR-24) in the M-code classifier. Every time we price a component via DigiKey, we enrich the `components` table with these fields so future M-code classification gets smarter.
+
+### 16.2 Mouser
+
+**Client:** `lib/pricing/mouser.ts`
+**API Version:** v1
+**Base URL:** `https://api.mouser.com/api/v1/search/keyword`
+
+**Auth:** API key in query string
+- Env var: `MOUSER_API_KEY`
+- URL: `${base}?apiKey=${key}`
+- No OAuth, no signature
+
+**Rate limit:** 30 requests/minute, 1,000 requests/day
+
+**Request:**
+```json
+{
+  "SearchByKeywordRequest": {
+    "keyword": "ERJ-2GE0R00X",
+    "records": 1,
+    "startingRecord": 0,
+    "searchOptions": "",
+    "searchWithYourSignUpLanguage": ""
+  }
+}
+```
+
+**Response fields extracted:**
+- `SearchResults.Parts[0].ManufacturerPartNumber` → mpn
+- `.Description` → description
+- `.MouserPartNumber` → supplier_pn
+- `.Availability` — string like "1,234 In Stock" — regex-parsed to extract stock_qty
+- `.PriceBreaks[0].Price` — string with currency prefix, stripped and parsed to float
+- `.PriceBreaks[0].Currency` → currency (usually CAD or USD)
+
+**What Mouser does NOT return:** dimensions, mounting_type, package_case in the keyword search. Only basic pricing.
+
+### 16.3 LCSC
+
+**Client:** `lib/pricing/lcsc.ts`
+**API Version:** REST (undated)
+**Base URL:** `https://ips.lcsc.com/rest/wmsc2agent/search/product`
+
+**Auth:** Custom SHA1 signature
+- Env vars: `LCSC_API_KEY`, `LCSC_API_SECRET`
+- Request is GET with query params: `keyword`, `key`, `nonce`, `timestamp`, `sign`
+- Signature: `SHA1(key={key}&nonce={nonce}&secret={secret}&timestamp={timestamp})`
+- Nonce is 16-char random string, regenerated per request
+- Timestamp is milliseconds
+
+**Rate limit:** Depends on partner agreement (LCSC API is still in development for RS)
+
+**Response fields extracted:**
+- `result.tipProductDetailUrlVO[0].productModel` → mpn
+- `.productDescEn` → description
+- `.productCode` → supplier_pn
+- `.stockNumber` → stock_qty
+- `.productPriceList[0].productPrice` OR `.usdPrice` → unit_price
+- `.productPriceList[0].currencySymbol` → currency
+
+### 16.4 How prices flow through the app
+
+```
+User clicks "Calculate Pricing" on a quote
+  ↓
+POST /api/quotes/preview with bom_id + tiers
+  ↓
+For each unique MPN in the BOM:
+  ↓
+  Check api_pricing_cache table for existing row (7-day TTL)
+  ↓ (miss)
+  Promise.allSettled([
+    searchPartPrice(mpn),      // DigiKey
+    searchMouserPrice(mpn),    // Mouser
+    searchLCSCPrice(mpn)       // LCSC
+  ])
+  ↓
+  Pick cheapest price across all 3 suppliers
+  ↓
+  If all 3 fail → retry with description keywords
+  ↓
+  Cache full response in api_pricing_cache (source, mpn, response JSONB)
+  ↓
+  Enrich components table (mounting_type, package_case, dimensions from DigiKey)
+  ↓
+Apply component_markup (default 20%)
+  ↓
+Calculate per-tier totals (components + PCB + assembly + NRE)
+  ↓
+Return pricing result to UI
+```
+
+### 16.5 Caching strategy
+
+Table: `api_pricing_cache`
+
+```sql
+CREATE TABLE api_pricing_cache (
+  id UUID PRIMARY KEY,
+  source TEXT CHECK (source IN ('digikey', 'mouser', 'lcsc')),
+  mpn TEXT NOT NULL,
+  search_key TEXT NOT NULL,   -- what we sent (MPN or description)
+  response JSONB NOT NULL,    -- full API response preserved
+  unit_price DECIMAL(10,4),
+  stock_qty INT,
+  currency TEXT DEFAULT 'CAD',
+  fetched_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days'),
+  UNIQUE(source, search_key)
+);
+```
+
+- 7-day TTL per entry
+- `UNIQUE(source, search_key)` prevents duplicates — upserts on conflict
+- Full API response stored in JSONB column so we can extract more fields later without re-calling the API
+- `expires_at` is checked before every fetch — only calls the live API if cached row is expired or missing
+
+### 16.6 How M-code classification uses the APIs
+
+1. User uploads a BOM
+2. Parser runs — extracts MPNs, descriptions, designators
+3. M-code classifier runs through its 4 layers for each component
+4. Layer 1: Check `components` table — if MPN exists with an M-code, use that (instant)
+5. Layer 1b: Keyword lookup — match description/package against 240+ keywords
+6. Layer 2: PAR rules — match against package_case, mounting_type, dimensions (the last two require enriched data from DigiKey)
+7. Layer 3: Claude AI fallback — only for the stragglers
+8. **When pricing runs later, DigiKey enrichment populates dimensions → future classifications of the same MPN hit the size rules instantly via Layer 2**
+
+So the more BOMs you price, the richer the components table gets, the more accurate classification becomes. It's a learning loop where every price lookup makes the next classification smarter.
+
+### 16.7 Failure modes and fallbacks
+
+**If DigiKey auth fails:** Token request throws. searchPartPrice returns null. Pricing continues with Mouser + LCSC only. Logged but not user-visible.
+
+**If Mouser API key missing:** Client returns null immediately. No error.
+
+**If LCSC signature is wrong:** Request returns 401 or 403. Client returns null. No error.
+
+**If all 3 suppliers fail for an MPN:** The line shows `$0` in the quote preview, and the route retries with description-based keyword search (first 5 words of description). If that also fails, the MPN is flagged as "missing price" in the preview response, and the UI shows a collapsible list of unpriced components.
+
+**Rate limit exceeded:** The response is cached HTTP 429 — treated as a failure, falls back to other suppliers.
+
+### 16.8 API routes that call suppliers
+
+| Route | When it fires | What it does with the result |
+|-------|--------------|------------------------------|
+| `GET /api/pricing/[mpn]` | Manual single-MPN lookup (UI) | Returns best price, enriches components table |
+| `POST /api/quotes/preview` | User clicks "Calculate Pricing" | Returns per-tier totals, warns on missing prices |
+| `POST /api/quote-batches/[id]/run-pricing` | Batch workflow Step 9 | Updates `quote_batch_lines` with prices at ORDER quantities |
+| `POST /api/procurement-batches/[id]/allocate-suppliers` | Procurement batch Step 4 | Picks cheapest supplier per line, updates `procurement_batch_lines` |
+| AI chat tool `getPricing` | AI agent looking up a price | Returns data to the AI for response |
+
+All routes share the same cache and enrichment logic — no duplication.

@@ -74,54 +74,88 @@ export async function searchPartPrice(
     }),
   });
   if (!res.ok) return null;
+  // DigiKey Product Information v4 response shape
   const data = (await res.json()) as {
     Products?: Array<{
-      ManufacturerPartNumber: string;
-      Description: { ProductDescription: string };
+      ManufacturerProductNumber: string;
+      Description: { ProductDescription: string; DetailedDescription?: string };
       UnitPrice: number;
       QuantityAvailable: number;
-      DigiKeyPartNumber: string;
+      ProductVariations?: Array<{
+        DigiKeyProductNumber: string;
+        PackageType?: { Name: string };
+      }>;
       Parameters?: Array<{
         ParameterId: number;
-        Parameter: string;
-        Value: string;
+        ParameterText: string;
+        ValueText: string;
       }>;
-      Category?: { Name: string };
+      Category?: { Name: string; ChildCategories?: Array<{ Name: string }> };
     }>;
   };
   const product = data.Products?.[0];
   if (!product) return null;
 
-  // Extract component details from Parameters array
+  // Extract component details from Parameters array (v4 uses ParameterText/ValueText)
   const params = product.Parameters ?? [];
-  const getParam = (name: string) => params.find((p) => p.Parameter === name)?.Value;
+  const getParam = (name: string) =>
+    params.find((p) => p.ParameterText === name)?.ValueText;
 
-  const mountingType = getParam("Mounting Type");
-  const packageCase = getParam("Package / Case") ?? getParam("Package/Case");
-  const category = product.Category?.Name;
+  // Category: prefer the most-specific child category (e.g. "Chip Resistor - Surface Mount")
+  const topCategory = product.Category?.Name;
+  const childCategory = product.Category?.ChildCategories?.[0]?.Name;
+  const category = childCategory ?? topCategory;
 
-  // Try to parse dimensions from "Size / Dimension" parameter
-  // Format varies: "0.039" L x 0.020" W (1.00mm x 0.50mm)" or "1.0mm x 0.5mm"
+  // Mounting Type: DigiKey only populates this parameter on some categories
+  // (e.g. connectors, ICs). For chip resistors / capacitors it is absent, so
+  // infer from the category name when missing.
+  let mountingType = getParam("Mounting Type");
+  if (!mountingType) {
+    const catLower = (childCategory ?? topCategory ?? "").toLowerCase();
+    if (catLower.includes("surface mount") || catLower.includes("smd")) {
+      mountingType = "Surface Mount";
+    } else if (catLower.includes("through hole")) {
+      mountingType = "Through Hole";
+    }
+  }
+
+  const packageCase =
+    getParam("Package / Case") ??
+    getParam("Package/Case") ??
+    getParam("Supplier Device Package");
+
+  // Parse dimensions. DigiKey "Size / Dimension" format example:
+  //   0.039" L x 0.020" W (1.00mm x 0.50mm)
+  // Fall back to plain "1.0mm x 0.5mm" if no parenthetical.
   let lengthMm: number | undefined;
   let widthMm: number | undefined;
   let heightMm: number | undefined;
-  const sizeStr = getParam("Size / Dimension") ?? getParam("Size/Dimension") ?? "";
-  const mmMatch = sizeStr.match(/([\d.]+)\s*mm\s*[x×]\s*([\d.]+)\s*mm/i);
+  const sizeStr =
+    getParam("Size / Dimension") ?? getParam("Size/Dimension") ?? "";
+  const parenMatch = sizeStr.match(/\(([\d.]+)\s*mm\s*[x×]\s*([\d.]+)\s*mm\)/i);
+  const mmMatch =
+    parenMatch ?? sizeStr.match(/([\d.]+)\s*mm\s*[x×]\s*([\d.]+)\s*mm/i);
   if (mmMatch) {
     lengthMm = parseFloat(mmMatch[1]);
     widthMm = parseFloat(mmMatch[2]);
   }
-  const heightStr = getParam("Height") ?? getParam("Height - Seated (Max)") ?? "";
-  const hMatch = heightStr.match(/([\d.]+)\s*mm/i);
+  const heightStr =
+    getParam("Height - Seated (Max)") ?? getParam("Height") ?? "";
+  // Height format: 0.016" (0.40mm)
+  const hParen = heightStr.match(/\(([\d.]+)\s*mm\)/i);
+  const hMatch = hParen ?? heightStr.match(/([\d.]+)\s*mm/i);
   if (hMatch) heightMm = parseFloat(hMatch[1]);
 
+  // DigiKey PN lives on the first ProductVariation
+  const digikeyPn = product.ProductVariations?.[0]?.DigiKeyProductNumber ?? "";
+
   return {
-    mpn: product.ManufacturerPartNumber,
+    mpn: product.ManufacturerProductNumber,
     description: product.Description.ProductDescription,
     unit_price: product.UnitPrice,
     currency: "CAD",
     in_stock: product.QuantityAvailable > 0,
-    digikey_pn: product.DigiKeyPartNumber,
+    digikey_pn: digikeyPn,
     mounting_type: mountingType,
     package_case: packageCase,
     category,
