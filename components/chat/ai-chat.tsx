@@ -1,7 +1,8 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   MessageCircle,
@@ -19,8 +20,10 @@ import {
   FileText,
   Image as ImageIcon,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { detectPageContext, getPageSuggestions } from "@/lib/chat/page-context";
 
 // ---------- Types ----------
 interface Conversation {
@@ -31,6 +34,13 @@ interface Conversation {
   last_message?: string | null;
 }
 
+interface MediaAttachment {
+  kind: "image" | "pdf";
+  media_type: string;
+  data_base64: string;
+  name: string;
+}
+
 interface FileAttachment {
   file: File;
   file_name: string;
@@ -38,6 +48,7 @@ interface FileAttachment {
   file_type: string;
   file_size: number;
   parsed_preview?: string | null;
+  media?: MediaAttachment | null;
   uploading?: boolean;
 }
 
@@ -50,17 +61,27 @@ export function AIChat() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [fileContext, setFileContext] = useState<string | null>(null);
+  // Media (images/PDFs) pending to attach to the next outgoing user message
+  const [pendingMedia, setPendingMedia] = useState<MediaAttachment[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Current page — makes the chat page-context-aware
+  const pathname = usePathname();
+  const pageCtx = useMemo(() => detectPageContext(pathname), [pathname]);
+  const pageSuggestions = useMemo(() => getPageSuggestions(pageCtx), [pageCtx]);
+  const hasEntityContext = !!(pageCtx && pageCtx.id);
+
   const { messages, setMessages, sendMessage, status, error } = useChat({
     api: "/api/chat",
     body: {
       conversationId: activeConversationId,
       fileContext,
+      pendingMedia,
+      currentPage: pathname,
       attachments: attachments
         .filter((a) => a.file_path)
         .map((a) => ({
@@ -111,6 +132,7 @@ export function AIChat() {
     setActiveConversationId(convId);
     setAttachments([]);
     setFileContext(null);
+    setPendingMedia([]);
 
     try {
       const res = await fetch(`/api/chat/conversations/${convId}`);
@@ -138,6 +160,7 @@ export function AIChat() {
     setMessages([]);
     setAttachments([]);
     setFileContext(null);
+    setPendingMedia([]);
 
     try {
       const res = await fetch("/api/chat/conversations", {
@@ -195,6 +218,15 @@ export function AIChat() {
 
         if (res.ok) {
           const result = await res.json();
+          const mediaPart: MediaAttachment | null = result.media
+            ? {
+                kind: result.media.kind,
+                media_type: result.media.media_type,
+                data_base64: result.media.data_base64,
+                name: file.name,
+              }
+            : null;
+
           setAttachments((prev) =>
             prev.map((a) =>
               a.file === file
@@ -202,16 +234,22 @@ export function AIChat() {
                     ...a,
                     file_path: result.file_path,
                     parsed_preview: result.parsed_preview,
+                    media: mediaPart,
                     uploading: false,
                   }
                 : a
             )
           );
-          // If the file was parsed (BOM), add it to file context
+          // Add parsed text preview to file context (BOM, text file, or the
+          // "[Uploaded image/PDF: ...]" marker from the upload route).
           if (result.parsed_preview) {
             setFileContext((prev) =>
               prev ? prev + "\n\n" + result.parsed_preview : result.parsed_preview
             );
+          }
+          // Queue images/PDFs as multipart inputs for the next message
+          if (mediaPart) {
+            setPendingMedia((prev) => [...prev, mediaPart]);
           }
         } else {
           const err = await res.json().catch(() => ({ error: "Upload failed" }));
@@ -231,6 +269,18 @@ export function AIChat() {
       // Remove this file's parsed_preview from file context
       if (removed?.parsed_preview && fileContext) {
         setFileContext(fileContext.replace(removed.parsed_preview, "").trim() || null);
+      }
+      // Remove any queued media for this file
+      if (removed?.media) {
+        setPendingMedia((curr) =>
+          curr.filter(
+            (m) =>
+              !(
+                m.name === removed.media!.name &&
+                m.data_base64 === removed.media!.data_base64
+              )
+          )
+        );
       }
       return next;
     });
@@ -274,6 +324,12 @@ export function AIChat() {
     // Clear attachments after sending (they're already in context)
     if (attachments.length > 0) {
       setAttachments([]);
+    }
+    // Media (images/PDFs) are only attached to ONE outgoing message.
+    // Clear after sending so the next turn doesn't re-upload them. The text
+    // preview/marker stays in fileContext so the AI remembers the file exists.
+    if (pendingMedia.length > 0) {
+      setPendingMedia([]);
     }
   }
 
@@ -380,8 +436,17 @@ export function AIChat() {
             <Bot className="h-4 w-4 text-gray-700 shrink-0 dark:text-gray-300" />
             <div className="min-w-0">
               <p className="text-sm font-semibold truncate">RS Assistant</p>
-              <p className="text-[10px] text-gray-500 truncate">
-                Customers, quotes, jobs, BOMs
+              <p className="text-[10px] text-gray-500 truncate flex items-center gap-1">
+                {hasEntityContext ? (
+                  <>
+                    <Sparkles className="h-2.5 w-2.5 text-emerald-500" />
+                    <span className="truncate">
+                      Viewing {pageCtx!.type.replace("_", " ")}
+                    </span>
+                  </>
+                ) : (
+                  "Customers, quotes, jobs, BOMs"
+                )}
               </p>
             </div>
           </div>
@@ -411,13 +476,24 @@ export function AIChat() {
           {messages.length === 0 && (
             <div className="text-center text-sm text-gray-400 mt-6 space-y-3">
               <Bot className="h-10 w-10 mx-auto text-gray-300" />
-              <p className="font-medium text-gray-500">How can I help?</p>
+              <p className="font-medium text-gray-500">
+                {hasEntityContext ? "Ask me anything about this page" : "How can I help?"}
+              </p>
+              {hasEntityContext && (
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  I can see this {pageCtx!.type.replace("_", " ")} — no need to re-explain
+                </p>
+              )}
               <div className="space-y-1.5">
-                {[
-                  "Show me all customers",
-                  "Business overview",
-                  "Classify MPN RC0603FR-0710KL",
-                ].map((q) => (
+                {(pageSuggestions.length > 0
+                  ? pageSuggestions
+                  : [
+                      "Show me all customers",
+                      "Business overview",
+                      "Classify MPN RC0603FR-0710KL",
+                    ]
+                ).map((q) => (
                   <button
                     key={q}
                     onClick={() => handleSend(q)}
@@ -430,6 +506,22 @@ export function AIChat() {
               <p className="text-[10px] text-gray-400 mt-2">
                 Drop files here or use the paperclip to upload BOMs
               </p>
+            </div>
+          )}
+
+          {/* Compact suggestion chips shown above messages once the chat has content */}
+          {messages.length > 0 && hasEntityContext && pageSuggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 -mt-1">
+              {pageSuggestions.slice(0, 3).map((q) => (
+                <button
+                  key={q}
+                  onClick={() => handleSend(q)}
+                  disabled={isLoading}
+                  className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800"
+                >
+                  {q}
+                </button>
+              ))}
             </div>
           )}
 
@@ -539,7 +631,7 @@ export function AIChat() {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.txt"
+              accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.gif,.webp,.txt"
               multiple
               onChange={(e) => {
                 if (e.target.files && e.target.files.length > 0) {

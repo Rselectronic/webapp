@@ -3,6 +3,7 @@ import { streamText, stepCountIs } from "ai";
 import { z } from "zod";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { classifyWithAI } from "@/lib/mcode/ai-classifier";
+import { detectPageContext, fetchPageContextSummary } from "@/lib/chat/page-context";
 
 const anthropic = createAnthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -101,7 +102,20 @@ Pricing: DigiKey + Mouser + LCSC APIs queried in parallel. If MPN search fails, 
 - If user asks about data → use tools to query, present in tables
 - If user seems lost → offer the workflow overview and ask what they're trying to do
 - Always mention the specific page URL they should navigate to
-- Be concise but thorough when guiding workflows`;
+- Be concise but thorough when guiding workflows
+
+## PAGE-AWARE TAKE-OVER MODE
+You are given CURRENT PAGE CONTEXT in every request. This tells you exactly which entity the user is looking at (quote, job, BOM, procurement, invoice, etc.) and its current state.
+
+Rules:
+1. ALWAYS read the CURRENT PAGE CONTEXT block before answering. Assume the user is asking about THAT entity unless they explicitly mention another.
+2. When the user's message is short, vague, or anxious ("help", "what now?", "I'm stuck", "what should I do", "this isn't working") — TAKE OVER. Do not ask clarifying questions first. Instead:
+   a. State what you see on the current page.
+   b. Diagnose what's likely the issue (missing pricing? unclassified components? no PO? etc.).
+   c. Offer 2-3 concrete next actions with the action tools that would complete them.
+3. If the user says "do it" or "go ahead" or "fix it" — USE YOUR WRITE TOOLS immediately. You have 39 tools including createQuote, updateQuoteStatus, createJobFromQuote, createProcurementFromJob, updateProcurementLine, createInvoiceFromJob, markInvoicePaid, logProductionEvent, etc. Don't just describe the action — execute it.
+4. Proactively surface relevant info from the page context without waiting to be asked. Example: if the user is on a quote with status 'draft' and no pricing, open your reply with "I see this quote is still a draft with no pricing calculated — want me to run pricing now?"
+5. Never say "go look at the page" — the user IS on the page. YOU look at the context and tell them what's there.`;
 
 export async function POST(req: Request) {
   // --- AUTH + ROLE CHECK ---
@@ -120,12 +134,32 @@ export async function POST(req: Request) {
   const body = await req.json();
   const supabase = createAdminClient();
 
-  // Extract conversation_id and file context if provided
+  // Extract conversation_id, file context, and current page if provided
   const conversationId: string | null = body.conversationId ?? null;
   const fileContext: string | null = body.fileContext ?? null;
+  const currentPage: string | null = body.currentPage ?? null;
 
-  // Convert UIMessages (parts-based) to simple role+content
-  const messages = (body.messages ?? []).map(
+  // Detect entity from pathname and fetch a concise summary to inject into the prompt
+  const pageCtx = detectPageContext(currentPage);
+  const pageContextSummary = pageCtx
+    ? await fetchPageContextSummary(supabase, pageCtx)
+    : null;
+
+  // Media attachments (images/PDFs) attached to the most recent user message.
+  // Shape: [{ kind: "image"|"pdf", media_type: string, data_base64: string, name?: string }]
+  type PendingMedia = {
+    kind: "image" | "pdf";
+    media_type: string;
+    data_base64: string;
+    name?: string;
+  };
+  const pendingMedia: PendingMedia[] = Array.isArray(body.pendingMedia)
+    ? (body.pendingMedia as PendingMedia[])
+    : [];
+
+  // Convert UIMessages (parts-based) to ModelMessages.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages: any[] = (body.messages ?? []).map(
     (m: { role: string; parts?: Array<{ type: string; text: string }>; content?: string }) => ({
       role: m.role as "user" | "assistant",
       content: m.parts
@@ -134,10 +168,52 @@ export async function POST(req: Request) {
     })
   );
 
-  // If there's file context (parsed BOM preview), prepend it to system prompt
-  const systemPrompt = fileContext
-    ? `${SYSTEM_PROMPT}\n\n## UPLOADED FILE CONTEXT\nThe user has uploaded a file in this conversation. Here is the parsed content:\n\n${fileContext}\n\nUse this data when answering questions about the file. If it looks like a BOM, help identify components and M-Codes.`
-    : SYSTEM_PROMPT;
+  // Attach pending media to the LAST user message as multipart content so the
+  // model can actually see images / read PDFs. Claude (via @ai-sdk/anthropic)
+  // supports `image` and `file` content parts natively.
+  if (pendingMedia.length > 0 && messages.length > 0) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        const textContent =
+          typeof messages[i].content === "string" ? (messages[i].content as string) : "";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parts: any[] = [];
+        for (const m of pendingMedia) {
+          try {
+            const buf = Buffer.from(m.data_base64, "base64");
+            if (m.kind === "image") {
+              parts.push({ type: "image", image: buf, mediaType: m.media_type });
+            } else if (m.kind === "pdf") {
+              parts.push({
+                type: "file",
+                data: buf,
+                mediaType: m.media_type || "application/pdf",
+                filename: m.name,
+              });
+            }
+          } catch (err) {
+            console.warn("[chat] failed to decode pending media:", err);
+          }
+        }
+        // End with the user's text so model sees media → then the question.
+        parts.push({
+          type: "text",
+          text: textContent || "Please analyze the attached file(s).",
+        });
+        messages[i] = { role: "user", content: parts };
+        break;
+      }
+    }
+  }
+
+  // Build the system prompt with optional file context + page context injections
+  let systemPrompt = SYSTEM_PROMPT;
+  if (pageContextSummary) {
+    systemPrompt += `\n\n## CURRENT PAGE CONTEXT\nThe user is CURRENTLY looking at this page in the app. Use this as your primary context unless they explicitly ask about something else.\n\n${pageContextSummary}`;
+  }
+  if (fileContext) {
+    systemPrompt += `\n\n## UPLOADED FILE CONTEXT\nThe user has uploaded a file in this conversation. Here is the parsed content:\n\n${fileContext}\n\nUse this data when answering questions about the file. If it looks like a BOM, help identify components and M-Codes.`;
+  }
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),

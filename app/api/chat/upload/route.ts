@@ -2,19 +2,31 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = [
-  "text/csv",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "text/plain",
-];
+const ALLOWED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".txt"];
 
-const ALLOWED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".pdf", ".png", ".jpg", ".jpeg", ".txt"];
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+const SHEET_EXTS = new Set([".csv", ".xlsx", ".xls"]);
 
-/** POST /api/chat/upload — upload a file for chat attachment */
+/**
+ * POST /api/chat/upload — upload a file for chat attachment.
+ *
+ * Handles:
+ *  - Images (.png, .jpg, .jpeg, .gif, .webp)  → returned as base64 for vision
+ *  - PDFs (.pdf)                              → returned as base64 for Claude native PDF support
+ *  - Spreadsheets (.csv, .xlsx, .xls)         → parsed to text preview (first ~40 rows)
+ *  - Plain text (.txt)                        → contents injected as text preview
+ *
+ * Response shape:
+ * {
+ *   file_name, file_path, file_type, file_size,
+ *   parsed_preview: string | null,        // text to inject into system prompt
+ *   media: {                              // present for images/PDFs
+ *     kind: "image" | "pdf",
+ *     media_type: string,                 // e.g. "image/png", "application/pdf"
+ *     data_base64: string,                // raw base64 (no data: prefix)
+ *   } | null
+ * }
+ */
 export async function POST(req: Request) {
   const userSupabase = await createClient();
   const { data: { user } } = await userSupabase.auth.getUser();
@@ -31,7 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
   }
 
-  const ext = "." + file.name.split(".").pop()?.toLowerCase();
+  const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
     return NextResponse.json(
       { error: `File type not allowed. Accepted: ${ALLOWED_EXTENSIONS.join(", ")}` },
@@ -39,10 +51,8 @@ export async function POST(req: Request) {
     );
   }
 
-  // Use admin client for storage (bypasses RLS on storage)
+  // Upload to storage for persistence (admin client bypasses storage RLS)
   const adminSupabase = createAdminClient();
-
-  // Generate unique path
   const timestamp = Date.now();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const storagePath = `${user.id}/${timestamp}_${safeName}`;
@@ -58,23 +68,60 @@ export async function POST(req: Request) {
     });
 
   if (uploadError) {
-    return NextResponse.json({ error: "Upload failed: " + uploadError.message }, { status: 500 });
+    // Don't fail the whole request if storage upload fails — the AI can still
+    // see the file contents in this turn. Log and continue.
+    console.warn("[chat/upload] storage upload failed:", uploadError.message);
   }
 
-  // Parse BOM files (xlsx/csv) and return summary for AI context
   let parsedPreview: string | null = null;
-  if (ext === ".csv" || ext === ".xlsx" || ext === ".xls") {
-    try {
+  let media: { kind: "image" | "pdf"; media_type: string; data_base64: string } | null = null;
+
+  try {
+    // ---- IMAGES → return as base64 for vision input ----
+    if (IMAGE_EXTS.has(ext)) {
+      const mediaType =
+        file.type && file.type.startsWith("image/")
+          ? file.type
+          : ext === ".png"
+            ? "image/png"
+            : ext === ".gif"
+              ? "image/gif"
+              : ext === ".webp"
+                ? "image/webp"
+                : "image/jpeg";
+      media = {
+        kind: "image",
+        media_type: mediaType,
+        data_base64: buffer.toString("base64"),
+      };
+      parsedPreview = `[Uploaded image: ${file.name} — attached as vision input; the AI can see it]`;
+    }
+
+    // ---- PDFs → return as base64 file part (Claude native PDF support) ----
+    else if (ext === ".pdf") {
+      media = {
+        kind: "pdf",
+        media_type: "application/pdf",
+        data_base64: buffer.toString("base64"),
+      };
+      parsedPreview = `[Uploaded PDF: ${file.name} — attached as document; the AI can read it]`;
+    }
+
+    // ---- Spreadsheets / BOM files ----
+    else if (SHEET_EXTS.has(ext)) {
       const XLSX = await import("xlsx");
       const workbook = XLSX.read(buffer, { type: "buffer" });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1 });
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
 
-      // Build a text preview of up to 30 rows
-      const previewRows = rows.slice(0, 30);
+      const previewRows = rows.slice(0, 50);
       const lines = previewRows.map((row) => {
-        if (Array.isArray(row)) return row.join("\t");
+        if (Array.isArray(row)) {
+          return row
+            .map((cell) => (cell == null ? "" : String(cell)))
+            .join("\t");
+        }
         return String(row);
       });
 
@@ -82,12 +129,20 @@ export async function POST(req: Request) {
         `[Uploaded file: ${file.name}]`,
         `Sheets: ${workbook.SheetNames.join(", ")}`,
         `Total rows: ${rows.length}`,
-        `Preview (first ${Math.min(30, rows.length)} rows):`,
+        `Preview (first ${Math.min(50, rows.length)} rows, tab-separated):`,
         ...lines,
       ].join("\n");
-    } catch {
-      parsedPreview = `[Uploaded file: ${file.name} — could not parse preview]`;
     }
+
+    // ---- Plain text ----
+    else if (ext === ".txt") {
+      const text = buffer.toString("utf-8");
+      const truncated = text.length > 8000 ? text.slice(0, 8000) + "\n...[truncated]" : text;
+      parsedPreview = `[Uploaded file: ${file.name}]\n${truncated}`;
+    }
+  } catch (err) {
+    console.warn("[chat/upload] parse failed:", err);
+    parsedPreview = `[Uploaded file: ${file.name} — could not parse preview]`;
   }
 
   return NextResponse.json({
@@ -96,5 +151,6 @@ export async function POST(req: Request) {
     file_type: file.type || ext,
     file_size: file.size,
     parsed_preview: parsedPreview,
+    media,
   });
 }

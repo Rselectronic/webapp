@@ -597,13 +597,70 @@ Anas added `/Users/rselectronicpc/Downloads/6. BACKEND/` with the actual Excel t
 - Failure modes and fallbacks
 - All API routes that call suppliers
 
-**15. Session 8 — in-progress work (4 agents running in parallel):**
-- Agent 1: Verify supplier APIs actually work live (DigiKey OAuth, Mouser query, LCSC signature) — testing with real MPN, reporting status per supplier
-- Agent 2: Fix AI chat file upload — BOMs, PDFs, images with vision support via Claude
-- Agent 3: AI chat page-context awareness — when user is on /quotes/123, AI knows it and can take over
-- Agent 4: Audit + fix MCP server — real @modelcontextprotocol/sdk implementation for Claude Desktop integration
+**15. Supplier APIs audited + DigiKey fixed (silent v3→v4 schema bug):**
+- DigiKey was silently broken — client read v3 response field names on a v4 endpoint. `ManufacturerPartNumber` → actually `ManufacturerProductNumber`, `Parameter/Value` → `ParameterText/ValueText`, top-level `DigiKeyPartNumber` → `ProductVariations[0].DigiKeyProductNumber`. Every package_case/mounting_type/dimensions extraction came back `undefined`.
+- Fixed, verified live with ERJ-2GE0R00X: returns $0.16 CAD, P0.0JTR-ND, Surface Mount, 0402 (1005 Metric), 1.0mm × 0.5mm × 0.4mm
+- Mounting type fallback added: DigiKey doesn't populate the parameter for chip resistors/caps, so we infer from Category name (e.g. "Chip Resistor - Surface Mount" → Surface Mount)
+- Size parsing handles DigiKey's imperial+mm format: `0.039" L x 0.020" W (1.00mm x 0.50mm)` — prefers parenthetical mm
+- Components table enrichment confirmed persisting
+- Mouser: working, price-only as expected (no dimensions in keyword search response)
+- LCSC: vendor-side blocker. Endpoint rejects every auth variant tried (SHA1/MD5/SHA256/query/headers). Returns `code:427 signature Is Required` → `code:424 Key Is Required`. Client handles gracefully (returns null, falls back to DigiKey+Mouser). Need Anas to email LCSC contact for correct signature scheme OR key activation.
 
-**End state:** 29 tables, 74+ API routes, 40 pages, ~41K lines TypeScript. All 9 PDFs match Excel templates. RS logo embedded in invoice. Greek letters sanitized. Supplier APIs documented in Abdul's Wiki Part 16.
+**16. AI chat file upload — real binary support (was silently broken for images/PDFs):**
+- **Root cause**: 3 layers of bugs
+  - Upload route only parsed spreadsheets — PNG/PDF files uploaded to storage, binary never reached the AI
+  - Chat UI only tracked string `fileContext` — no state for binary media
+  - Chat API had no concept of image/PDF parts — `attachments` was only used for DB metadata, never forwarded to Claude
+- **Now working:**
+  - Images (PNG/JPG/GIF/WEBP): base64-encoded → queued in `pendingMedia` → attached as Claude vision input on next turn → Claude reads pixels
+  - PDFs: base64-encoded → attached as Claude native PDF input → Claude reads PDF directly (Sonnet 4 supports this natively)
+  - BOM xlsx: first 50 rows parsed → injected into system prompt
+  - Plain .txt: first 8KB injected
+- Multi-turn memory: binary cleared after send (no re-upload of 5MB per message), text marker stays in fileContext
+- Files: `app/api/chat/upload/route.ts` rewritten, `components/chat/ai-chat.tsx` adds `MediaAttachment` state + wiring, `app/api/chat/route.ts` adds multipart user-message rewriter
+
+**17. AI chat page-context awareness:**
+- New `lib/chat/page-context.ts`:
+  - `detectPageContext(pathname)` parses URLs like `/quotes/<uuid>`, `/jobs/<uuid>`, `/bom/<uuid>`, `/procurement/<uuid>`, `/invoices/<uuid>`, `/customers/<uuid>`, `/quality/<uuid>`, `/quotes/batches/<uuid>`, `/procurement/batches/<uuid>`
+  - `fetchPageContextSummary()` loads <400-token human-readable summary per entity (number, status, customer, BOM, pricing, etc.)
+  - `getPageSuggestions()` returns 3-4 quick-action prompts per entity type
+- Chat route reads `currentPage` from body, injects `## CURRENT PAGE CONTEXT` block into system prompt
+- **New system prompt section "PAGE-AWARE TAKE-OVER MODE":** tells AI to read page context first, take over on vague messages without asking clarifying questions, use its 39 write tools when user says "do it"
+- Chat UI uses `usePathname()` — updates automatically on navigation, header subtitle shows "Viewing quote" with green sparkle, empty state says "I can see this quote — no need to re-explain", quick-action chips appear
+- Cost: +1 Supabase query per message, +300-500 tokens per prompt. Negligible.
+
+**18. MCP server — real @modelcontextprotocol/sdk v1.29 implementation:**
+- **Previous state**: `app/api/mcp/route.ts` was FAKE MCP — plain REST JSON returning a tool registry. Didn't speak JSON-RPC, didn't speak MCP protocol at all. Also an orphan `erp-rs-mcp/` stdio package that was never wired up.
+- **Now built**: Real Streamable HTTP MCP server at `/api/mcp` using `WebStandardStreamableHTTPServerTransport` (stateless, JSON-response mode, Web Standards Request/Response — native Next.js App Router fit)
+- 20 MCP tools across 10 domain files (`lib/mcp/tools/{customers,boms,quotes,jobs,procurement,production,invoices,inventory,search,overview}.ts`)
+- Supabase JWT auth via `Authorization: Bearer <token>` header, per-request server scoped to role:
+  - CEO: all 20 tools
+  - Operations Manager: 18 tools (no aging report, no profitability)
+  - Shop Floor: 6 tools (overview, list/get jobs, production status, log event, search)
+- `middleware.ts` updated to skip cookie auth redirect for `/api/mcp` (MCP clients use Bearer, not cookies)
+- **MCP_SETUP.md** created with Claude Desktop config, curl JSON-RPC examples, role matrix, mcp-inspector instructions
+- **Verified live:**
+  - Unauthenticated → 401 with proper JSON-RPC error
+  - Initialize → returns protocolVersion, serverInfo
+  - tools/list (CEO) → 20 tools
+  - tools/list (shop_floor) → 6 tools (role filter confirmed)
+  - tools/call rs_business_overview → real RS data (11 customers, 2 active jobs)
+  - Sequential requests stable, no EPIPE, ~230-305ms
+- Fixed an EPIPE crash by removing the `finally { transport.close() }` block — was closing the transport before the Response stream was drained
+
+**Claude Desktop setup** (Anas can use this today once deployed to Vercel):
+```json
+{
+  "mcpServers": {
+    "rs-pcb-assembly": {
+      "url": "https://webapp-fawn-seven.vercel.app/api/mcp",
+      "headers": { "Authorization": "Bearer <supabase-jwt>" }
+    }
+  }
+}
+```
+
+**End state:** 29 tables, 76+ API routes, 40 pages, ~43K lines TypeScript. All 9 PDFs match Excel templates. RS logo embedded in invoice. Greek letters sanitized. DigiKey enrichment actually working. AI chat accepts images/PDFs with vision. AI chat is page-context-aware. Real MCP server live with 20 tools.
 
 ---
 

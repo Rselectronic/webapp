@@ -2,6 +2,13 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // The MCP endpoint (/api/mcp) uses its own Bearer-token auth and must
+  // NOT be redirected to /login when no session cookie is present —
+  // MCP clients like Claude Desktop send JWTs in headers, not cookies.
+  if (request.nextUrl.pathname.startsWith("/api/mcp")) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
