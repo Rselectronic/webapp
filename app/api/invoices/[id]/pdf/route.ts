@@ -62,6 +62,51 @@ function truncateToWidth(
   return t + "...";
 }
 
+/**
+ * Wrap text into multiple lines that fit within maxWidth.
+ * Breaks on word boundaries; long words get split if they exceed the line on their own.
+ */
+function wrapText(
+  text: string,
+  maxWidth: number,
+  font: PDFFont,
+  size: number
+): string[] {
+  if (!text) return [""];
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) {
+      lines.push(current);
+      current = "";
+    }
+    // Word itself is wider than line — hard-break it
+    if (font.widthOfTextAtSize(word, size) > maxWidth) {
+      let chunk = "";
+      for (const ch of word) {
+        if (font.widthOfTextAtSize(chunk + ch, size) > maxWidth) {
+          if (chunk) lines.push(chunk);
+          chunk = ch;
+        } else {
+          chunk += ch;
+        }
+      }
+      current = chunk;
+    } else {
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -246,7 +291,7 @@ export async function GET(
   const black = rgb(0, 0, 0);
   const darkText = rgb(0.12, 0.12, 0.12);
   const muted = rgb(0.35, 0.35, 0.35);
-  const accentRed = rgb(0.75, 0.09, 0.12); // R.S. red
+  const accentRed = rgb(15 / 255, 23 / 255, 42 / 255); // Unified dark (was red — removed per Anas's request)
   const headerFill = rgb(0.12, 0.18, 0.32); // dark navy for table header
   const sectionFill = rgb(0.93, 0.94, 0.97); // light blue-gray
   const zebra = rgb(0.975, 0.978, 0.985);
@@ -445,8 +490,65 @@ export async function GET(
 
   y -= 16;
 
-  // Address blocks — 6 lines each
-  const blockHeight = 80;
+  // Address blocks — word-wrapped
+  const addrLineH = 11;
+  const addrPadX = 6;
+  const addrFontSize = 8.5;
+  const innerW = halfW - 2 * addrPadX;
+  const companyName = customer?.company_name ?? "";
+  const billAddr = customer?.billing_address ?? {};
+  const shipAddr = customer?.shipping_address ?? {};
+
+  const buildAddressFields = (
+    attLabel: string,
+    contactName: string | null,
+    addr: Address
+  ): string[] => {
+    const street = addr?.street ?? "";
+    const cityLine = [addr?.city, addr?.province, addr?.postal_code]
+      .filter(Boolean)
+      .join(", ");
+    const country = addr?.country ?? "";
+    return [
+      contactName ? `${attLabel}: ${contactName}` : attLabel,
+      companyName,
+      street,
+      cityLine,
+      country,
+      customer?.contact_email ?? "",
+      customer?.contact_phone ?? "",
+    ].filter((s) => s && s.trim() !== "");
+  };
+
+  // Wrap each field onto as many lines as needed
+  const wrapFields = (fields: string[]): string[] => {
+    const out: string[] = [];
+    for (const f of fields) {
+      const wrapped = wrapText(f, innerW, helvetica, addrFontSize);
+      out.push(...wrapped);
+    }
+    return out;
+  };
+
+  const billLines = wrapFields(
+    buildAddressFields(
+      "Att: Accounts Payable",
+      customer?.contact_name ?? null,
+      billAddr
+    )
+  );
+  const shipLines = wrapFields(
+    buildAddressFields(
+      "Att: Accounts Receivable",
+      customer?.contact_name ?? null,
+      shipAddr
+    )
+  );
+
+  // Block height = enough to fit the longer of bill or ship, with padding
+  const maxLines = Math.max(billLines.length, shipLines.length, 6);
+  const blockHeight = maxLines * addrLineH + 12;
+
   page.drawRectangle({
     x: billX,
     y: y - blockHeight,
@@ -466,51 +568,13 @@ export async function GET(
     color: white,
   });
 
-  const addrLineH = 12;
-  const addrPadX = 6;
-  const companyName = customer?.company_name ?? "";
-  const billAddr = customer?.billing_address ?? {};
-  const shipAddr = customer?.shipping_address ?? {};
-
-  const formatAddressLines = (
-    attLabel: string,
-    contactName: string | null,
-    addr: Address
-  ): string[] => {
-    const street = addr?.street ?? "";
-    const cityLine = [addr?.city, addr?.province, addr?.postal_code]
-      .filter(Boolean)
-      .join(", ");
-    const country = addr?.country ?? "";
-    return [
-      contactName ? `${attLabel}: ${contactName}` : attLabel,
-      companyName,
-      street,
-      cityLine,
-      [country, customer?.contact_email].filter(Boolean).join("  "),
-      customer?.contact_phone ?? "",
-    ];
-  };
-
-  const billLines = formatAddressLines(
-    "Att: Accounts Payable",
-    customer?.contact_name ?? null,
-    billAddr
-  );
-  const shipLines = formatAddressLines(
-    "Att: Accounts Receivable",
-    customer?.contact_name ?? null,
-    shipAddr
-  );
-
   let by = y - 13;
   for (const line of billLines) {
-    const txt = truncateToWidth(line, halfW - 2 * addrPadX, helvetica, 9);
-    page.drawText(txt, {
+    page.drawText(line, {
       x: billX + addrPadX,
       y: by,
       font: helvetica,
-      size: 9,
+      size: addrFontSize,
       color: darkText,
     });
     by -= addrLineH;
@@ -518,12 +582,11 @@ export async function GET(
 
   let sy = y - 13;
   for (const line of shipLines) {
-    const txt = truncateToWidth(line, halfW - 2 * addrPadX, helvetica, 9);
-    page.drawText(txt, {
+    page.drawText(line, {
       x: shipX + addrPadX,
       y: sy,
       font: helvetica,
-      size: 9,
+      size: addrFontSize,
       color: darkText,
     });
     sy -= addrLineH;
