@@ -108,13 +108,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to add procurements to batch", details: itemsError.message }, { status: 500 });
   }
 
-  // Mark procurements as belonging to this batch
-  for (const proc of procs) {
-    await admin
-      .from("procurements")
-      .update({ procurement_batch_id: batch.id })
-      .eq("id", proc.id);
-  }
+  // Mark procurements as belonging to this batch (single batch query)
+  const procIds = procs.map((p: { id: string }) => p.id);
+  await admin
+    .from("procurements")
+    .update({ procurement_batch_id: batch.id })
+    .in("id", procIds);
 
   // Log
   await admin.from("procurement_batch_log").insert({
