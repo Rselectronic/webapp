@@ -17,6 +17,90 @@
 
 ---
 
+## Supplier API Status (verified live April 13, 2026)
+
+Every BOM price lookup fires these 3 APIs in parallel, takes the cheapest, and caches for 7 days.
+
+| API | Status | Returns | Auth | Rate limit |
+|-----|--------|---------|------|------------|
+| **DigiKey v4** | ✅ Working | Price + dimensions + mounting type + package + category | OAuth 2.0 client_credentials | 1,000 req/day |
+| **Mouser v1** | ✅ Working | Price + stock qty + Mouser PN | API key in query string | 30/min + 1,000/day |
+| **LCSC** | ❌ Blocked vendor-side | — | SHA1 signature (rejected) | — |
+
+**LCSC needs Anas action:** email the LCSC contact to either activate the key/secret or provide the correct signature recipe. Current behavior is they reject every auth variant (SHA1/MD5/SHA256/query/headers). Client returns `null` safely so pricing continues with DigiKey + Mouser.
+
+### How the APIs are supposed to work — the full flow
+
+```
+User uploads BOM → /api/bom/parse parses components
+     ↓
+User clicks "Calculate Pricing" on quote form
+     ↓
+POST /api/quotes/preview
+     ↓
+For each unique MPN in the BOM:
+  1. Check api_pricing_cache (7-day TTL per entry)
+     → HIT: use cached price (no API call)
+     → MISS: fire all 3 APIs in parallel via Promise.allSettled
+        ├─ DigiKey: OAuth token → keyword search → extract v4 fields
+        │   (ManufacturerProductNumber, ProductVariations[0].DigiKeyProductNumber,
+        │    Parameters[].ParameterText/ValueText)
+        ├─ Mouser: apiKey query → keyword search → extract first price break
+        └─ LCSC: SHA1 signature → search → extract first price tier (returns null)
+  2. Pick cheapest across all 3 suppliers
+  3. Cache the full response in api_pricing_cache
+  4. Enrich components table (DigiKey only — only one that returns dimensions):
+     mounting_type, package_case, category, length_mm, width_mm, height_mm
+     → This feeds PAR-20 through PAR-24 size rules for future M-code classification
+  5. Apply component_markup (default 20%) → unit cost
+     ↓
+Quote engine calculates per-tier totals:
+  component_cost + PCB cost + assembly cost (SMT/TH/MANSMT placements)
+  + setup time + programming time + NRE (programming + stencil + PCB fab + misc)
+     ↓
+Return pricing per tier to the UI
+```
+
+### Why DigiKey is primary
+- Only supplier that returns component dimensions in its keyword search response
+- Dimensions feed M-code classification (size-based PAR rules)
+- Every price lookup auto-enriches the `components` table — the more you price, the smarter future classification becomes
+
+### What happens when an API fails
+- **DigiKey auth fails:** token request throws, client returns `null`, pricing falls back to Mouser + LCSC
+- **Mouser API key missing:** client returns `null` immediately, no error
+- **LCSC signature rejected:** client catches error, returns `null`
+- **All 3 fail for one MPN:** retry with description keyword search (first 5 words of description)
+- **All retries fail:** MPN flagged as "missing price" in preview response, UI shows collapsible list
+- **Rate limit exceeded:** treated as failure, same fallback chain
+
+### Critical bug fixed April 13 2026
+DigiKey client was silently broken — it used v3 response field names on a v4 endpoint:
+- `ManufacturerPartNumber` (v3) → should be `ManufacturerProductNumber` (v4)
+- Top-level `DigiKeyPartNumber` (v3) → should be `ProductVariations[0].DigiKeyProductNumber` (v4)
+- `Parameters[].Parameter/.Value` (v3) → should be `ParameterText/ValueText` (v4)
+
+Result: every DigiKey enrichment field (package_case, mounting_type, dimensions) came back `undefined`. Component table was never getting populated, size-based M-code rules (PAR-20 through PAR-24) had no data to match against.
+
+**Now fixed and verified live** with `ERJ-2GE0R00X`:
+```
+DIGIKEY: OK
+{ mpn: "ERJ-2GE0R00X", unit_price: 0.16 CAD, digikey_pn: "P0.0JTR-ND",
+  mounting_type: "Surface Mount", package_case: "0402 (1005 Metric)",
+  category: "Chip Resistor - Surface Mount",
+  length_mm: 1, width_mm: 0.5, height_mm: 0.4 }
+
+MOUSER: OK
+{ mpn: "ERJ-2GE0R00X", unit_price: 0.144 CAD, mouser_pn: "667-ERJ-2GE0R00X",
+  stock_qty: 2652551 }
+
+LCSC: NULL (vendor-side blocker)
+```
+
+Full API implementation details: **ABDULS_WIKI.md Part 16**.
+
+---
+
 ## Session History
 
 ### Session 1 — April 6, 2026
