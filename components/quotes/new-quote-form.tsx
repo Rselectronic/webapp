@@ -96,10 +96,25 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
     }
   }, []);
 
-  const handleBomChange = useCallback((id: string | null) => {
+  const handleBomChange = useCallback(async (id: string | null) => {
     if (!id) return;
     setBomId(id);
     setPreview(null);
+
+    // Auto-calculate programming cost from BOM line count
+    try {
+      const res = await fetch(`/api/bom/${id}/line-count`);
+      if (res.ok) {
+        const { programming_cost } = await res.json();
+        if (typeof programming_cost === "number") {
+          setTierRows((prev) =>
+            prev.map((row) => ({ ...row, nre_programming: String(programming_cost) }))
+          );
+        }
+      }
+    } catch {
+      // Non-critical — user can still enter manually
+    }
   }, []);
 
   const updateTierField = (index: number, field: keyof TierRow, value: string) => {

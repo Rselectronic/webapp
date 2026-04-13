@@ -515,7 +515,20 @@
 - `app/api/quote-batches/[id]/assign-mcodes/route.ts` — 0402 classification fix
 - `lib/mcode/classifier.ts` — keyword fetch fallback for single-component calls
 
-**End state:** 29 tables, 65+ API routes, 40 pages, ~38K lines TypeScript. AI agent: 39 tools.
+**7. Programming cost auto-calculation from BOM line count:**
+- New `lib/pricing/programming-cost.ts` — full lookup table from Anas's metric (28 tiers, 1-300+ lines)
+- Standard (single-sided) vs double-sided pricing ($100 difference)
+- New API: `GET /api/bom/[id]/line-count` — returns line count + auto-calculated programming cost
+- Quote form auto-fills NRE Programming when a BOM is selected (all tiers updated)
+- Double-sided detection: checks job assembly_type (TB = double-sided, default)
+- Extrapolation for 300+ lines at $75/10-line tier
+
+**8. Dead code audit + cleanup:**
+- N+1 query in procurement batches: sequential UPDATE loop → single batch `.in()` query
+- Removed `console.log` in login action that leaked user email to server logs
+- Audit found codebase is clean: no unused files, no unused deps, no orphaned routes
+
+**End state:** 29 tables, 67+ API routes, 40 pages, ~38K lines TypeScript. AI agent: 39 tools.
 
 ---
 
