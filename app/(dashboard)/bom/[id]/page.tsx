@@ -113,12 +113,19 @@ export default async function BomDetailPage({
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats — computed LIVE from bom_lines so they stay in sync with the
+          database after every classification run (the parse_result.classification_summary
+          snapshot only reflects the initial upload state). */}
+      {(() => {
+        const classifiableLines = (lines ?? []).filter((l) => !l.is_pcb && !l.is_dni);
+        const liveClassified = classifiableLines.filter((l) => l.m_code).length;
+        const liveUnclassified = classifiableLines.filter((l) => !l.m_code).length;
+        return (
       <div className="grid gap-4 md:grid-cols-4">
         {[
           { label: "Components", value: bom.component_count, color: "" },
-          { label: "Classified", value: classSummary.classified ?? 0, color: "text-green-600" },
-          { label: "Need Review", value: classSummary.unclassified ?? 0, color: "text-orange-600" },
+          { label: "Classified", value: liveClassified, color: "text-green-600" },
+          { label: "Need Review", value: liveUnclassified, color: "text-orange-600" },
           { label: "Merged Lines", value: statsSummary.merged ?? 0, color: "" },
         ].map(({ label, value, color }) => (
           <Card key={label}>
@@ -131,6 +138,8 @@ export default async function BomDetailPage({
           </Card>
         ))}
       </div>
+        );
+      })()}
 
       {/* M-Code Distribution Chart */}
       {lines && lines.length > 0 && (() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2, Zap } from "lucide-react";
@@ -36,6 +36,41 @@ export function AIClassifyButton({
   const [aiResult, setAiResult] = useState<AIClassifyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Live progress polling: while classification is running, fetch the current
+  // classified count every 500ms so the user sees a progress bar.
+  const [progressTarget, setProgressTarget] = useState(0); // total count to classify
+  const [progressDone, setProgressDone] = useState(0);     // how many are done
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startPolling = useCallback((target: number, startingClassified: number) => {
+    setProgressTarget(target);
+    setProgressDone(0);
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/bom/${bomId}/count`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const classifiedNow = data.classified as number;
+        // Progress = how many we've added since we started
+        const delta = Math.max(0, classifiedNow - startingClassified);
+        setProgressDone(Math.min(delta, target));
+      } catch {
+        // silent — polling is best-effort
+      }
+    }, 500);
+  }, [bomId]);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
   // After rules run, this tracks how many still need classification
   const remainingCount = ruleResult
     ? ruleResult.unclassified
@@ -47,6 +82,18 @@ export function AIClassifyButton({
     setRuleResult(null);
     setAiResult(null);
     setPhase("rules");
+
+    // Snapshot the current classified count so we can measure delta
+    let startingClassified = 0;
+    try {
+      const snap = await fetch(`/api/bom/${bomId}/count`);
+      if (snap.ok) {
+        const snapData = await snap.json();
+        startingClassified = snapData.classified ?? 0;
+      }
+    } catch { /* ignore */ }
+
+    startPolling(initialUnclassifiedCount, startingClassified);
 
     try {
       const res = await fetch(`/api/bom/${bomId}/classify`, {
@@ -62,20 +109,35 @@ export function AIClassifyButton({
 
       const data: RuleClassifyResult = await res.json();
       setRuleResult(data);
+      setProgressDone(initialUnclassifiedCount); // snap to 100%
       router.refresh();
       onClassified?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Classification failed");
     } finally {
+      stopPolling();
       setLoading(false);
     }
-  }, [bomId, router, onClassified]);
+  }, [bomId, router, onClassified, initialUnclassifiedCount, startPolling, stopPolling]);
 
   const handleAIClassify = useCallback(async () => {
     setLoading(true);
     setError(null);
     setAiResult(null);
     setPhase("ai");
+
+    const target = ruleResult?.unclassified ?? initialUnclassifiedCount;
+
+    let startingClassified = 0;
+    try {
+      const snap = await fetch(`/api/bom/${bomId}/count`);
+      if (snap.ok) {
+        const snapData = await snap.json();
+        startingClassified = snapData.classified ?? 0;
+      }
+    } catch { /* ignore */ }
+
+    startPolling(target, startingClassified);
 
     try {
       const res = await fetch(`/api/bom/${bomId}/classify`, {
@@ -91,19 +153,43 @@ export function AIClassifyButton({
 
       const data: AIClassifyResult = await res.json();
       setAiResult(data);
+      setProgressDone(target); // snap to 100%
       router.refresh();
       onClassified?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI classification failed");
     } finally {
+      stopPolling();
       setLoading(false);
     }
-  }, [bomId, router, onClassified]);
+  }, [bomId, router, onClassified, ruleResult, initialUnclassifiedCount, startPolling, stopPolling]);
 
   if (initialUnclassifiedCount === 0 && !ruleResult && !aiResult) return null;
 
+  const progressPct = progressTarget > 0 ? Math.round((progressDone / progressTarget) * 100) : 0;
+
   return (
     <div className="space-y-3">
+      {/* Progress bar — shown while classification is running */}
+      {loading && progressTarget > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+            <span className="font-medium">
+              {phase === "ai" ? "AI classifying" : "Classifying"} components...
+            </span>
+            <span className="font-mono tabular-nums">
+              {progressDone} / {progressTarget} ({progressPct}%)
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+            <div
+              className="h-full bg-blue-600 transition-all duration-300 ease-out"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 flex-wrap">
         {/* Step 1: Rule-based classification button */}
         <Button
