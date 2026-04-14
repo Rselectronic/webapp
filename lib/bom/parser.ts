@@ -73,7 +73,7 @@ export function parseBom(
     const mpn = getField(row, mapping, "mpn", headers);
     const description = getField(row, mapping, "description", headers);
     const manufacturer = getField(row, mapping, "manufacturer", headers);
-    let cpc = getField(row, mapping, "cpc", headers);
+    const cpc = getField(row, mapping, "cpc", headers);
 
     // Quantity: either from the qty column, or count designators if no_qty mode
     let qty: number;
@@ -133,7 +133,7 @@ export function parseBom(
         line_number: 0,
         quantity: qty || 1,
         reference_designator: designator,
-        cpc: cpc || mpn,
+        cpc: cpc || null,
         description: description || "Printed Circuit Board",
         mpn,
         manufacturer,
@@ -158,16 +158,18 @@ export function parseBom(
       continue;
     }
 
-    // CPC Fallback — use MPN when CPC is empty/N/A
-    if (!cpc || cpc.toUpperCase() === "N/A" || cpc.toUpperCase() === "NA") {
-      cpc = mpn;
-    }
+    // CPC: preserve what was in the source BOM. If the customer's BOM has no CPC
+    // column, or the cell is empty / "N/A", store null — do NOT fall back to MPN.
+    // Piyush needs to see when a CPC is genuinely missing vs. present.
+    const cpcNormalized = cpc && cpc.toUpperCase() !== "N/A" && cpc.toUpperCase() !== "NA"
+      ? cpc
+      : null;
 
     included.push({
       line_number: lineCounter++,
       quantity: qty,
       reference_designator: designator,
-      cpc,
+      cpc: cpcNormalized,
       description,
       mpn,
       manufacturer,
@@ -198,7 +200,7 @@ export function parseBom(
         line_number: 0,
         quantity: 1,
         reference_designator: "PCB1",
-        cpc: pcbName,
+        cpc: null,
         description: pcbName,
         mpn: pcbName,
         manufacturer: "",
@@ -213,7 +215,7 @@ export function parseBom(
         line_number: 0,
         quantity: 1,
         reference_designator: "PCB1",
-        cpc: "",
+        cpc: null,
         description: "Printed Circuit Board",
         mpn: "",
         manufacturer: "",

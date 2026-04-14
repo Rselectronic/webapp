@@ -133,7 +133,7 @@ export async function POST(
     } else {
       mergedMap.set(mpnKey, {
         mpn: line.mpn ?? "",
-        cpc: line.cpc ?? line.mpn ?? "",
+        cpc: line.cpc ?? "",
         description: line.description ?? "",
         manufacturer: line.manufacturer ?? "",
         bom_qty: line.quantity,

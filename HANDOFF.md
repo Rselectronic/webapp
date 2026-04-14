@@ -748,6 +748,67 @@ Anas added `/Users/rselectronicpc/Downloads/6. BACKEND/` with the actual Excel t
 
 ---
 
+### Session 9 — April 14, 2026 — Piyush feedback round
+
+Piyush sent screenshots from the BOM classification page with 3 concrete issues and 1 critical architectural complaint. All fixed in parallel (3 agents):
+
+**19. CPC column showing MPN (bug):**
+- Parser had `if (!cpc) cpc = mpn` fallback at line 161 of `lib/bom/parser.ts` — Lanka BOMs without a CPC column were displaying MPNs in the CPC column
+- Also the PCB row construction did `cpc: cpc || mpn`
+- Batch merge route reintroduced the fallback downstream with `line.cpc ?? line.mpn ?? ""`
+- Fixed in all 5 places. `ParsedLine.cpc` type changed to `string | null`. BOM table renders `—` for null CPC.
+- Supplier lookup routes that use `mpn || cpc` are intentional (search order for pricing API) — left alone.
+
+**20. BOM table UX — filter, search, padding, column expand:**
+- 412-line rewrite of `components/bom/bom-table.tsx` (was 199 lines)
+- Filter bar with search input (MPN/description/designator/CPC/manufacturer)
+- Multi-select M-code filter chips, sorted by frequency with counts per chip
+- "Unclassified" appears as its own chip + "Show only unclassified" toggle
+- Clear filters link + "Showing X of Y" counter
+- Cell padding `px-3 py-2.5` on every cell
+- Tooltips on truncate-prone columns (Designator/CPC/Description/MPN/Manufacturer/Reasoning) — hover to see full value
+- Explicit column widths + `min-w-[1400px]` + `overflow-x-auto` so columns don't collapse
+- Added `components/ui/tooltip.tsx` and `components/ui/switch.tsx` via shadcn
+
+**21. AI classifier rewritten to VBA algorithm (critical architectural change):**
+
+Piyush's complaint: "AI is giving generic information about any part number, which I don't require. What I need from AI is, for any part number on which there is no M code in our database, AI should go and check the MOUNTING TYPE. If Through Hole → TH (done). If Surface Mount → get LENGTH and WIDTH and compare to size table. That should be how AI works."
+
+This was exactly the VBA algorithm from `mod_OthF_Digikey_Parameters.bas`. The old code asked Claude "what M-code is this?" which gave noisy subjective answers. The new code asks Claude for physical parameters only, then a deterministic algorithm picks the M-code.
+
+**Files touched:**
+- `lib/mcode/ai-classifier.ts` — rewritten. New `fetchComponentParams()` returns `{ mounting_type, length_mm, width_mm, package_case, category }` instead of `{ m_code, confidence }`. The AI is now a parameter oracle, not a classifier. `classifyWithAI` and `classifyBatchWithAI` kept as backwards-compatible wrappers.
+- `lib/mcode/vba-algorithm.ts` — new file. Direct TypeScript port of the VBA algorithm:
+  - `SIZE_TIERS` table: rank 1 = 0201 (0.4-0.99 × 0.2-0.59), rank 2 = 0402 (1.0-1.09 × 0.5-0.59), rank 3 = CP (1.5-3.79 × 0.8-3.59), rank 4 = CPEXP (3.8-4.29 × 3.6-3.99), rank 5 = IP (4.3-25 × 4.0-25), rank 6 = MEC (25+)
+  - `classifyBySize()` — applies the VBA "higher rank wins" rule. A 1.5mm × 0.5mm component correctly gets CP (len rank 3), not 0402 (width rank 2). Exactly matches VBA lines 324-340.
+  - `classifyBySpecialCaseDescription()` — free wins, no AI needed: "Pin"+"Crimp"→CABLE, "End Launch Solder"→TH, "Connector Header position" no SMT/SMD→TH
+  - `applyVbaAlgorithm()` — full pipeline: mounting_type short-circuits (TH→TH, mixed→MANSMT) → special cases → connectors category branches → size rule
+- `lib/mcode/classifier.ts` — updated:
+  - Layer 1c added: runs `classifyBySpecialCaseDescription` before PAR rules (free wins)
+  - `classifyComponentFull` now calls `fetchComponentParams` → enriches components table (fire-and-forget) → runs `applyVbaAlgorithm` → returns result
+  - New `classifyBomLinesWithAI` batch function — parallel AI param fetch + parallel DB enrichment
+  - All old callers (`app/api/chat/route.ts`, `app/api/bom/[id]/classify/route.ts`) still work unchanged
+
+**New classification flow (matches VBA step-for-step):**
+1. Layer 1: DB lookup by MPN (instant)
+2. Layer 1b: Keyword lookup from mcode_keyword_lookup
+3. Layer 1c: VBA special-case description checks (free wins)
+4. Layer 2: PAR rules (package_case, description, mounting_type matching)
+5. Layer 3: AI fetch physical params → enrich components table → apply VBA algorithm → return M-code
+   - If Through Hole → TH (done)
+   - If Surface Mount + Through Hole → MANSMT
+   - If Surface Mount → size rank lookup (higher rank wins between length and width)
+
+**Key insight:** The AI is now a "dumb parameter oracle" — never picks M-codes. All M-code assignment goes through deterministic logic. This means the classifier output is predictable and debuggable — you can always trace WHY a part got classified a certain way.
+
+**Still outstanding from Piyush's feedback:**
+- **PCB auto-creation** — I fixed this in Session 8 but Piyush still sees it missing. Need to verify the deployment caught it. May need another look.
+- **PAR rules from DM file** — the Size Table, MachineCodes, and Admin sheets from DM Common File V11 need to be exported as CSV and seeded into the database for the M-code rules to match Excel exactly. The current rules in `lib/mcode/rules.ts` are my best guess from the VBA source. Anas needs to export those 3 sheets from DM Common File V11 for me to replace the seed data.
+
+**End state:** 29 tables, 76+ API routes, 40 pages, ~44K lines TypeScript. AI classifier rewritten to match VBA algorithm exactly. BOM table has filter+search+tooltips. CPC column bug fixed. Still waiting on DM file sheets for final rule accuracy.
+
+---
+
 ## Known Issues / Tech Debt
 
 ### Must Fix Soon

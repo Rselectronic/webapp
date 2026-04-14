@@ -1,7 +1,9 @@
 import type { ClassificationInput, ClassificationResult } from "./types";
 import type { MCode } from "./types";
 import { classifyByRules } from "./rules";
-import { classifyWithAI } from "./ai-classifier";
+import { fetchComponentParams, fetchComponentParamsBatch } from "./ai-classifier";
+import { applyVbaAlgorithm, classifyBySpecialCaseDescription } from "./vba-algorithm";
+import { enrichComponentFromAPI } from "@/lib/pricing/enrich-components";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type KeywordRow = {
@@ -66,6 +68,21 @@ export async function classifyComponent(
   const keywordResult = matchKeywords(enrichedInput, keywords ?? null);
   if (keywordResult) return keywordResult;
 
+  // Layer 1c: VBA special-case description checks — free wins, no AI needed.
+  // These mirror the VBA block at lines 345-380 of mod_OthF_Digikey_Parameters.bas:
+  //   - description has "Pin" AND "Crimp" → CABLE
+  //   - description has "End Launch Solder" → TH
+  //   - description has "Connector Header position" AND no SMT/SMD → TH
+  const specialCase = classifyBySpecialCaseDescription(enrichedInput.description);
+  if (specialCase) {
+    return {
+      m_code: specialCase.m_code as MCode,
+      confidence: 0.90,
+      source: "rules",
+      rule_id: specialCase.reasoning,
+    };
+  }
+
   // Layer 2: Rule engine (PAR rules) — now with enriched dimensions/package data
   const ruleResult = classifyByRules(enrichedInput);
   if (ruleResult && ruleResult.m_code) {
@@ -113,23 +130,43 @@ export async function classifyComponentFull(
   const result = await classifyComponent(input, supabase, keywords, detailsMap);
   if (result.m_code) return result;
 
-  // Layer 3: AI classification (Claude)
-  const aiResult = await classifyWithAI(
-    input.mpn,
-    input.description,
-    input.manufacturer,
-    input.package_case
-  );
-  if (aiResult && aiResult.confidence >= 0.80) {
-    return {
-      m_code: aiResult.m_code as MCode,
-      confidence: aiResult.confidence,
-      source: "api",
-      rule_id: `AI: ${aiResult.reasoning}`,
-    };
-  }
+  // Layer 3 (AI parameter fetch + VBA algorithm).
+  // Piyush's rule: the AI must NOT do generic M-code classification. Ask Claude
+  // for the physical parameters only (mounting_type, length_mm, width_mm,
+  // package, category) and then let the VBA algorithm decide the M-code.
+  const params = await fetchComponentParams(input.mpn, input.description, input.manufacturer);
+  if (!params) return { m_code: null, confidence: 0, source: null };
 
-  return { m_code: null, confidence: 0, source: null };
+  // Save the fetched parameters to the components table so Layer 1 hits them
+  // instantly on the next classification. Fire-and-forget the enrichment —
+  // classifier result is the same whether enrichment succeeds or not.
+  void enrichComponentFromAPI(supabase, {
+    mpn: input.mpn,
+    manufacturer: input.manufacturer || "Unknown",
+    description: input.description,
+    mounting_type: params.mounting_type ?? undefined,
+    length_mm: params.length_mm ?? undefined,
+    width_mm: params.width_mm ?? undefined,
+    package_case: params.package_case ?? undefined,
+    category: params.category ?? undefined,
+  }).catch((err) => console.error("[classifier] enrichComponentFromAPI failed", err));
+
+  const verdict = applyVbaAlgorithm({
+    description: input.description,
+    mounting_type: params.mounting_type,
+    length_mm: params.length_mm,
+    width_mm: params.width_mm,
+    package_case: params.package_case,
+    category: params.category,
+  });
+  if (!verdict) return { m_code: null, confidence: 0, source: null };
+
+  return {
+    m_code: verdict.m_code as MCode,
+    confidence: verdict.confidence,
+    source: "api",
+    rule_id: `AI: ${params.reasoning} → ${verdict.reasoning}`,
+  };
 }
 
 /**
@@ -261,6 +298,75 @@ export async function saveManualOverride(
       },
       { onConflict: "mpn,manufacturer" }
     );
+}
+
+/**
+ * AI-batch classification: fetch component parameters from Claude for many
+ * components in parallel, run the VBA algorithm on each, and enrich the
+ * components table so Layer 1 catches them next time.
+ *
+ * This is the "second pass" called after classifyBomLines returns no m_code
+ * for some lines. The calling route picks the lines that still need review
+ * and sends them through here.
+ */
+export async function classifyBomLinesWithAI(
+  lines: { mpn: string; description: string; manufacturer: string }[],
+  supabase: SupabaseClient
+): Promise<ClassificationResult[]> {
+  if (lines.length === 0) return [];
+
+  const params = await fetchComponentParamsBatch(
+    lines.map((l) => ({ mpn: l.mpn, description: l.description, manufacturer: l.manufacturer }))
+  );
+
+  // Fire enrichment writes in parallel — don't block the return.
+  const enrichPromises: Promise<unknown>[] = [];
+  const results: ClassificationResult[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const p = params[i];
+    if (!p) {
+      results.push({ m_code: null, confidence: 0, source: null });
+      continue;
+    }
+
+    // Save parameters to components table for Layer 1 re-use.
+    enrichPromises.push(
+      enrichComponentFromAPI(supabase, {
+        mpn: lines[i].mpn,
+        manufacturer: lines[i].manufacturer || "Unknown",
+        description: lines[i].description,
+        mounting_type: p.mounting_type ?? undefined,
+        length_mm: p.length_mm ?? undefined,
+        width_mm: p.width_mm ?? undefined,
+        package_case: p.package_case ?? undefined,
+        category: p.category ?? undefined,
+      }).catch((err) => console.error("[classifyBomLinesWithAI] enrich failed", err))
+    );
+
+    const verdict = applyVbaAlgorithm({
+      description: lines[i].description,
+      mounting_type: p.mounting_type,
+      length_mm: p.length_mm,
+      width_mm: p.width_mm,
+      package_case: p.package_case,
+      category: p.category,
+    });
+    if (!verdict) {
+      results.push({ m_code: null, confidence: 0, source: null });
+      continue;
+    }
+    results.push({
+      m_code: verdict.m_code as MCode,
+      confidence: verdict.confidence,
+      source: "api",
+      rule_id: `AI: ${p.reasoning} → ${verdict.reasoning}`,
+    });
+  }
+
+  // Wait for enrichment to finish so the DB is up to date when we return.
+  await Promise.all(enrichPromises);
+  return results;
 }
 
 /**

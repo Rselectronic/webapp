@@ -18,7 +18,9 @@ export interface ParsedLine {
   line_number: number;
   quantity: number;
   reference_designator: string;
-  cpc: string;
+  /** Customer Part Code — null when the source BOM has no CPC column or the cell is blank.
+   *  Never falls back to MPN — empty CPC is meaningful information. */
+  cpc: string | null;
   description: string;
   mpn: string;
   manufacturer: string;

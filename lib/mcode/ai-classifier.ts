@@ -1,23 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { MCode } from "./types";
 
-const MCODE_DEFINITIONS = `M-Code types for PCB assembly:
-- 0201: Ultra-tiny passives (0.4-0.99mm L x 0.2-0.48mm W)
-- 0402: Small passives (1.0-1.49mm L x 0.49-0.79mm W)
-- CP: Chip Package - standard SMT passives like resistors, capacitors, LEDs, diodes (1.5-3.79mm). ~59% of components.
-- CPEXP: Expanded SMT - larger SMT like SO8, SOT-89, 8-pin packages (3.8-4.29mm)
-- IP: IC Package - large SMT ICs like QFP, BGA, TSSOP, LQFP (4.3-25mm). ~15% of components.
-- TH: Through-Hole - components with legs that go through PCB holes. Connectors, headers, large capacitors.
-- MANSMT: Manual SMT - surface mount that needs hand soldering (DPAK, large thermal pads)
-- MEC: Mechanical - standoffs, heatsinks, brackets, screws
-- Accs: Accessories - labels, tapes, clips
-- CABLE: Cables/wiring
-- DEV B: Development/evaluation boards`;
-
-const VALID_MCODES = new Set<string>([
-  "0201", "0402", "CP", "CPEXP", "IP", "TH",
-  "MANSMT", "MEC", "Accs", "CABLE", "DEV B",
-]);
+/**
+ * Component parameters as fetched from Claude (read from its training knowledge).
+ *
+ * Piyush's feedback (2026-04-14): the AI must NOT do generic M-code classification.
+ * Its only job is to return physical parameters for a component (mounting_type,
+ * dimensions, package, category). The actual M-code assignment is done by the
+ * rules engine using the VBA algorithm in mod_OthF_Digikey_Parameters.bas.
+ */
+export interface ComponentParams {
+  mounting_type: string | null;
+  length_mm: number | null;
+  width_mm: number | null;
+  package_case: string | null;
+  category: string | null;
+  reasoning: string;
+}
 
 let client: Anthropic | null = null;
 
@@ -28,44 +27,38 @@ function getClient(): Anthropic {
   return client;
 }
 
-export async function classifyWithAI(
+/**
+ * Ask Claude to return the physical parameters of a component.
+ * Claude acts as a "components database lookup", not a classifier.
+ */
+export async function fetchComponentParams(
   mpn: string,
   description: string,
-  manufacturer: string,
-  packageCase?: string
-): Promise<{ m_code: MCode; confidence: number; reasoning: string } | null> {
+  manufacturer: string
+): Promise<ComponentParams | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
   try {
     const anthropic = getClient();
-    const prompt = `You are an electronics manufacturing expert. Classify this component into exactly ONE M-Code.
+    const prompt = `You are an electronics component database. For the given component, return ONLY these parameters in JSON format:
+- mounting_type: one of "Through Hole", "Surface Mount", "Surface Mount, Through Hole", or null if unknown
+- length_mm: package length in millimeters (number), or null
+- width_mm: package width in millimeters (number), or null
+- package_case: package name (e.g. "0402", "SOIC-8", "TO-220", "SOT-23"), or null
+- category: broad category ("Resistor", "Capacitor", "IC", "Connector", "Diode", "Inductor", "Crystal", "Transformer", "Fuse", "Mechanical", "Cable"), or null
 
 Component:
 - MPN: ${mpn}
 - Description: ${description}
 - Manufacturer: ${manufacturer}
-${packageCase ? `- Package/Case: ${packageCase}` : ""}
 
-VALID M-Codes (you MUST use one of these exact strings):
-- "CP" = Chip Package: standard SMT passives — resistors, capacitors, LEDs, diodes, small transistors in packages like 0603, 0805, 1206, SOD-323, SOT-23
-- "0402" = 0402-size passives only
-- "0201" = 0201-size passives only
-- "CPEXP" = Expanded Chip: larger SMT like SO8, SOT-89, MSOP-8, SSOP
-- "IP" = IC Package: large ICs — QFP, BGA, TSSOP-48, LQFP, microcontrollers, FPGAs, voltage regulators in large packages
-- "TH" = Through-Hole: connectors, headers, DIP packages, electrolytic caps, transformers
-- "MANSMT" = Manual SMT: DPAK, D2PAK, large thermal pads, RF modules
-- "MEC" = Mechanical: standoffs, heatsinks, brackets, screws, spacers
-- "Accs" = Accessories: labels, tapes, clips
-- "CABLE" = Cables and wiring
-- "DEV B" = Development boards
-
-Respond with ONLY a raw JSON object, NO markdown, NO backticks:
-{"m_code": "CP", "confidence": 0.95, "reasoning": "one sentence"}`;
+Respond with JSON only, no markdown, no backticks:
+{"mounting_type": "...", "length_mm": 1.0, "width_mm": 0.5, "package_case": "0402", "category": "Resistor"}`;
 
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
+      max_tokens: 200,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -73,43 +66,123 @@ Respond with ONLY a raw JSON object, NO markdown, NO backticks:
     text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     const parsed = JSON.parse(text);
 
-    if (
-      parsed.m_code &&
-      VALID_MCODES.has(parsed.m_code) &&
-      typeof parsed.confidence === "number"
-    ) {
-      return {
-        m_code: parsed.m_code as MCode,
-        confidence: Math.min(parsed.confidence, 0.95),
-        reasoning: parsed.reasoning ?? "",
-      };
-    }
-    return null;
+    const mounting = typeof parsed.mounting_type === "string" && parsed.mounting_type.trim() !== ""
+      ? parsed.mounting_type.trim()
+      : null;
+    const length = typeof parsed.length_mm === "number" && isFinite(parsed.length_mm) ? parsed.length_mm : null;
+    const width = typeof parsed.width_mm === "number" && isFinite(parsed.width_mm) ? parsed.width_mm : null;
+    const pkg = typeof parsed.package_case === "string" && parsed.package_case.trim() !== ""
+      ? parsed.package_case.trim()
+      : null;
+    const cat = typeof parsed.category === "string" && parsed.category.trim() !== ""
+      ? parsed.category.trim()
+      : null;
+
+    const reasoningBits: string[] = [];
+    if (mounting) reasoningBits.push(`mounting=${mounting}`);
+    if (length !== null && width !== null) reasoningBits.push(`${length}mm x ${width}mm`);
+    if (pkg) reasoningBits.push(`pkg=${pkg}`);
+    if (cat) reasoningBits.push(`category=${cat}`);
+    const reasoning = reasoningBits.length > 0 ? reasoningBits.join(", ") : "no parameters";
+
+    return {
+      mounting_type: mounting,
+      length_mm: length,
+      width_mm: width,
+      package_case: pkg,
+      category: cat,
+      reasoning,
+    };
   } catch (err) {
-    console.error("[AI CLASSIFIER]", err instanceof Error ? err.message : err);
+    console.error("[AI PARAMS FETCH]", err instanceof Error ? err.message : err);
     return null;
   }
 }
 
 /**
- * Classify multiple components in parallel batches.
- * Processes BATCH_SIZE components concurrently instead of one at a time.
- * 10 parallel calls × 1.5s each = ~1.5s per batch instead of 15s sequential.
+ * Fetch component params for many components in parallel batches.
+ * 10 parallel calls × ~1.5s each = ~1.5s per batch instead of 15s sequential.
  */
 const BATCH_SIZE = 10;
+
+export async function fetchComponentParamsBatch(
+  components: { mpn: string; description: string; manufacturer: string }[]
+): Promise<(ComponentParams | null)[]> {
+  const results: (ComponentParams | null)[] = [];
+  for (let i = 0; i < components.length; i += BATCH_SIZE) {
+    const batch = components.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map((c) => fetchComponentParams(c.mpn, c.description, c.manufacturer))
+    );
+    results.push(...batchResults);
+  }
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Backwards-compatible wrappers
+// ---------------------------------------------------------------------------
+//
+// Callers in app/api/bom/[id]/classify/route.ts and app/api/chat/route.ts still
+// use classifyWithAI / classifyBatchWithAI and expect { m_code, confidence,
+// reasoning }. Under the hood these now call fetchComponentParams and run the
+// VBA algorithm (via applyVbaAlgorithm in lib/mcode/classifier.ts).
+//
+// To avoid a circular dependency between this file and classifier.ts we accept
+// the algorithm as an injected callback at call time in classifier.ts. Here we
+// just export the thin facade that the rest of the app imports.
+// ---------------------------------------------------------------------------
+
+import { applyVbaAlgorithm } from "./vba-algorithm";
+
+export async function classifyWithAI(
+  mpn: string,
+  description: string,
+  manufacturer: string,
+  _packageCase?: string
+): Promise<{ m_code: MCode; confidence: number; reasoning: string } | null> {
+  const params = await fetchComponentParams(mpn, description, manufacturer);
+  if (!params) return null;
+
+  const verdict = applyVbaAlgorithm({
+    description,
+    mounting_type: params.mounting_type,
+    length_mm: params.length_mm,
+    width_mm: params.width_mm,
+    package_case: params.package_case,
+    category: params.category,
+  });
+  if (!verdict) return null;
+
+  return {
+    m_code: verdict.m_code as MCode,
+    confidence: verdict.confidence,
+    reasoning: `AI: ${params.reasoning} → ${verdict.reasoning}`,
+  };
+}
 
 export async function classifyBatchWithAI(
   components: { mpn: string; description: string; manufacturer: string; packageCase?: string }[]
 ): Promise<({ m_code: MCode; confidence: number; reasoning: string } | null)[]> {
-  const results: ({ m_code: MCode; confidence: number; reasoning: string } | null)[] = [];
+  const paramResults = await fetchComponentParamsBatch(
+    components.map((c) => ({ mpn: c.mpn, description: c.description, manufacturer: c.manufacturer }))
+  );
 
-  for (let i = 0; i < components.length; i += BATCH_SIZE) {
-    const batch = components.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map((c) => classifyWithAI(c.mpn, c.description, c.manufacturer, c.packageCase))
-    );
-    results.push(...batchResults);
-  }
-
-  return results;
+  return paramResults.map((params, i) => {
+    if (!params) return null;
+    const verdict = applyVbaAlgorithm({
+      description: components[i].description,
+      mounting_type: params.mounting_type,
+      length_mm: params.length_mm,
+      width_mm: params.width_mm,
+      package_case: params.package_case,
+      category: params.category,
+    });
+    if (!verdict) return null;
+    return {
+      m_code: verdict.m_code as MCode,
+      confidence: verdict.confidence,
+      reasoning: `AI: ${params.reasoning} → ${verdict.reasoning}`,
+    };
+  });
 }
