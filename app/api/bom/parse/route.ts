@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { parseBom } from "@/lib/bom/parser";
 import { resolveColumnMapping } from "@/lib/bom/column-mapper";
-import type { BomConfig, RawRow } from "@/lib/bom/types";
+import { aiMapColumns } from "@/lib/bom/ai-column-mapper";
+import type { BomConfig, ColumnMapping, RawRow } from "@/lib/bom/types";
 import * as XLSX from "xlsx";
 
 /**
@@ -204,15 +205,29 @@ export async function POST(request: Request) {
       return obj;
     });
 
-    // Resolve column mapping and parse
-    let mapping;
+    // Resolve column mapping. Three tiers:
+    //   1. Customer bom_config (explicit) or keyword auto-detect
+    //   2. AI fallback — Claude reads headers + sample rows and proposes a mapping
+    //   3. Hard fail with helpful error
+    let mapping: ColumnMapping | null = null;
+    let mappingSource: "keyword" | "ai" = "keyword";
     try {
       mapping = resolveColumnMapping(bomConfig, headers);
-    } catch (mapError) {
-      // If column detection fails, return a helpful error with the detected headers
+    } catch {
+      // Keyword matching failed — try the AI mapper
+      const sampleRows = allRows.slice(dataStartIndex, dataStartIndex + 5);
+      const aiMapping = await aiMapColumns(headers, sampleRows);
+      if (aiMapping) {
+        mapping = aiMapping;
+        mappingSource = "ai";
+        console.log("[BOM PARSE] AI column mapper succeeded:", aiMapping);
+      }
+    }
+
+    if (!mapping) {
       const detectedHeaders = headers.filter((h) => h && h.trim()).slice(0, 15);
       return NextResponse.json({
-        error: `Could not detect BOM columns. The file headers don't match known BOM formats. Detected columns: [${detectedHeaders.join(", ")}]. Try configuring the customer's BOM settings (Settings → Customers → Edit → BOM Config) with explicit column mappings.`,
+        error: `Could not detect BOM columns, even with AI fallback. Detected columns: [${detectedHeaders.join(", ")}]. Configure the customer's BOM settings (Settings → Customers → Edit → BOM Config) with explicit column mappings.`,
         detected_headers: detectedHeaders,
         suggestion: "Set bom_config on the customer with explicit column mappings, e.g.: {\"columns\": {\"qty\": \"Your Qty Column\", \"mpn\": \"Your Part Number Column\", \"designator\": \"Your Ref Des Column\"}}",
       }, { status: 400 });
@@ -313,6 +328,7 @@ export async function POST(request: Request) {
         component_count: parseResult.lines.length,
         parse_result: {
           stats: parseResult.stats,
+          mapping_source: mappingSource,
           log_summary: {
             total_log_entries: parseResult.log.length,
             auto_pcb: parseResult.stats.auto_pcb,
@@ -328,6 +344,7 @@ export async function POST(request: Request) {
       component_count: parseResult.lines.length,
       pcb_found: parseResult.pcb_row !== null,
       pcb_auto: parseResult.stats.auto_pcb,
+      mapping_source: mappingSource,
       log_entries: parseResult.log.length,
     });
   } catch (err) {
