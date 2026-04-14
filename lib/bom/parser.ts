@@ -183,48 +183,11 @@ export function parseBom(
   // Rule 7: MPN Merge — same MPN → combine rows
   const merged = mergeSameMpn(included, log, stats);
 
-  // Rule 8: Auto-PCB — if no PCB row found in BOM, create one from available info
+  // Rule 8: Auto-PCB disabled per Anas (2026-04-14).
+  // If the BOM has a PCB row, we keep it. If not, we do NOT fabricate one.
+  // The GMP itself represents the board — no need for a ghost row in the BOM view.
   if (!pcbRow) {
-    // Try filename first
-    let pcbName: string | null = bomFileName ? extractPcbNameFromFile(bomFileName) : null;
-    let pcbSource: string | null = pcbName ? `filename: ${bomFileName}` : null;
-
-    // Fallback to GMP info if filename extraction failed
-    if (!pcbName && gmpInfo) {
-      pcbName = gmpInfo.board_name || gmpInfo.gmp_number;
-      pcbSource = `GMP: ${pcbName}`;
-    }
-
-    if (pcbName) {
-      pcbRow = {
-        line_number: 0,
-        quantity: 1,
-        reference_designator: "PCB1",
-        cpc: null,
-        description: pcbName,
-        mpn: pcbName,
-        manufacturer: "",
-        is_pcb: true,
-        is_dni: false,
-      };
-      stats.auto_pcb = true;
-      log.push({ raw_row_index: -1, action: "AUTO-PCB", detail: `Derived from ${pcbSource}` });
-    } else {
-      // Final fallback: create a generic PCB row so there is always a PCB line
-      pcbRow = {
-        line_number: 0,
-        quantity: 1,
-        reference_designator: "PCB1",
-        cpc: null,
-        description: "Printed Circuit Board",
-        mpn: "",
-        manufacturer: "",
-        is_pcb: true,
-        is_dni: false,
-      };
-      stats.auto_pcb = true;
-      log.push({ raw_row_index: -1, action: "AUTO-PCB", detail: "Generic PCB row — no filename or GMP info available" });
-    }
+    log.push({ raw_row_index: -1, action: "AUTO-PCB-FAIL", detail: "BOM has no PCB row. Auto-creation disabled per Anas 2026-04-14 — the GMP itself represents the board." });
   }
 
   // Rule 9: Sort — quantity DESC, then first designator ASC (natural sort)
