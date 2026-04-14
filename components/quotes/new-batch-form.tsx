@@ -30,10 +30,10 @@ export function NewBatchForm({ customers }: { customers: Customer[] }) {
   const [batchName, setBatchName] = useState("");
   const [boms, setBoms] = useState<Bom[]>([]);
   const [selectedBomIds, setSelectedBomIds] = useState<Set<string>>(new Set());
-  const [qty1, setQty1] = useState("");
-  const [qty2, setQty2] = useState("");
-  const [qty3, setQty3] = useState("");
-  const [qty4, setQty4] = useState("");
+  const [qty1, setQty1] = useState("50");
+  const [qty2, setQty2] = useState("100");
+  const [qty3, setQty3] = useState("150");
+  const [qty4, setQty4] = useState("200");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

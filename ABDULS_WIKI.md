@@ -3192,4 +3192,342 @@ So the more BOMs you price, the richer the components table gets, the more accur
 | `POST /api/procurement-batches/[id]/allocate-suppliers` | Procurement batch Step 4 | Picks cheapest supplier per line, updates `procurement_batch_lines` |
 | AI chat tool `getPricing` | AI agent looking up a price | Returns data to the AI for response |
 
+---
+
+## Part 17 — Manual Pricing for Missing Components
+
+Added April 14, 2026. Solves the problem where DigiKey/Mouser/LCSC all return nothing for an MPN and the quote total silently uses $0, producing wrong totals.
+
+### 17.1 The problem
+
+Some MPNs aren't in any distributor catalog:
+- Custom Lanka parts (KB Rail Canada proprietary numbers)
+- Obsolete components
+- Japanese/Chinese manufacturer parts with no Western distribution
+- Cable assemblies, mechanical hardware, custom cut lengths
+
+When this happens the old flow was: `pricing.missing_price_components` JSONB lists them, the UI shows a collapsible warning ("5 components with no price — using $0. Review before sending.") and you're stuck. The CEO had to mentally add the missing cost or delete the quote and restart.
+
+### 17.2 The solution
+
+A "Manual Pricing" editor on the quote detail page, shown only when the quote is `draft` or `review` AND has missing-price components. You type prices → click Save & Recalculate → the quote totals update in place.
+
+Key design decision: **manual prices are stored in `api_pricing_cache`, not scoped to the quote.** This means the same MPN manually priced in one quote is automatically picked up for the next quote that uses it. Tradeoff accepted — saves re-entry, and if DigiKey later returns a price the helper picks the cheapest across all sources.
+
+### 17.3 How it works end-to-end
+
+```
+User opens quote detail page (status=draft)
+  ↓
+Page reads pricing.missing_price_components from the JSONB
+  ↓
+If list is non-empty → ManualPriceEditor renders
+  ↓
+User types unit prices into editable table
+  ↓
+Click "Save & Recalculate"
+  ↓
+For each row with a price entered:
+  POST /api/pricing/manual { mpn, unit_price, currency }
+    → upsert api_pricing_cache row:
+        source = 'manual'
+        search_key = mpn.toUpperCase()
+        unit_price = entered value
+        expires_at = now + 365 days
+        response = { manual: true, entered_by: user.id, entered_at: now }
+  ↓
+POST /api/quotes/[id]/recalculate
+  ↓
+Server validates status IN ('draft', 'review')
+  ↓
+Calls recomputeQuotePricing(supabase, bom_id, resolvedTiers, shipping_flat):
+  1. Fetch BOM lines (non-PCB, non-DNI)
+  2. Fetch api_pricing_cache rows for every MPN — case-insensitive lookup
+     (handles legacy rows that were stored raw-case + new manual rows uppercased)
+  3. Build priceMap — for each MPN, picks the lowest price across all sources
+  4. Fetch overage table + pricing settings
+  5. Call calculateQuote(...) → returns { tiers, warnings, missing_price_components }
+  ↓
+Server updates quote row:
+  pricing (full JSONB)
+  pcb_cost_per_unit
+  assembly_cost
+  nre_charge
+  updated_at
+  ↓
+Client router.refresh() → page re-renders with new totals
+```
+
+### 17.4 The files
+
+| File | Purpose |
+|------|---------|
+| `supabase/migrations/028_pricing_cache_manual_source.sql` | Extends `api_pricing_cache.source` CHECK constraint to include `'manual'` |
+| `lib/pricing/recompute.ts` | Shared helper `recomputeQuotePricing(supabase, bom_id, resolvedTiers, shipping_flat)` — extracted from the create-quote route so both create and recalculate share the same logic |
+| `app/api/pricing/manual/route.ts` | POST endpoint — auth-gated, upserts one manual price into the cache |
+| `app/api/quotes/[id]/recalculate/route.ts` | POST endpoint — auth-gated, re-runs pricing engine and updates the quote |
+| `components/quotes/manual-price-editor.tsx` | `"use client"` Card with editable table, batch save + recalc, success/error banners |
+| `app/(dashboard)/quotes/[id]/page.tsx` | Renders `<ManualPriceEditor>` below the Pricing Breakdown card when conditions match |
+
+### 17.5 The shared helper (`lib/pricing/recompute.ts`)
+
+Before Session 9's continuation, `app/api/quotes/route.ts` POST handler contained ~80 lines of inline BOM fetch → price map build → overage fetch → settings fetch → engine call logic. That was duplicated when we built `recalculate`. The helper now owns all of it:
+
+```ts
+export async function recomputeQuotePricing(
+  supabase: SupabaseClient,
+  bom_id: string,
+  resolvedTiers: TierInput[],
+  shipping_flat: number
+): Promise<{ pricing: CalculatedPricing, settings: PricingSettings }>
+```
+
+Both `POST /api/quotes` (create) and `POST /api/quotes/[id]/recalculate` call this. Any future pricing tweak happens in one place.
+
+**Side-effect win:** the helper does a case-insensitive cache lookup (queries both raw and uppercased `search_key`, then merges into a `Map` keyed lowercase). Historical cache rows were inconsistently cased — some DigiKey writes stored `search_key` raw, some uppercased it, manual writes always uppercase it. The old inline code silently missed half of them. Now everything resolves.
+
+### 17.6 Why 365-day TTL on manual entries
+
+Cache entries normally expire in 7 days (to re-fetch fresh distributor prices). But manual prices:
+- Were entered by a human — they're authoritative, not a distributor snapshot
+- Won't come back on their own — if you re-fetch, the APIs still return nothing
+- Should persist so the next quote using the same MPN picks them up
+
+365 days means they effectively last for a year before the CEO has to re-enter. If someone wants a shorter horizon, adjust in `app/api/pricing/manual/route.ts`.
+
+### 17.7 Status gate — only draft/review
+
+The recalculate endpoint 400s on any quote that's `sent`, `accepted`, `rejected`, or `expired`. A sent quote has been emailed to a customer — changing totals after the fact is a business-integrity violation. If you need to fix a sent quote, the correct flow is: revoke, clone to a new draft, manually price, send again.
+
+### 17.8 What happens if DigiKey later returns a price
+
+The helper picks the **lowest** price across all sources for each MPN. So if you manually priced `CUSTOM-PART-X` at $5.00 last month, and this month DigiKey starts stocking it at $3.20, the next recalculate picks DigiKey's $3.20. The manual entry is still in the cache (not deleted), just outvoted. If DigiKey's price goes back up, manual wins again.
+
+This is the "manual is a floor price" model — you never pay more than the manual entry, and you benefit from any distributor win.
+
+---
+
+## Part 18 — Clean-Slate Reset (Dev / Testing)
+
+When you need to clear all transactional data (BOMs, quotes, jobs, procurements, invoices) without touching seed/config tables, run this single transaction via Supabase MCP or psql. This is the canonical reset script — do NOT improvise, FK order matters.
+
+### 18.1 What gets wiped
+
+Transactional / operational data — everything that depends on a specific customer engagement:
+
+- **BOM data:** `boms`, `bom_lines`
+- **Quote data:** `quotes`, `quote_batches`, `quote_batch_boms`, `quote_batch_lines`, `quote_batch_log`
+- **Job data:** `jobs`, `job_status_log`
+- **Procurement data:** `procurements`, `procurement_lines`, `supplier_pos`, `procurement_batches`, `procurement_batch_items`, `procurement_batch_lines`, `procurement_batch_log`
+- **Production data:** `production_events`, `shipments`, `fabrication_orders`, `ncr_reports`, `serial_numbers`
+- **Financial data:** `invoices`, `payments`
+
+### 18.2 What gets kept
+
+Seed data, config, reference data, and the classification learning loop:
+
+- `customers` — 11 seeded customers (Lanka, LABO, CSA, etc.)
+- `gmps` — customer board definitions (**optional** — wipe these too if the old test GMPs are polluting the global search autocomplete; they'll be re-created on the next BOM upload)
+- `components` — the classification learning loop (every manual M-code decision is cached here)
+- `api_pricing_cache` — distributor prices + manual entries (see Part 17)
+- `m_code_rules` — 43 real PAR rules from DM Common File V11
+- `overage_table` — 621 real DM ExtraOrder tiers
+- `mcode_keyword_lookup` — 211 real MachineCodes keywords
+- `app_settings` — pricing settings, markups, labour rates
+- `users` — the 3 seeded users (ceo, operations_manager, shop_floor)
+- `email_templates` — quote/PO/invoice email bodies
+- `audit_log` — untouched (but it GROWS during the wipe as DELETE triggers fire — that's intentional, it's the compliance trail of the reset itself)
+
+### 18.3 What is NOT wiped automatically
+
+**Supabase Storage buckets** — PDFs and uploaded files in `boms/`, `quotes/`, `jobs/`, `invoices/`, `procurement/` are left alone. After a DB wipe these become orphaned (no row references them). You can:
+
+1. Leave them — harmless, just eats storage quota.
+2. Write a reconciliation script that lists bucket contents and deletes any file whose filename isn't referenced in a DB row.
+3. Delete everything in the bucket via the Supabase dashboard — nuclear, but fine for a dev reset.
+
+### 18.4 The reset SQL
+
+Run as a single transaction. Order matters because FKs are not all set to `ON DELETE CASCADE` — some are, some aren't, and the safe move is to delete children first.
+
+```sql
+BEGIN;
+
+-- Leaves (deepest FK dependencies)
+DELETE FROM public.payments;
+DELETE FROM public.shipments;
+DELETE FROM public.fabrication_orders;
+DELETE FROM public.ncr_reports;
+DELETE FROM public.serial_numbers;
+DELETE FROM public.production_events;
+DELETE FROM public.supplier_pos;
+DELETE FROM public.procurement_lines;
+DELETE FROM public.procurement_batch_lines;
+DELETE FROM public.procurement_batch_items;
+DELETE FROM public.procurement_batch_log;
+DELETE FROM public.job_status_log;
+DELETE FROM public.bom_lines;
+DELETE FROM public.quote_batch_lines;
+DELETE FROM public.quote_batch_boms;
+DELETE FROM public.quote_batch_log;
+
+-- Mid level (depend on parents, have children above)
+DELETE FROM public.invoices;
+DELETE FROM public.procurements;
+DELETE FROM public.procurement_batches;
+DELETE FROM public.quote_batches;
+
+-- Parents (the three things Anas cares about)
+DELETE FROM public.jobs;
+DELETE FROM public.quotes;
+DELETE FROM public.boms;
+
+-- Optional: also clear GMPs if test board names are polluting search
+-- (only safe AFTER boms/jobs/quotes are gone, since they FK to gmps)
+-- DELETE FROM public.gmps;
+
+COMMIT;
+```
+
+### 18.5 Why not TRUNCATE?
+
+`TRUNCATE ... CASCADE` is faster but:
+
+1. It doesn't fire DELETE triggers, so the `audit_log` never records the reset. Breaks compliance.
+2. It resets sequences — if you want to keep the existing `quote_number` / `job_number` / `proc_code` counter continuity, `TRUNCATE` blows it away.
+3. One accidental table name in the CASCADE chain (e.g., typing `TRUNCATE customers CASCADE`) is catastrophic — it'd wipe every child of every listed table.
+
+`DELETE FROM` is slower but respects triggers, RLS, and is much harder to accidentally extend.
+
+### 18.6 Verifying the reset
+
+After the transaction commits, run:
+
+```sql
+SELECT
+  (SELECT count(*) FROM boms)              AS boms,
+  (SELECT count(*) FROM quotes)            AS quotes,
+  (SELECT count(*) FROM jobs)              AS jobs,
+  (SELECT count(*) FROM customers)         AS customers_kept,
+  (SELECT count(*) FROM components)        AS components_kept,
+  (SELECT count(*) FROM api_pricing_cache) AS pricing_kept;
+```
+
+Expect zeros for the first three, non-zero for the last three.
+
+### 18.7 When to use this
+
+- Before a demo — clean slate removes stale test data.
+- Before running end-to-end validation against a real Lanka/Cevians BOM — you want the quote/job numbers to start from 001 and nothing from a prior test to confuse the flow.
+- After a schema migration that added columns — wiping and re-uploading is sometimes cleaner than backfilling.
+- **Never** in production once RS is live — this is for pre-launch dev resets only. Add a guard or rename the script if you need to block it in prod.
+
+---
+
+## Part 19 — BOM → Quote Handoff (Prefill Flow)
+
+Added April 14, 2026. Solves the friction where parsing a BOM and then starting a quote meant re-picking the customer + BOM from dropdowns — duplicate work that was especially annoying when the user had just clicked through the BOM parser 30 seconds earlier.
+
+### 19.1 The flow end-to-end
+
+```
+User uploads BOM at /bom/upload
+  ↓
+/api/bom/parse runs, creates boms row + bom_lines rows
+  ↓
+Upload form router.push('/bom/${bom_id}')
+  ↓
+User lands on /bom/[id] detail page
+  ↓
+Page header shows primary "Create Quote" button (Calculator icon)
+  (only when bom.status === 'parsed' && no linked quote exists)
+  ↓
+Click → navigate to /quotes/new?bom_id=${id}
+  ↓
+Server component reads searchParams.bom_id
+  ↓
+Parallel fetch:
+  - customers list (as always)
+  - boms row { id, customer_id, status } (only if bom_id is present)
+  ↓
+If bom.status === 'parsed':
+  pass initialCustomerId + initialBomId as props to <NewQuoteForm>
+  ↓
+NewQuoteForm renders with customer preselected (no click needed)
+  ↓
+useEffect fires once on mount (guarded by useRef):
+  - GET /api/boms?customer_id=${initialCustomerId}
+  - setBoms(list)
+  - if initialBomId matches: handleBomChange(initialBomId)
+    - this sets bomId state
+    - and auto-loads programming cost from /api/bom/${id}/line-count
+  ↓
+Tier inputs (50/100/150/200) are visible and editable immediately
+  ↓
+User clicks "Calculate Pricing" → "Save Quote as Draft"
+```
+
+### 19.2 Why the prefill is gated on `status === 'parsed'`
+
+A BOM row exists from the moment the file upload completes, but the parsed content lands a few seconds later. If the user somehow lands on `/quotes/new?bom_id=xxx` while the BOM is still `uploading` or `parsing` (or worse, `error`), prefilling it would either show empty BOM lines or fail silently. Gating on `status === 'parsed'` means the prefill either works completely or falls back to the blank form — never a partial, confusing state.
+
+### 19.3 The "Create Quote" / "View Quote" button logic
+
+```tsx
+{bom.status === "parsed" && !linkedQuote && (
+  <Link href={`/quotes/new?bom_id=${id}`}>
+    <Button size="sm">Create Quote</Button>
+  </Link>
+)}
+{linkedQuote && (
+  <Link href={`/quotes/${linkedQuote.id}`}>
+    <Button size="sm" variant="secondary">View Quote</Button>
+  </Link>
+)}
+```
+
+- Parsed BOM + no quote → primary-colored "Create Quote" button
+- Parsed BOM + quote exists → secondary "View Quote" button (jumps to the existing quote)
+- Uploading/parsing/errored BOM → neither button shown
+
+The `linkedQuote` is fetched server-side in parallel with revisions:
+
+```ts
+const [{ data: revisions }, { data: linkedQuote }] = await Promise.all([
+  supabase.from("boms").select(...).eq("gmp_id", bom.gmp_id)...,
+  supabase.from("quotes").select("id, status").eq("bom_id", id)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+]);
+```
+
+### 19.4 Why the prefill uses useEffect instead of initial state
+
+The BOMs list for the customer isn't known at render time — it's fetched from `/api/boms?customer_id=...` after the customer is picked. So `initialBomId` can't just be passed to `useState` because the form's BOM `<Select>` won't have the option until the list arrives.
+
+The `useEffect` (guarded by a `useRef` so it can't double-fire) mirrors what a user clicking through would do:
+
+1. Pick customer → triggers BOM list fetch
+2. Pick BOM → triggers programming cost auto-load
+
+Both happen automatically when both `initialCustomerId` and `initialBomId` are provided.
+
+### 19.5 Workflow banner vs. header button — why both?
+
+The workflow banner at the top of the BOM detail page already has a "Next: Quote" CTA that also links to `/quotes/new?bom_id=${id}`. We kept it AND added the primary header button because:
+
+- The workflow banner is a subtle outline button easy to miss.
+- The header button sits next to Export/Delete where users already look for actions on the current BOM.
+- The header button is primary-colored so it's the most obvious next step visually.
+- When a quote exists, the header button flips to "View Quote" — something the workflow banner doesn't do (it shows the next step, not the current one).
+
+Redundancy is intentional — a few pixels of duplicated UI is cheap insurance against "I didn't see the button."
+
+### 19.6 Files touched
+
+| File | What changed |
+|------|--------------|
+| `app/(dashboard)/quotes/new/page.tsx` | Accepts `searchParams.bom_id`, fetches BOM in parallel with customers, gates prefill on `status === 'parsed'` |
+| `components/quotes/new-quote-form.tsx` | New `initialCustomerId` / `initialBomId` props, `useEffect` prefill guarded by `useRef` |
+| `app/(dashboard)/bom/[id]/page.tsx` | New "Create Quote" / "View Quote" button in header actions |
+
 All routes share the same cache and enrichment logic — no duplication.

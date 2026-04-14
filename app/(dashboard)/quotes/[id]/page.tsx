@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QuoteStatusBadge } from "@/components/quotes/quote-status-badge";
 import { PricingTable } from "@/components/quotes/pricing-table";
+import { ManualPriceEditor } from "@/components/quotes/manual-price-editor";
 import { QuoteActions } from "@/components/quotes/quote-actions";
 import { DeleteQuoteButton } from "@/components/quotes/delete-quote-button";
 import {
@@ -285,6 +286,15 @@ export default async function QuoteDetailPage({
           </CardContent>
         </Card>
       )}
+
+      {/* Manual price editor — only for draft/review quotes with missing prices */}
+      {missingPriceComponents.length > 0 &&
+        (quote.status === "draft" || quote.status === "review") && (
+          <ManualPriceEditor
+            quoteId={id}
+            missingComponents={missingPriceComponents}
+          />
+        )}
 
       {/* Customer contact card */}
       {customer?.contact_email && (

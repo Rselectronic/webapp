@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,12 +57,18 @@ function defaultTierRow(qty = ""): TierRow {
 
 interface NewQuoteFormProps {
   customers: Customer[];
+  initialCustomerId?: string;
+  initialBomId?: string;
 }
 
-export function NewQuoteForm({ customers }: NewQuoteFormProps) {
+export function NewQuoteForm({
+  customers,
+  initialCustomerId,
+  initialBomId,
+}: NewQuoteFormProps) {
   const router = useRouter();
 
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
   const [boms, setBoms] = useState<Bom[]>([]);
   const [bomId, setBomId] = useState("");
   const [tierRows, setTierRows] = useState<TierRow[]>([
@@ -116,6 +122,38 @@ export function NewQuoteForm({ customers }: NewQuoteFormProps) {
       // Non-critical — user can still enter manually
     }
   }, []);
+
+  // Prefill flow: when the page is hit with ?bom_id=xxx, the server resolves
+  // it to { initialCustomerId, initialBomId } and passes both as props. We
+  // mirror the user click sequence: load the customer's BOMs, then select the
+  // target BOM so the pricing-tier step becomes visible without any clicks.
+  const prefillRan = useRef(false);
+  useEffect(() => {
+    if (prefillRan.current) return;
+    if (!initialCustomerId || !initialBomId) return;
+    prefillRan.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/boms?customer_id=${initialCustomerId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: Bom[] = Array.isArray(data) ? data : data.boms ?? [];
+        if (cancelled) return;
+        setBoms(list);
+        if (list.some((b) => b.id === initialBomId)) {
+          handleBomChange(initialBomId);
+        }
+      } catch {
+        // Fall through to the manual picker
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCustomerId, initialBomId, handleBomChange]);
 
   const updateTierField = (index: number, field: keyof TierRow, value: string) => {
     setTierRows((prev) => {

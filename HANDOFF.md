@@ -1017,4 +1017,55 @@ IMPORTANT RULES:
 
 **End state:** 29 tables, 76+ API routes, 40 pages, ~45K lines TypeScript. All 9 PDFs branded with RS logo. BOM revision user-specified. Classification has live progress feedback. Stats tiles live-computed.
 
-*Last updated: April 14, 2026, Session 9 (continued — branding pass, revision input, Piyush progress bar)*
+---
+
+### Session 9 continued — 4-tier defaults + manual pricing for missing components
+
+Anas shared reference quote `TLAN0221R5` (KB Rail Canada) showing the target shape: 4 tiers (50/100/150/200) with per-tier Assembly/PCB/Components pricing that scales with qty. Two gaps found in the current quote flow:
+
+**33. New Quote Batch form was saving 1-tier batches by accident:**
+- `components/quotes/new-batch-form.tsx` defaulted `qty_1..qty_4` to empty strings with `placeholder="50/100/250/500"` — placeholders aren't values, so skipping inputs silently produced 1-tier batches.
+- Fixed: `useState("50")`, `useState("100")`, `useState("150")`, `useState("200")`. All 4 tiers now populate on first render, matching the reference quote.
+- `components/quotes/new-quote-form.tsx` already had real defaults (50/100/250/500) — left alone.
+
+**34. Manual price entry for API-missing components:**
+- When DigiKey/Mouser/LCSC all miss an MPN, the component lands in `pricing.missing_price_components` at $0 and the quote total is wrong. Run-pricing route has said "Review and manually price missing components" in its error message since day one but no UI existed.
+- New stack (all parallel-dispatched to a single agent):
+  - `supabase/migrations/028_pricing_cache_manual_source.sql` — extends `api_pricing_cache.source` CHECK to include `'manual'`. Applied live via MCP.
+  - `lib/pricing/recompute.ts` — new helper `recomputeQuotePricing(supabase, bom_id, resolvedTiers, shipping_flat)` that extracts ~80 lines of shared BOM-fetch/price-map/overage/settings/engine-call logic from `app/api/quotes/route.ts`. Both create and recalculate now go through it. Side-effect: the helper does case-insensitive `search_key` lookups (raw + uppercased), which fixes a long-standing silent bug where some cache rows were stored uppercase and others raw.
+  - `app/api/pricing/manual/route.ts` — auth-gated POST `{ mpn, unit_price, currency? }` that upserts into `api_pricing_cache` with `source='manual'`, `search_key=mpn.toUpperCase()`, `expires_at = now + 365 days`, `response={ manual:true, entered_by, entered_at }`.
+  - `app/api/quotes/[id]/recalculate/route.ts` — auth-gated POST. Only allowed for quotes in `draft` or `review` (400s on sent/accepted/rejected/expired). Reads `pricing.tier_inputs` from the stored quote (falls back to quantities + pcb_cost_per_unit for old quotes), reuses stored shipping (default 200), calls the helper, writes back `pricing`/`pcb_cost_per_unit`/`assembly_cost`/`nre_charge`/`updated_at`.
+  - `components/quotes/manual-price-editor.tsx` — `"use client"` Card with sticky-header table (MPN mono / description truncate / qty right / price input). "Save & Recalculate" button: `Promise.all` of `/api/pricing/manual` calls → `/api/quotes/[id]/recalculate` → `router.refresh()`. Green/red status banners, `Loader2` spinner.
+  - `app/(dashboard)/quotes/[id]/page.tsx` — renders `<ManualPriceEditor>` below the Pricing Breakdown card when `missingPriceComponents.length > 0 && status IN ('draft','review')`. The existing readonly summary table inside `PricingTable` stays as a collapsible list.
+- **Why manual prices leak across quotes:** stored in `api_pricing_cache` (not quote-scoped) so if the same MPN shows up in a later quote, the manual price is picked up. Accepted tradeoff — avoids re-entering the same missing price for every quote. Real DigiKey/Mouser hits cheaper than the manual entry will still win (helper picks the lowest across all sources per MPN).
+- **365-day TTL** on manual entries so recalc always picks them up even weeks later.
+
+**End state:** 29 tables, 78+ API routes, 40 pages, ~45.3K lines TypeScript. Quote batches default to 4 real tiers. Missing-price components can be manually priced + quote recalculated without re-uploading the BOM. Shared pricing recompute helper eliminates 80 lines of duplicated code.
+
+---
+
+### Session 9 continued — Transactional data wipe
+
+**35. Full wipe of BOMs / quotes / jobs + all descendants:**
+- Anas asked for a clean slate to test the new 4-tier defaults and manual pricing features against real Lanka/Cevians BOMs. Pre-wipe row counts: boms=2, bom_lines=187, quotes=2, jobs=2, job_status_log=28, procurements=2, procurement_lines=185, supplier_pos=4.
+- Executed via Supabase MCP `execute_sql` in a single `BEGIN;...COMMIT;` transaction. Deleted in FK-dependency order: children → mid-level → parents.
+- Tables cleared (all now 0 rows): `payments`, `shipments`, `fabrication_orders`, `ncr_reports`, `serial_numbers`, `production_events`, `supplier_pos`, `procurement_lines`, `procurement_batch_lines`, `procurement_batch_items`, `procurement_batch_log`, `job_status_log`, `bom_lines`, `quote_batch_lines`, `quote_batch_boms`, `quote_batch_log`, `invoices`, `procurements`, `procurement_batches`, `quote_batches`, `jobs`, `quotes`, `boms`.
+- Tables preserved (seed/config/reference/learning-loop data): `customers` (11), `gmps` (24), `components` (4033 — the classification learning loop), `api_pricing_cache` (281 — cached distributor prices), `m_code_rules` (43), `overage_table`, `mcode_keyword_lookup` (211), `app_settings`, `users`, `email_templates`.
+- **Not touched:** Supabase Storage buckets (`boms/`, `quotes/`, `jobs/`, `invoices/`, `procurement/`). Files there are now orphaned — they'll stay until manually purged or a future cleanup script reconciles them with DB rows. Anas said "leave the rest."
+- `audit_log` grew by ~260 rows as DELETE triggers fired — intentional, that's the compliance trail.
+
+**36. GMPs also wiped (follow-up):**
+- Anas noticed the 24 test GMPs (TL265-*, TL406-*, etc.) were still showing up in the global search autocomplete. Since no BOMs/jobs/quotes remained referencing them, they were safe to delete.
+- `DELETE FROM public.gmps;` → 24 → 0 rows.
+- Customer seed data still intact (11 rows). Next real BOM upload will create fresh GMPs.
+
+**37. BOM → Quote handoff now prefills everything:**
+- Anas: "when i parse a bom for a client i shouldnt have to do the new qoute thing it should already proceed to make a qoute."
+- The workflow banner had always linked to `/quotes/new?bom_id=xxx`, but `new-quote-form.tsx` ignored the query param entirely — user landed on the form and still had to pick customer + BOM from the dropdowns.
+- **Fixed the handoff in 3 places:**
+  - `app/(dashboard)/quotes/new/page.tsx` — now accepts `searchParams.bom_id`, fetches `{ id, customer_id, status }` from `boms` in parallel with the customer list, only prefills if `status === 'parsed'` (won't prefill from a broken upload).
+  - `components/quotes/new-quote-form.tsx` — new `initialCustomerId` / `initialBomId` props. A `useEffect` guarded by a `useRef` flag runs once on mount: fetches the customer's BOMs via the existing `/api/boms?customer_id=...` route, then calls `handleBomChange(initialBomId)` which selects the BOM and triggers the existing programming-cost auto-load. The rest of the form (tiers, shipping, calculate) is immediately interactable — user lands directly on Step 3.
+  - `app/(dashboard)/bom/[id]/page.tsx` — new primary "Create Quote" button in the header actions (next to Export/Delete) when `bom.status === 'parsed' && !linkedQuote`. When a quote already exists, the button flips to a secondary "View Quote" that links to `/quotes/[id]`. Uses the `Calculator` icon from lucide-react to match the workflow-banner's step icon.
+- Flow is now: upload BOM → parse → click "Create Quote" → land on new quote page with BOM selected and tier inputs already showing (50/100/150/200 defaults from entry 33) → click Calculate → save. Zero dropdown clicks.
+
+*Last updated: April 14, 2026, Session 9 (continued — 4-tier defaults + manual pricing + wipe + BOM→Quote prefill)*

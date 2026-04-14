@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Calculator } from "lucide-react";
 import { BomTable } from "@/components/bom/bom-table";
 import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
@@ -107,6 +107,22 @@ export default async function BomDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {bom.status === "parsed" && !linkedQuote && (
+            <Link href={`/quotes/new?bom_id=${id}`}>
+              <Button size="sm" className="gap-1.5">
+                <Calculator className="h-4 w-4" />
+                Create Quote
+              </Button>
+            </Link>
+          )}
+          {linkedQuote && (
+            <Link href={`/quotes/${linkedQuote.id}`}>
+              <Button size="sm" variant="secondary" className="gap-1.5">
+                <Calculator className="h-4 w-4" />
+                View Quote
+              </Button>
+            </Link>
+          )}
           <ExportBomButton bomId={id} fileName={bom.file_name} gmpNumber={gmp?.gmp_number ?? ""} />
           <DeleteBomButton bomId={id} bomName={gmp?.gmp_number ?? bom.file_name} />
           <Badge variant={statusVariant}>{bom.status}</Badge>
