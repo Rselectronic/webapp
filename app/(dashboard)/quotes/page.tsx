@@ -31,7 +31,7 @@ export default async function QuotesPage({
 
   let query = supabase
     .from("quotes")
-    .select("*, customers(code, company_name), gmps(gmp_number)")
+    .select("id, quote_number, status, quantities, pricing, created_at, customers(code, company_name), gmps(gmp_number)")
     .order("created_at", { ascending: false })
     .limit(100);
 

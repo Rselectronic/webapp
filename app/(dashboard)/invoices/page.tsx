@@ -40,24 +40,79 @@ export default async function InvoicesPage({
   const activeStatus = params.status ?? "all";
   const supabase = await createClient();
 
-  // Fetch active customers for the Create Invoice dialog
-  const { data: customersList } = await supabase
-    .from("customers")
-    .select("id, code, company_name")
-    .eq("is_active", true)
-    .order("code");
-
-  const customers = (customersList ?? []) as { id: string; code: string; company_name: string }[];
-
-  const { data: invoices, error } = await supabase
-    .from("invoices")
-    .select(
-      "id, invoice_number, status, subtotal, total, tps_gst, tvq_qst, freight, discount, issued_date, due_date, paid_date, created_at, customers(code, company_name), jobs(job_number)"
-    )
-    .order("created_at", { ascending: false });
-
   const now = Date.now();
   const DAY_MS = 86_400_000;
+  const nowIso = new Date(now).toISOString();
+  const d30Iso = new Date(now - 30 * DAY_MS).toISOString();
+  const d60Iso = new Date(now - 60 * DAY_MS).toISOString();
+
+  // Parallelize: customer list, main invoice fetch, and 4 aging amount queries
+  const [
+    customersListRes,
+    invoicesRes,
+    currentAgingRes,
+    over30AgingRes,
+    over60AgingRes,
+    totalUnpaidRes,
+  ] = await Promise.all([
+    // Active customers for Create Invoice dialog
+    supabase
+      .from("customers")
+      .select("id, code, company_name")
+      .eq("is_active", true)
+      .order("code"),
+    // Main invoice list — narrowed columns, limit 200
+    supabase
+      .from("invoices")
+      .select(
+        "id, invoice_number, status, total, issued_date, due_date, created_at, customers(code, company_name), jobs(job_number)"
+      )
+      .order("created_at", { ascending: false })
+      .limit(200),
+    // Aging buckets — fetch only `total` so we can sum in JS and get count for free.
+    // Current: sent and due_date >= now (not yet due)
+    supabase
+      .from("invoices")
+      .select("total")
+      .eq("status", "sent")
+      .gte("due_date", nowIso),
+    // 30+ days overdue: sent and due_date < now - 30d (includes 60+ bucket, matching pre-regression semantics)
+    supabase
+      .from("invoices")
+      .select("total")
+      .eq("status", "sent")
+      .lt("due_date", d30Iso),
+    // 60+ days overdue: sent and due_date < now - 60d
+    supabase
+      .from("invoices")
+      .select("total")
+      .eq("status", "sent")
+      .lt("due_date", d60Iso),
+    // Total unpaid: not paid and not cancelled
+    supabase
+      .from("invoices")
+      .select("total")
+      .not("status", "in", '("paid","cancelled")'),
+  ]);
+
+  const customers = (customersListRes.data ?? []) as {
+    id: string;
+    code: string;
+    company_name: string;
+  }[];
+  const { data: invoices, error } = invoicesRes;
+
+  const sumTotals = (rows: { total: number | null }[] | null | undefined) =>
+    (rows ?? []).reduce((acc, r) => acc + Number(r.total ?? 0), 0);
+
+  const currentAmount = sumTotals(currentAgingRes.data);
+  const currentCount = currentAgingRes.data?.length ?? 0;
+  const over30Amount = sumTotals(over30AgingRes.data);
+  const over30Count = over30AgingRes.data?.length ?? 0;
+  const over60Amount = sumTotals(over60AgingRes.data);
+  const over60Count = over60AgingRes.data?.length ?? 0;
+  const totalOutstandingAmount = sumTotals(totalUnpaidRes.data);
+  const unpaidCount = totalUnpaidRes.data?.length ?? 0;
 
   // Compute days outstanding and effective status (overdue) for each invoice
   const enriched = (invoices ?? []).map((inv) => {
@@ -94,38 +149,8 @@ export default async function InvoicesPage({
       ? enriched
       : enriched.filter((inv) => inv.effectiveStatus === activeStatus);
 
-  // Aging KPIs (unpaid only)
-  const unpaid = enriched.filter(
-    (inv) => inv.status !== "paid" && inv.status !== "cancelled"
-  );
-
-  const totalOutstanding = unpaid.reduce(
-    (sum, inv) => sum + Number(inv.total ?? 0),
-    0
-  );
-
-  const currentAmount = unpaid
-    .filter((inv) => {
-      if (!inv.due_date) return true;
-      return new Date(inv.due_date).getTime() >= now;
-    })
-    .reduce((sum, inv) => sum + Number(inv.total ?? 0), 0);
-
-  const over30Amount = unpaid
-    .filter(
-      (inv) =>
-        inv.due_date &&
-        new Date(inv.due_date).getTime() < now - 30 * DAY_MS
-    )
-    .reduce((sum, inv) => sum + Number(inv.total ?? 0), 0);
-
-  const over60Amount = unpaid
-    .filter(
-      (inv) =>
-        inv.due_date &&
-        new Date(inv.due_date).getTime() < now - 60 * DAY_MS
-    )
-    .reduce((sum, inv) => sum + Number(inv.total ?? 0), 0);
+  // Aging KPI amounts + counts come from parallelized narrow SQL queries above.
+  // Each aging tile shows the dollar amount (primary) and invoice count (secondary).
 
   return (
     <div className="space-y-6">
@@ -165,10 +190,10 @@ export default async function InvoicesPage({
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">
-              {formatCurrency(totalOutstanding)}
+              {formatCurrency(totalOutstandingAmount)}
             </p>
             <p className="text-xs text-gray-500">
-              {unpaid.length} unpaid invoice{unpaid.length !== 1 ? "s" : ""}
+              {unpaidCount} unpaid invoice{unpaidCount !== 1 ? "s" : ""}
             </p>
           </CardContent>
         </Card>
@@ -184,7 +209,9 @@ export default async function InvoicesPage({
             <p className="text-2xl font-bold text-green-700">
               {formatCurrency(currentAmount)}
             </p>
-            <p className="text-xs text-gray-500">Not yet due</p>
+            <p className="text-xs text-gray-500">
+              {currentCount} invoice{currentCount !== 1 ? "s" : ""} — not yet due
+            </p>
           </CardContent>
         </Card>
 
@@ -199,7 +226,9 @@ export default async function InvoicesPage({
             <p className="text-2xl font-bold text-yellow-700">
               {formatCurrency(over30Amount)}
             </p>
-            <p className="text-xs text-gray-500">Past due over 30 days</p>
+            <p className="text-xs text-gray-500">
+              {over30Count} invoice{over30Count !== 1 ? "s" : ""} — past due over 30 days
+            </p>
           </CardContent>
         </Card>
 
@@ -214,7 +243,9 @@ export default async function InvoicesPage({
             <p className="text-2xl font-bold text-red-700">
               {formatCurrency(over60Amount)}
             </p>
-            <p className="text-xs text-gray-500">Past due over 60 days</p>
+            <p className="text-xs text-gray-500">
+              {over60Count} invoice{over60Count !== 1 ? "s" : ""} — past due over 60 days
+            </p>
           </CardContent>
         </Card>
       </div>
