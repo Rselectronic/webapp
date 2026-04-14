@@ -1085,4 +1085,11 @@ Anas shared reference quote `TLAN0221R5` (KB Rail Canada) showing the target sha
 - Configs handed over: Claude Desktop, Claude Code `.mcp.json`, and env vars (`RS_MCP_TOKEN` / `RS_MCP_URL`) for n8n/Make/custom agents.
 - **Security model:** possession of the raw key = authentication. RLS bypassed in the validation path because the key value itself is the credential. Only hashes are stored, so a DB dump doesn't leak keys.
 
-*Last updated: April 14, 2026, Session 9 (continued — 4-tier defaults + manual pricing + wipe + BOM→Quote prefill + rs_live API keys)*
+**39. API Keys management UI:**
+- Added `/settings/api-keys` page (CEO-only, matches `/settings/audit` gating pattern). Lists all keys with name, role badge, created, last used (relative time, inlined helper), status badge. Revoked rows grey out in place.
+- Create dialog has two states: form (name + role select) → on 201, flips to a reveal state with a green monospace code block, copy-to-clipboard button, and a "Save this key now" warning. Closing the dialog splices the new key into the local list state so it appears without a page refresh.
+- Revoke uses `window.confirm` → DELETE → mutates the row locally so it greys instantly. Sonner toast was already wired up in `app/layout.tsx` so it's used for success/error feedback alongside an inline red banner.
+- New tile in the `/settings` hub grid with a `Key` icon.
+- Zero CLI required — every key operation now lives in the webapp.
+
+*Last updated: April 14, 2026, Session 9 (continued — 4-tier defaults + manual pricing + wipe + BOM→Quote prefill + rs_live API keys + management UI)*

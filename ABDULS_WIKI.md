@@ -3718,4 +3718,39 @@ RS_MCP_URL=https://webapp-fawn-seven.vercel.app/api/mcp
 
 The token never expires — only manual revocation via `DELETE /api/admin/api-keys/:id` kills it.
 
+### 20.10 Management UI (`/settings/api-keys`)
+
+All key operations live in the webapp — no CLI. CEO-only page (same gating pattern as `/settings/audit`: redirect to `/login` if no user, redirect to `/` if role is not ceo).
+
+**Layout:**
+- Header with back link to `/settings`
+- Amber warning callout: "Raw keys are shown ONCE at creation. If you lose a key, revoke it and generate a new one."
+- Count strip: "X active · Y revoked"
+- "New API Key" primary button
+- Table: Name | Role (colored badge) | Created | Last Used (relative time) | Status | Actions
+
+**Create flow:**
+1. Click "New API Key" → Dialog opens in form mode
+2. Enter name (required, e.g., "Claude Desktop - Anas") + select role (ceo / ops / shop)
+3. Submit → `POST /api/admin/api-keys` → on 201, dialog flips to reveal mode
+4. Reveal mode shows the raw key in a monospace green-on-black code block with copy-to-clipboard + "Done" button
+5. Closing the dialog splices the new key into local list state (instant UI update, no page refresh)
+
+**Revoke flow:**
+1. Click "Revoke" on an active row → `window.confirm(...)` asking to confirm
+2. On confirm → `DELETE /api/admin/api-keys/:id`
+3. Local state update: `revoked_at` timestamp applied to the row → row greys out in place (`opacity-60` + `line-through` on the name)
+4. Active count decreases, revoked count increases
+
+**Error handling:** sonner toast (already wired in `app/layout.tsx`) + a dismissable red banner above the table. Both show. Toast is transient, banner persists until the user clicks × — useful for reading error details after the toast disappears.
+
+**Relative time:** inlined inside the client component — `< 1m` → "just now", `< 1h` → `Nm ago`, `< 24h` → `Nh ago`, else `Nd ago`. No new util file needed.
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `app/(dashboard)/settings/api-keys/page.tsx` | Server component, CEO gate, initial list fetch |
+| `components/settings/api-keys-manager.tsx` | Client component — table + dialog + revoke |
+| `app/(dashboard)/settings/page.tsx` | Added `Key` icon tile linking to the new page |
+
 All routes share the same cache and enrichment logic — no duplication.
