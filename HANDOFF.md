@@ -832,7 +832,65 @@ Found the DM Common File V10.11.xlsm in OneDrive (`/Folder Test With Rehan/`). E
 **New branch for Piyush to test:**
 - Branch: `piyush-sandbox` (created from main, pushed)
 - Vercel will auto-build a preview deployment — he gets his own URL to play with without affecting main
-- Anas can merge main into piyush-sandbox when new fixes come in
+- Anas merges main into piyush-sandbox after every fix so Piyush's preview stays in sync
+
+**23. Auto-PCB creation DISABLED (Anas override):**
+- Session 7 added 3-tier PCB auto-creation (filename → GMP info → generic "PCB1") because Piyush asked for it.
+- Anas overrode: "we don't want the PCB line showed". The GMP itself already represents the board, so fabricating a ghost row was confusing and duplicate information.
+- Parser now: still detects and pins any PCB row that exists in the source BOM (designator match `^PCB[A-Z0-9\-]*$`). If no PCB row → logs `AUTO-PCB-FAIL` and nothing is fabricated.
+
+**24. DM Common File V11 sheets extracted (source of truth):**
+
+Found DM Common File in OneDrive at `/Folder Test With Rehan/DM Common File - Reel Pricing V10.11.xlsm`. Extracted 4 critical sheets as CSVs in `supabase/seed-data/dm-file/`:
+
+- **Admin sheet** → `admin_par_rules.csv` — 47 PAR rules with source field references (Mounting Type, Sub-Category, Product Description, Package / Case, Features, Attachment Method, Category)
+- **Size Table sheet** → `size_table.csv` — exact dimension ranges (with corrections vs my earlier guess)
+- **MachineCodes sheet** → `machine_codes.csv` — 239 package/keyword → M-code mappings
+- **ExtraOrder (overage) sheet** → `overage_tables.csv` — 676 rows of overage tiers per M-code, up to 391,000 parts
+
+**Critical corrections to `lib/mcode/vba-algorithm.ts` SIZE_TIERS:**
+- **0402 range was WRONG** — I had `1.00-1.09 × 0.50-0.59` (only matches literal 0402 size). Real range is `1.00-1.49 × 0.49-0.79` — a much broader window. Parts were getting misclassified as CP or unclassified.
+- **0201** width max was 0.59, real is 0.48
+- **Removed phantom MEC tier** — the real Size Table has no MEC entry. MEC comes from PAR rules only.
+
+**Supabase re-seeded from real DM data (migrations 026, 027):**
+- `mcode_keyword_lookup`: **211 real keywords** from MachineCodes sheet (replaced 240 placeholders)
+- `m_code_rules`: **43 real PAR rules** from Admin sheet (PAR-18/19/20/21 skipped — handled by `vba-algorithm.ts` and keyword lookup)
+- `overage_table`: **621 tiers across 11 M-codes** (was 6 tiers max qty 500, now 403 CPEXP tiers, 43 CP/0402 tiers each, up to 100k parts)
+
+**25. ClassificationInput extended with 3 new fields (sub_category, features, attachment_method):**
+- `fetchComponentParams` AI prompt updated to ask Claude for all 9 fields (mounting, dimensions, package, category, sub_category, features, attachment_method)
+- `applyVbaAlgorithm` now runs sub-category-based rules BEFORE size lookup, matching the VBA Admin rule order: Slide Switches, Tactile Switches, RF Shields, Ferrite Cores, Film Capacitors, Card Guides, Board Supports
+- Description keyword rules inline: Standoff, HEATSINK, DPAK TO-252, Battery Insulator, Spacer, Clip, Clamp, Relay+SMT
+- Category rules: Cables Wires Management → CABLE, Development Boards → DEV B
+- Extra mounting-type branches (PCB TH, PCB SMT, Panel Mount, Panel PCB TH) for PAR-35/36/46/47
+- `rules.ts matchesCondition` supports `not_contains` operator (splits on comma, checks NONE are present — for PAR-27/28 "not contains SMT, SMD, SURFACE MOUNT")
+- `contains` now case-insensitive (matches VBA `Option Compare Text`)
+
+**26. AI fallback for BOM column mapping:**
+- Previously: parser hard-failed with a wall of text if column names didn't match the keyword detector
+- Now: if `resolveColumnMapping` throws, we call `aiMapColumns(headers, sampleRows)` which asks Claude to propose a mapping from a preview of 5 rows
+- Claude returns `{ qty, designator, mpn, manufacturer, description, cpc }` as exact header name references
+- Strict validation: every mapped field must reference a real header; requires at least `qty + designator + (mpn OR description)` to proceed
+- Parse response now includes `mapping_source: "keyword" | "ai"` so the UI can show a badge when AI was used
+- BOM record stores `parse_result.mapping_source` for audit
+- Cost: ~1.5 second Haiku call, only fires on BOMs that fail keyword detection. Normal BOMs (Lanka, Cevians, etc.) never touch it.
+
+**27. BOM stats tiles live-computed (was showing stale data):**
+- Classified / Need Review / Merged Lines tiles read from `parse_result.classification_summary` which is a snapshot from upload time — never updated after classification
+- Piyush reported tiles showed 0 even after classification ran successfully
+- Fixed: tiles now compute LIVE from the `bom_lines` array on every render (same source as the M-Code Distribution pie chart). Filter out PCB and DNI rows, count `m_code !== null` as classified, `m_code === null` as unclassified.
+
+**28. Progress bar for M-code classification:**
+- Piyush asked: "while classifying we should have a progress bar showing lines complete"
+- New lightweight endpoint `GET /api/bom/[id]/count` — returns `{ total, classifiable, classified, unclassified, pcb, dni }` in ~50ms
+- `AIClassifyButton` now:
+  1. Snapshots starting classified count before API call
+  2. Polls `/count` every 500ms while classification runs
+  3. Shows a determinate progress bar with `X / Y (N%)` counter and smooth blue fill
+  4. Snaps to 100% when the API returns
+  5. Cleans up poller on unmount (no memory leaks)
+- Both rule-based phase and AI phase get their own progress bar
 
 ---
 
@@ -857,7 +915,17 @@ Found the DM Common File V10.11.xlsm in OneDrive (`/Folder Test With Rehan/`). E
 - [x] **BOM Description mapped wrong** — "Value" no longer overrides actual Description (Session 8)
 - [x] **0402 M-code misclassification** — components with "0402" in description now classify correctly (Session 8)
 - [x] **Quote tiers horizontal** — redesigned to row-wise with per-tier PCB price + 3 NRE categories (Session 8)
-- [x] **BOM missing PCB line** — parser now auto-creates PCB line with 3-tier fallback (Session 8)
+- [x] **BOM missing PCB line** — Session 8 added 3-tier fallback. REVERSED in Session 9 per Anas: no auto-creation, GMP represents the board.
+- [x] **CPC column showed MPN** — parser had `cpc = mpn` fallback at 5 places, all removed (Session 9)
+- [x] **AI classifier doing generic M-code guessing** — rewritten to fetch physical params only, then deterministic VBA algorithm assigns M-code (Session 9)
+- [x] **PAR rules were best-guess** — extracted actual 43 rules from DM Common File V11 Admin sheet (Session 9)
+- [x] **Keyword lookup was placeholder** — replaced with 211 real keywords from DM MachineCodes sheet (Session 9)
+- [x] **Overage table undersized** — was 6 tiers max qty 500. Now 621 tiers from DM ExtraOrder sheet, up to 100k parts. 0402 rate was 10x wrong. (Session 9)
+- [x] **Size ranges wrong** — 0402 was `1.00-1.09 × 0.50-0.59` (literal only). Real DM range: `1.00-1.49 × 0.49-0.79`. Fixed. (Session 9)
+- [x] **BOM parser hard-failed on weird columns** — AI fallback mapper added. Any table-like BOM now works. (Session 9)
+- [x] **BOM table no filter/search/tooltips** — 412-line UX rewrite: filter chips, search box, cell padding, column tooltips, unclassified toggle (Session 9)
+- [x] **BOM stats tiles stale after classify** — now live-computed from bom_lines every render (Session 9)
+- [x] **No classification progress feedback** — new `/count` endpoint + polling progress bar in AIClassifyButton (Session 9)
 
 ### Nice to Have
 - [ ] Copy button on M-code override cells (Anas requested)
@@ -877,30 +945,40 @@ Found the DM Common File V10.11.xlsm in OneDrive (`/Folder Test With Rehan/`). E
 Read HANDOFF.md first, then CLAUDE.md.
 
 Key context:
-- App is ~80% complete toward replacing 11 Excel/VBA workbooks
-- 4,026 components pre-loaded for M-code classification
+- App is ~85% complete toward replacing 11 Excel/VBA workbooks
+- 4,032 components pre-loaded + growing via DigiKey enrichment
 - Quote flow works end-to-end (BOM → classify → price → PDF)
 - Quote tiers are row-wise with per-tier PCB price + 3 NRE categories
 - Labour costing built with VBA TIME File rates ($130/hr labour, $165/hr SMT)
-- Production scheduling: Kanban + weekly view + dashboard
+- Production scheduling: Kanban + weekly view + dashboard + monthly Gantt
 - Procurement ordering/receiving + batch merge-split cycle 2 built
-- All PDFs use pdf-lib (pure JS)
+- All 9 PDFs match Excel source-of-truth templates
 - All API routes have auth checks
 - Full audit trail on 31 tables via DB triggers
-- Classification 10x faster (parallel batches) + size rules working
-- Abdul's Wiki (ABDULS_WIKI.md) documents every table, API, page, button
+- Classification 10x faster (parallel batches) + exact DM algorithm
+- M-code rules: 43 real DM Admin PAR rules + 211 real MachineCodes keywords
+- Overage: 621 real DM ExtraOrder tiers (was 6 placeholder)
+- Supplier APIs: DigiKey ✅ (fixed v3→v4 bug), Mouser ✅, LCSC ❌ (vendor blocked)
+- AI chat: 39 tools, image/PDF vision, page-context aware, take-over mode
+- Real MCP server: 20 tools via Streamable HTTP for Claude Desktop
+- Piyush sandbox branch: separate from main, Vercel preview deployment
+- BOM parser has AI fallback for unknown column layouts
+- Abdul's Wiki (ABDULS_WIKI.md) Part 15 = calculations, Part 16 = supplier APIs
 
 What needs work next:
-1. Duplicate PAR rules consolidation (in-code vs DB)
-2. Test all new features end-to-end
-3. Email integration
-4. QC verification workflow
+1. End-to-end validation with a real Lanka/Cevians BOM (highest leverage)
+2. Quote PDF still needs matching template (not in backend folder yet)
+3. LCSC API blocked vendor-side — Anas to email LCSC contact
+4. Email integration (send quotes/invoices)
+5. QC verification workflow (PROC Verification V3 equivalent)
+6. Batch send-back SMT rate discrepancy ($0.35 vs $0.035 — 10x off)
 
 IMPORTANT RULES:
 - Update HANDOFF.md after EVERY change AND push — Anas requires this
 - Look at VBA code in "All vba codes/" folder BEFORE building any feature
 - Never build from assumptions — verify against the Excel/VBA source of truth
-- The VBA code IS the spec. If BUILD_PROMPT.md says one thing and VBA does another, VBA wins.
+- The VBA code IS the spec. DM Common File sheets live in /supabase/seed-data/dm-file/
+- When pushing to main, always merge main into piyush-sandbox so Piyush stays in sync
 ```
 
-*Last updated: April 13, 2026, Session 8*
+*Last updated: April 14, 2026, Session 9 (Piyush feedback round, DM file seeding, classifier rewrite)*
