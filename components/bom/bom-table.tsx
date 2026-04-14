@@ -11,8 +11,10 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { McodeSelect } from "./mcode-select";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { Search, X } from "lucide-react";
+import { Search, X, Trash2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface BomLine {
   id: string;
@@ -67,6 +69,37 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
   const [search, setSearch] = useState("");
   const [activeMcodes, setActiveMcodes] = useState<Set<string>>(new Set());
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
+
+  async function handleDeleteLine(lineId: string, mpn: string | null) {
+    const label = mpn ?? "this row";
+    if (
+      !window.confirm(
+        `Delete row ${label}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingLineId(lineId);
+    try {
+      const res = await fetch(`/api/bom/lines/${lineId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Delete failed (${res.status})`);
+      }
+      setLines((prev) => prev.filter((l) => l.id !== lineId));
+      toast.success("Row deleted");
+    } catch (err) {
+      toast.error("Failed to delete row", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setDeletingLineId(null);
+    }
+  }
 
   // Sync local state when server-provided lines change (e.g. after classification + router.refresh())
   useEffect(() => {
@@ -290,13 +323,16 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                 <TableHead className="w-32 px-3 py-2.5">M-Code</TableHead>
                 <TableHead className="w-64 px-3 py-2.5">Reasoning</TableHead>
                 <TableHead className="w-20 px-3 py-2.5">Confidence</TableHead>
+                <TableHead className="w-12 px-3 py-2.5 text-right">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredLines.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={11}
                     className="px-3 py-8 text-center text-sm text-gray-500"
                   >
                     No components match the current filters.
@@ -398,6 +434,26 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                             {Math.round(line.m_code_confidence * 100)}%
                           </span>
                         </div>
+                      )}
+                    </TableCell>
+                    {/* Actions */}
+                    <TableCell className="px-3 py-2.5 text-right">
+                      {line.is_pcb ? null : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-gray-400 hover:text-red-600"
+                          disabled={deletingLineId === line.id}
+                          onClick={() => handleDeleteLine(line.id, line.mpn)}
+                          aria-label="Delete row"
+                        >
+                          {deletingLineId === line.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
                       )}
                     </TableCell>
                   </TableRow>

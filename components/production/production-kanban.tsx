@@ -161,6 +161,12 @@ export function ProductionKanban({ jobs: initialJobs }: ProductionKanbanProps) {
 
   const moveJob = useCallback(
     async (jobId: string, targetColumnKey: string) => {
+      // Always clear drag state at the start of a move — React unmounts the
+      // dragged tile after the optimistic update, so handleDragEnd may never
+      // fire on the original DOM node.
+      setDraggedJobId(null);
+      setDragOverColumn(null);
+
       const column = PRODUCTION_COLUMNS.find((c) => c.key === targetColumnKey);
       if (!column) return;
 

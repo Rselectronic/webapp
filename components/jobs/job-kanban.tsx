@@ -98,7 +98,11 @@ export function JobKanban({ jobs: initialJobs }: JobKanbanProps) {
   const handleDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>, columnKey: string) => {
       e.preventDefault();
+      // Clear drag state immediately — React unmounts the dragged tile after
+      // the optimistic update, so handleDragEnd may never fire on the
+      // original DOM node, leaving draggedJobId / dragOverColumn stuck.
       setDragOverColumn(null);
+      setDraggedJobId(null);
 
       const jobId = e.dataTransfer.getData("text/plain");
       if (!jobId) return;

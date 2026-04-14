@@ -90,12 +90,15 @@ export default async function BomDetailPage({
 
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {gmp?.gmp_number ?? bom.file_name}
-            {gmp?.board_name && (
-              <span className="ml-2 text-lg font-normal text-gray-500">{gmp.board_name}</span>
-            )}
-          </h2>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              {gmp?.gmp_number ?? bom.file_name}
+              {gmp?.board_name && (
+                <span className="ml-2 text-lg font-normal text-gray-500">{gmp.board_name}</span>
+              )}
+            </h2>
+            <Badge variant={statusVariant}>{bom.status}</Badge>
+          </div>
           <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
             <span className="font-mono">{customer?.code}</span>
             <span>—</span>
@@ -125,7 +128,6 @@ export default async function BomDetailPage({
           )}
           <ExportBomButton bomId={id} fileName={bom.file_name} gmpNumber={gmp?.gmp_number ?? ""} />
           <DeleteBomButton bomId={id} bomName={gmp?.gmp_number ?? bom.file_name} />
-          <Badge variant={statusVariant}>{bom.status}</Badge>
         </div>
       </div>
 

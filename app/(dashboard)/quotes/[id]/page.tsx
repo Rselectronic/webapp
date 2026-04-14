@@ -44,10 +44,19 @@ interface QuoteDetailBom {
   revision: string | null;
 }
 
+interface QuotePricingTierInputs {
+  qty?: number;
+  pcb_unit_price?: number;
+  nre_programming?: number;
+  nre_stencil?: number;
+  nre_pcb_fab?: number;
+}
+
 interface QuotePricingJson {
   tiers?: PricingTier[];
   warnings?: string[];
   missing_price_components?: MissingPriceComponent[];
+  tier_inputs?: QuotePricingTierInputs[];
 }
 
 export default async function QuoteDetailPage({
@@ -116,6 +125,22 @@ export default async function QuoteDetailPage({
 
   const qtyValues = quantities ? Object.values(quantities) : [];
 
+  // NRE breakdown — read from tier_inputs[0] (all tiers carry identical
+  // NRE values now that NRE is a quote-level one-time charge). Fall back
+  // to the flat nre_charge column for legacy quotes.
+  const firstTierInput = pricing?.tier_inputs?.[0] ?? {};
+  const nreProgramming = Number(firstTierInput.nre_programming ?? 0);
+  const nreStencil = Number(firstTierInput.nre_stencil ?? 0);
+  const nrePcbFab = Number(firstTierInput.nre_pcb_fab ?? 0);
+  const nreBreakdownTotal = nreProgramming + nreStencil + nrePcbFab;
+  const nreTotal =
+    nreBreakdownTotal > 0
+      ? nreBreakdownTotal
+      : quote.nre_charge != null
+        ? Number(quote.nre_charge)
+        : 0;
+  const hasNreBreakdown = nreBreakdownTotal > 0;
+
   return (
     <div className="space-y-6">
       {/* Back button */}
@@ -158,7 +183,15 @@ export default async function QuoteDetailPage({
         </div>
 
         <div className="flex gap-2">
-          <QuoteActions quoteId={id} currentStatus={quote.status} quantity={qtyValues[0]} />
+          <QuoteActions
+            quoteId={id}
+            currentStatus={quote.status}
+            tiers={tiers.map((t) => ({
+              board_qty: t.board_qty,
+              subtotal: t.subtotal,
+              per_unit: t.per_unit,
+            }))}
+          />
           <Link href={`/api/quotes/${id}/pdf`} target="_blank">
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
@@ -223,19 +256,36 @@ export default async function QuoteDetailPage({
           </CardContent>
         </Card>
 
-        {/* NRE */}
+        {/* NRE — one-time charge with breakdown */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm text-gray-500">
               <Layers className="h-4 w-4" />
-              NRE Charge
+              NRE Charge (one-time)
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-1">
             <p className="font-medium">
-              {quote.nre_charge != null
-                ? formatCurrency(Number(quote.nre_charge))
-                : "—"}
+              {nreTotal > 0 || hasNreBreakdown ? formatCurrency(nreTotal) : "—"}
+            </p>
+            {hasNreBreakdown && (
+              <div className="space-y-0.5 pt-1 text-xs text-gray-500">
+                <div className="flex justify-between">
+                  <span>Programming</span>
+                  <span className="font-mono">{formatCurrency(nreProgramming)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Stencil</span>
+                  <span className="font-mono">{formatCurrency(nreStencil)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>PCB Fab</span>
+                  <span className="font-mono">{formatCurrency(nrePcbFab)}</span>
+                </div>
+              </div>
+            )}
+            <p className="pt-1 text-xs text-gray-400">
+              Charged once per quote, not per board
             </p>
           </CardContent>
         </Card>

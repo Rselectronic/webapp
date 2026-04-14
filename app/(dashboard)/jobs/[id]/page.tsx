@@ -163,7 +163,7 @@ export default async function JobDetailPage({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           <JobScheduler
             jobId={id}
             jobNumber={job.job_number}
