@@ -23,7 +23,7 @@
  * and width rank 2 (0402). The VBA takes the HIGHER rank, so the part becomes CP.
  */
 
-export type SizeRank = 1 | 2 | 3 | 4 | 5 | 6;
+export type SizeRank = 1 | 2 | 3 | 4 | 5;
 
 interface SizeTier {
   rank: SizeRank;
@@ -37,17 +37,19 @@ interface SizeTier {
 }
 
 /**
- * Size Table (equivalent to the "Size Table" sheet in DM Common File V11).
- * Order matters: VBA walks top-to-bottom and uses the first range that contains
- * the value, so smaller tiers come first.
+ * Size Table — EXACT values from DM Common File V11 "Size Table" sheet.
+ * Extracted from /supabase/seed-data/dm-file/size_table.csv on 2026-04-14.
+ *
+ * Note: the DM file has NO MEC row — MEC is assigned via PAR rules (HEATSINK,
+ * Standoff, etc.) not size. A component whose dimensions don't fall in any
+ * range returns null and falls through to the PAR rule layer.
  */
 export const SIZE_TIERS: SizeTier[] = [
-  { rank: 1, m_code: "0201",  lenMin: 0.4,   lenMax: 0.99,  widthMin: 0.2,   widthMax: 0.59  },
-  { rank: 2, m_code: "0402",  lenMin: 1.0,   lenMax: 1.09,  widthMin: 0.5,   widthMax: 0.59  },
-  { rank: 3, m_code: "CP",    lenMin: 1.5,   lenMax: 3.79,  widthMin: 0.8,   widthMax: 3.59  },
-  { rank: 4, m_code: "CPEXP", lenMin: 3.8,   lenMax: 4.29,  widthMin: 3.6,   widthMax: 3.99  },
-  { rank: 5, m_code: "IP",    lenMin: 4.3,   lenMax: 25.0,  widthMin: 4.0,   widthMax: 25.0  },
-  { rank: 6, m_code: "MEC",   lenMin: 25.01, lenMax: 9999,  widthMin: 25.01, widthMax: 9999  },
+  { rank: 1, m_code: "0201",  lenMin: 0.40, lenMax: 0.99, widthMin: 0.20, widthMax: 0.48 },
+  { rank: 2, m_code: "0402",  lenMin: 1.00, lenMax: 1.49, widthMin: 0.49, widthMax: 0.79 },
+  { rank: 3, m_code: "CP",    lenMin: 1.50, lenMax: 3.79, widthMin: 0.80, widthMax: 3.59 },
+  { rank: 4, m_code: "CPEXP", lenMin: 3.80, lenMax: 4.29, widthMin: 3.60, widthMax: 3.99 },
+  { rank: 5, m_code: "IP",    lenMin: 4.30, lenMax: 25.0, widthMin: 4.00, widthMax: 25.0 },
 ];
 
 /**

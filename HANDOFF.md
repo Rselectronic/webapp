@@ -807,6 +807,33 @@ This was exactly the VBA algorithm from `mod_OthF_Digikey_Parameters.bas`. The o
 
 **End state:** 29 tables, 76+ API routes, 40 pages, ~44K lines TypeScript. AI classifier rewritten to match VBA algorithm exactly. BOM table has filter+search+tooltips. CPC column bug fixed. Still waiting on DM file sheets for final rule accuracy.
 
+**22. DM Common File V11 sheets extracted and seeded (source of truth):**
+
+Found the DM Common File V10.11.xlsm in OneDrive (`/Folder Test With Rehan/`). Extracted 3 critical sheets via `xlsx` npm package:
+
+- **Admin sheet** → `supabase/seed-data/dm-file/admin_par_rules.csv` — 47 PAR rules with 2-condition operator pairs, source field references (Mounting Type, Sub-Category, Product Description, Package / Case, Features, Attachment Method, Category)
+- **Size Table sheet** → `supabase/seed-data/dm-file/size_table.csv` — the actual dimension ranges
+- **MachineCodes sheet** → `supabase/seed-data/dm-file/machine_codes.csv` — 239 package/keyword → M-code mappings
+
+**Critical corrections to `lib/mcode/vba-algorithm.ts`:**
+- **0402 range was WRONG** — I had `1.00-1.09 × 0.50-0.59` (only matches literal 0402 size). Real range is `1.00-1.49 × 0.49-0.79` — a much broader window. This means parts like 0404 and similar were getting misclassified as CP or unclassified.
+- **0201 width max was wrong** — I had 0.59, real is 0.48
+- **No MEC in Size Table** — I had added a phantom "rank 6 MEC" row. In reality, MEC comes from PAR rules (HEATSINK, Standoff, etc.) not size. A component whose dimensions don't match any tier now returns null and falls through to PAR rules. SIZE_TIERS now has 5 entries, not 6.
+
+**Supabase seeded from real DM data:**
+- `mcode_keyword_lookup`: 211 real keywords (replaced placeholder seed). Short ones (≤8 chars) use word-boundary matching to avoid "LPC2468" matching "0402". Long descriptions use contains matching on description field only.
+- `m_code_rules`: 43 real PAR rules from Admin sheet (the 4 size-table placeholder rules PAR-18/19/20/21 are intentionally skipped — handled by `vba-algorithm.ts` and keyword lookup respectively).
+
+**New ClassificationInput fields to support DM rules:** `sub_category`, `features`, `attachment_method`. The `fetchComponentParams` AI call will need to fetch these too in a follow-up (agent deployed the VBA port without these extra fields — they're in the m_code_rules table but currently no field on ClassificationInput). Rules that reference these fields will fail-safe to "no match" until the AI fetches them.
+
+**Still on Piyush's list:**
+- PCB auto-creation: code verified present and correct (3-tier fallback in parser.ts). Previous "missing" reports were likely from BOMs uploaded before the fix deployed.
+
+**New branch for Piyush to test:**
+- Branch: `piyush-sandbox` (created from main, pushed)
+- Vercel will auto-build a preview deployment — he gets his own URL to play with without affecting main
+- Anas can merge main into piyush-sandbox when new fixes come in
+
 ---
 
 ## Known Issues / Tech Debt
