@@ -1,4 +1,5 @@
 import { getMcpSupabase } from "./db";
+import { isApiKeyFormat, validateApiKey } from "@/lib/api-keys";
 
 export type McpRole = "ceo" | "operations_manager" | "shop_floor";
 
@@ -10,8 +11,10 @@ export interface McpAuthUser {
 }
 
 /**
- * Validate a Supabase JWT from the Authorization header and look up the
- * user's role in public.users.
+ * Validate a Bearer token from the Authorization header. Accepts EITHER:
+ *   1. A permanent RS API key (prefix `rs_live_`) → validated against
+ *      public.api_keys via validateApiKey().
+ *   2. A Supabase JWT → validated against Supabase Auth + public.users.
  *
  * Throws on invalid/missing token or missing user profile.
  */
@@ -32,6 +35,23 @@ export async function validateMcpRequest(
   }
   const token = match[1].trim();
 
+  // ---- Path 1: permanent API key ----------------------------------------
+  if (isApiKeyFormat(token)) {
+    const validated = await validateApiKey(token);
+    if (!validated) {
+      throw new Error("Unauthorized: invalid or revoked API key");
+    }
+    return {
+      // Prefix with `api-key:` so downstream audit logs can tell API-key
+      // callers apart from real Supabase users.
+      userId: `api-key:${validated.id}`,
+      role: validated.role,
+      name: validated.name,
+      email: "",
+    };
+  }
+
+  // ---- Path 2: Supabase JWT (existing behavior) -------------------------
   const supabase = getMcpSupabase();
   const {
     data: { user },

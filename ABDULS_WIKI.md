@@ -3530,4 +3530,192 @@ Redundancy is intentional — a few pixels of duplicated UI is cheap insurance a
 | `components/quotes/new-quote-form.tsx` | New `initialCustomerId` / `initialBomId` props, `useEffect` prefill guarded by `useRef` |
 | `app/(dashboard)/bom/[id]/page.tsx` | New "Create Quote" / "View Quote" button in header actions |
 
+---
+
+## Part 20 — Permanent API Keys (`rs_live_...`)
+
+Added April 14, 2026. Solves the "MCP auth expires every hour" problem that was breaking every AI agent connected to the RS ERP.
+
+### 20.1 The problem
+
+The MCP server at `/api/mcp` originally accepted only Supabase JWTs. Supabase access tokens expire after 1 hour, so every AI tool that sits in a config file — Claude Desktop, Claude Code's `.mcp.json`, n8n workflows, Make scenarios, custom agents — broke hourly. Manual token refresh is a non-starter for anything that runs unattended.
+
+### 20.2 The solution
+
+Permanent API keys modeled on Stripe / GitHub patterns:
+
+- **Format:** `rs_live_<32 url-safe base64 chars>` (192 bits of entropy)
+- **Storage:** only the SHA-256 hash is persisted — the raw key is shown ONCE on creation
+- **Revocation:** soft-delete via `revoked_at` timestamp. Rows are never hard-deleted (audit trail)
+- **Roles:** ceo / operations_manager / shop_floor — same enum as `public.users.role`
+- **Auth path:** `lib/mcp/auth.ts` detects the `rs_live_` prefix and branches to API-key validation instead of JWT
+
+### 20.3 The schema
+
+```sql
+CREATE TABLE public.api_keys (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            TEXT NOT NULL,           -- "Claude Desktop - Anas"
+  key_hash        TEXT NOT NULL UNIQUE,    -- SHA-256 hex
+  role            TEXT NOT NULL DEFAULT 'ceo'
+                    CHECK (role IN ('ceo','operations_manager','shop_floor')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by      UUID REFERENCES public.users(id),
+  last_used_at    TIMESTAMPTZ,             -- fire-and-forget telemetry
+  revoked_at      TIMESTAMPTZ              -- soft-delete
+);
+
+CREATE INDEX idx_api_keys_key_hash_active
+  ON public.api_keys(key_hash)
+  WHERE revoked_at IS NULL;
+```
+
+The partial index is the critical performance piece — it only includes active keys, so validation lookups are fast even after hundreds of keys accumulate over time.
+
+RLS is enabled with 3 ceo-only policies: SELECT, INSERT, UPDATE. No DELETE policy — revocation happens via UPDATE `revoked_at = NOW()`.
+
+### 20.4 The flow
+
+**Creation (admin flow, via CEO JWT):**
+
+```
+POST /api/admin/api-keys
+Authorization: Bearer <supabase-jwt>
+Body: { name: "Claude Desktop - Anas", role: "ceo" }
+  ↓
+Validate JWT + role === 'ceo' (403 otherwise)
+  ↓
+generateApiKey() → "rs_live_<32 chars>"
+hashApiKey(raw) → sha256 hex
+  ↓
+INSERT INTO api_keys (name, key_hash, role, created_by)
+  ↓
+Return { id, name, role, key: rawKey, created_at }
+  (201 — raw key is ONLY returned at creation, never again)
+```
+
+**Validation (MCP auth flow, on every request):**
+
+```
+POST /api/mcp
+Authorization: Bearer rs_live_<key>
+  ↓
+validateMcpRequest(request)
+  ↓
+Parse Bearer token → raw string
+  ↓
+isApiKeyFormat(token)?
+  ├─ yes → validateApiKey(token):
+  │         - hashApiKey(token)
+  │         - SELECT id, name, role, revoked_at FROM api_keys WHERE key_hash = $1
+  │         - if !row || revoked_at !== null → return null
+  │         - fire-and-forget UPDATE last_used_at (don't await)
+  │         - return { id, name, role }
+  │       → McpAuthUser { userId: "api-key:<id>", role, name, email: "" }
+  │
+  └─ no → supabase.auth.getUser(token) [existing JWT path, unchanged]
+         → McpAuthUser { userId: user.id, role, name, email }
+  ↓
+buildMcpServerForRole(role) [existing flow]
+  ↓
+Return MCP tools scoped to role
+```
+
+Note the `userId` prefix `api-key:<uuid>`. This is intentional — downstream logging and audit tools can distinguish "a human user called this tool" from "an AI agent authenticated via API key called this tool." Never prefix real user ids this way.
+
+**Revocation:**
+
+```
+DELETE /api/admin/api-keys/:id
+Authorization: Bearer <supabase-jwt>
+  ↓
+Validate JWT + ceo role (403 otherwise)
+  ↓
+Validate :id is a UUID (400 otherwise)
+  ↓
+UPDATE api_keys SET revoked_at = NOW()
+  WHERE id = $1 AND revoked_at IS NULL
+  RETURNING id, revoked_at
+  ↓
+- If no row → 404 "Key not found or already revoked"
+- Else → { ok: true, id, revoked_at }
+```
+
+Once revoked, the partial index stops including the row, and `validateApiKey()` short-circuits to null on the `revoked_at !== null` check. The row stays in the table forever as an audit record.
+
+### 20.5 Why SHA-256 (not bcrypt)
+
+API keys are high-entropy (192 bits) random strings. bcrypt's work factor exists to slow down brute-force attacks on low-entropy passwords — pointless when the attacker would need to try ~6×10⁵⁷ keys to guess one. SHA-256 is fast, deterministic, and sufficient for this threat model. The only attack it defends against is: "somebody gets a DB dump — can they use the stored hashes?" Answer: no, SHA-256 is preimage-resistant.
+
+If the threat model ever includes offline dictionary attacks against low-entropy keys, migrate to bcrypt/argon2 and require all clients to re-issue.
+
+### 20.6 The helper library (`lib/api-keys.ts`)
+
+Five exports:
+
+| Function | Purpose |
+|----------|---------|
+| `API_KEY_PREFIX` | Constant `"rs_live_"` so every branch uses the same string |
+| `generateApiKey()` | `randomBytes(24).toString("base64url")` → prefix + 32 chars |
+| `hashApiKey(raw)` | `createHash("sha256").update(raw).digest("hex")` |
+| `isApiKeyFormat(token)` | `token.startsWith(API_KEY_PREFIX)` — used by MCP auth dispatch |
+| `validateApiKey(raw)` | Admin-client lookup, returns `ValidatedApiKey | null`, fires non-blocking `last_used_at` update |
+
+The `validateApiKey` fire-and-forget update is written as `.then(() => {}, () => {})` so unhandled-promise warnings don't bubble up. The auth path never awaits it — hot-path latency stays bounded by the single SELECT.
+
+### 20.7 Why the user-scoped client for admin routes vs admin client for validation
+
+**Admin routes** (create/list/revoke) use `createClient()` — the user-scoped client. This is intentional: the RLS policies we wrote on `api_keys` enforce "only ceo can SELECT/INSERT/UPDATE." Running through the user-scoped client means RLS + explicit role checks in app code work together — defense in depth. If the role check in app code is ever accidentally removed, RLS still blocks non-CEO writes.
+
+**Validation** (in `lib/api-keys.ts:validateApiKey`) uses `createAdminClient()` — the service-role client. The caller of `validateApiKey` is unauthenticated at the Supabase level (they're presenting a raw API key, not a JWT), so there's no `auth.uid()` for RLS to evaluate. The key possession itself is the credential. Admin client bypasses RLS so the lookup succeeds. This is safe because the lookup is keyed on `key_hash` — an attacker who doesn't know the raw key can't forge a valid hash.
+
+### 20.8 Files touched
+
+| File | What |
+|------|------|
+| `supabase/migrations/029_api_keys.sql` | New table + partial index + 3 RLS policies |
+| `lib/api-keys.ts` | Crypto + validation helpers |
+| `app/api/admin/api-keys/route.ts` | POST create (returns raw key once), GET list |
+| `app/api/admin/api-keys/[id]/route.ts` | DELETE soft-revoke |
+| `lib/mcp/auth.ts` | Dispatch on `isApiKeyFormat()` before JWT validation |
+
+`app/api/mcp/route.ts` is NOT modified — `validateMcpRequest` is still the single entry point and now handles both auth types internally.
+
+### 20.9 Client setup
+
+Three configs are supported:
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "rs-pcb-assembly": {
+      "url": "https://webapp-fawn-seven.vercel.app/api/mcp",
+      "headers": { "Authorization": "Bearer rs_live_..." }
+    }
+  }
+}
+```
+
+**Claude Code** (project `.mcp.json` or global config):
+```json
+{
+  "mcpServers": {
+    "rs-pcb-assembly": {
+      "type": "http",
+      "url": "https://webapp-fawn-seven.vercel.app/api/mcp",
+      "headers": { "Authorization": "Bearer rs_live_..." }
+    }
+  }
+}
+```
+
+**n8n / Make / custom agents** (env vars):
+```
+RS_MCP_TOKEN=rs_live_...
+RS_MCP_URL=https://webapp-fawn-seven.vercel.app/api/mcp
+```
+
+The token never expires — only manual revocation via `DELETE /api/admin/api-keys/:id` kills it.
+
 All routes share the same cache and enrichment logic — no duplication.

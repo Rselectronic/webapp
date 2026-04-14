@@ -1068,4 +1068,21 @@ Anas shared reference quote `TLAN0221R5` (KB Rail Canada) showing the target sha
   - `app/(dashboard)/bom/[id]/page.tsx` — new primary "Create Quote" button in the header actions (next to Export/Delete) when `bom.status === 'parsed' && !linkedQuote`. When a quote already exists, the button flips to a secondary "View Quote" that links to `/quotes/[id]`. Uses the `Calculator` icon from lucide-react to match the workflow-banner's step icon.
 - Flow is now: upload BOM → parse → click "Create Quote" → land on new quote page with BOM selected and tier inputs already showing (50/100/150/200 defaults from entry 33) → click Calculate → save. Zero dropdown clicks.
 
-*Last updated: April 14, 2026, Session 9 (continued — 4-tier defaults + manual pricing + wipe + BOM→Quote prefill)*
+---
+
+### Session 9 continued — Permanent API keys for MCP access
+
+**38. `rs_live_` API key system — kills the 1-hour JWT expiry for AI agents:**
+- Problem: MCP endpoint at `/api/mcp` only accepted Supabase JWTs, which expire hourly. Any AI tool that sits in a config file (Claude Desktop, Claude Code, n8n, Make, custom agents) breaks every hour.
+- Solution: permanent API key system. Keys are `rs_live_<32 base64url chars>` (192 bits entropy), SHA-256 hashed before storage, revocable via soft-delete.
+- Built in parallel by 2 agents:
+  - **Migration 029_api_keys.sql** (applied live via MCP) — `api_keys` table: `id`, `name`, `key_hash UNIQUE`, `role CHECK IN (ceo/ops/shop)`, `created_at`, `created_by REFS users(id)`, `last_used_at`, `revoked_at`. Partial index `idx_api_keys_key_hash_active ON (key_hash) WHERE revoked_at IS NULL` for fast active-key lookup. RLS enabled with 3 ceo-only policies (SELECT/INSERT/UPDATE — no DELETE, soft-delete only).
+  - **`lib/api-keys.ts`** — helper lib: `generateApiKey()` (24 random bytes → base64url → prefix), `hashApiKey()` (SHA-256 hex), `isApiKeyFormat()` (startsWith `rs_live_`), `validateApiKey()` (admin-client lookup, returns null on missing/revoked, fire-and-forget `last_used_at` update).
+  - **`app/api/admin/api-keys/route.ts`** — POST creates (ceo-only, returns raw key ONCE with 201), GET lists (omits `key_hash`).
+  - **`app/api/admin/api-keys/[id]/route.ts`** — DELETE soft-revokes (`revoked_at = NOW()`). Uses UUID regex validation + "no row updated" → 404.
+  - **`lib/mcp/auth.ts`** — `validateMcpRequest` now dispatches on `isApiKeyFormat(token)`: API-key path calls `validateApiKey()` and returns `McpAuthUser` with `userId: "api-key:<id>"` (prefixed so downstream tools can distinguish API keys from real users); JWT path unchanged. `app/api/mcp/route.ts` untouched — picks up the new behavior for free.
+- **First key generated: "Claude Cowork - Anas"** (id `e9594182-561f-41d9-b8e3-3cd6678023f6`, role `ceo`). Raw key was printed to Anas once — only the hash lives in the DB. If lost, issue a new one via `POST /api/admin/api-keys` and revoke the old via DELETE.
+- Configs handed over: Claude Desktop, Claude Code `.mcp.json`, and env vars (`RS_MCP_TOKEN` / `RS_MCP_URL`) for n8n/Make/custom agents.
+- **Security model:** possession of the raw key = authentication. RLS bypassed in the validation path because the key value itself is the credential. Only hashes are stored, so a DB dump doesn't leak keys.
+
+*Last updated: April 14, 2026, Session 9 (continued — 4-tier defaults + manual pricing + wipe + BOM→Quote prefill + rs_live API keys)*
