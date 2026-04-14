@@ -40,6 +40,7 @@ export function UploadForm({ customers }: UploadFormProps) {
   const [gmpDropdownOpen, setGmpDropdownOpen] = useState(false);
   const gmpWrapperRef = useRef<HTMLDivElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [revision, setRevision] = useState("1");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -163,6 +164,7 @@ export function UploadForm({ customers }: UploadFormProps) {
       formData.append("file", file);
       formData.append("customer_id", customerId);
       formData.append("gmp_id", resolvedGmpId);
+      formData.append("revision", revision.trim() || "1");
 
       const res = await fetch("/api/bom/parse", { method: "POST", body: formData });
       if (!res.ok) {
@@ -251,6 +253,23 @@ export function UploadForm({ customers }: UploadFormProps) {
                 New GMP will be created: <span className="font-medium">{gmpInput.trim()}</span>
               </p>
             )}
+          </div>
+
+          {/* Revision / Version number — required so we track which BOM version the customer sent */}
+          <div>
+            <Label htmlFor="bom-revision">BOM Revision / Version</Label>
+            <Input
+              id="bom-revision"
+              type="text"
+              value={revision}
+              onChange={(e) => setRevision(e.target.value)}
+              placeholder="e.g. 1, V5, Rev A, 2.1"
+              className="max-w-[240px]"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Extract from the customer&apos;s filename (e.g. <span className="font-mono">_V5</span>,
+              <span className="font-mono"> Rev3</span>) or ask them. Each revision is stored as a separate BOM under the same GMP.
+            </p>
           </div>
         </div>
       )}

@@ -83,6 +83,9 @@ export async function POST(request: Request) {
   const file = formData.get("file") as File | null;
   const customerId = formData.get("customer_id") as string;
   const gmpId = formData.get("gmp_id") as string;
+  // Revision can be anything the user typed ("1", "V5", "Rev A", "2.1"). Default to "1".
+  const revisionInput = ((formData.get("revision") as string) ?? "").trim();
+  const revision = revisionInput || "1";
 
   if (!file || !customerId || !gmpId) {
     return NextResponse.json(
@@ -262,6 +265,7 @@ export async function POST(request: Request) {
         file_name: fileName,
         file_path: filePath,
         file_hash: `${file.size}-${fileName}`,
+        revision,
         status: "parsing",
         created_by: user.id,
       })

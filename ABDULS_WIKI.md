@@ -2840,22 +2840,48 @@ Each of the 5 items is configurable in Settings → Pricing.
 
 ### 15.2 Overage — How Extras Are Calculated
 
-Each M-code has a tier table. The system finds the **last tier where board_qty >= threshold**:
+**Source of truth:** DM Common File V11 **ExtraOrder** sheet — extracted and saved as `supabase/seed-data/dm-file/overage_tables.csv`. The app's `overage_table` in Supabase has **621 tiers across 11 M-codes**, every value matching the DM file exactly.
 
-| M-Code | Tiers (threshold → extras) |
-|--------|---------------------------|
-| **CP** | 1→10, 60→30, 100→35, 200→40, 300→50, 500→60 |
-| **0402** | 1→50, 60→60, 100→70, 200→80, 300→100, 500→120 |
-| **IP** | 1→5, 10→5, 20→10, 50→15, 100→20, 250→20 |
-| **TH** | 1→1, 10→1, 20→2, 50→5, 100→5, 250→20 |
+The system finds the **last tier where board_qty >= threshold**. Not cumulative — last match wins.
+
+**Low-range tiers (the ones you'll see most in quotes):**
+
+| M-Code | 1 | 60 | 100 | 200 | 300 | 500 | 800 | 1000 |
+|--------|---|----|----|----|----|----|----|------|
+| **CP** | 20 | 30 | 35 | 40 | 50 | 60 | 80 | 100 |
+| **0402** | 50 | 60 | 70 | 80 | 100 | 120 | 160 | 200 |
+| **0201** | 50 | 60 | 70 | 80 | 100 | 120 | 160 | 200 |
+
+| M-Code | 1 | 10 | 20 | 50 | 100 | 250 | 500 | 1000 |
+|--------|---|----|----|----|-----|-----|-----|------|
+| **IP** | 1 | 1 | 2 | 5 | **10** | 20 | 25 | 30 |
+| **TH** | 1 | 1 | 2 | 5 | **5** | 20 | 25 | 30 |
+| **MANSMT** | 1 | 1 | 2 | 5 | 10 | 20 | 25 | 30 |
+
+**Note the IP vs TH difference at qty=100**: IP gets 10 extras, TH gets 5. Everything else is identical between those two codes.
+
+| M-Code | 1 | 10 | 25 | 50 | 100 | 200 | 500 | 1000 |
+|--------|---|----|----|----|-----|-----|-----|------|
+| **CPEXP** | 2 | 3 | 5 | 6 | 10 | 15 | 45 | 95 |
+
+**High-range rules (automatic scaling above 1000):**
+- **CP**: 10% of part count (1000→100, 10000→1000, 100000→10000)
+- **0402, 0201**: 20% of part count — tiny parts have the most attrition
+- **IP, TH, MANSMT**: +5 per 1000 parts beyond the 1000 threshold (20000 → 125 extras)
+- **CPEXP**: fine-grained 50-qty steps, roughly linear
+- **MEC, Accs, CABLE, DEV B**: minimal overage (not in DM file, safe defaults)
 
 **Example:** Ordering 100 boards, CP component with qty 5/board:
-- Overage at 100 boards = **35 extras**
-- Order qty = (5 × 100) + 35 = **535 units**
+- 100 boards × 5/board = 500 base units
+- Overage at 100-board threshold = 35 extras (from table)
+- Order qty = 500 + 35 = **535 units**
 
-Overage is **absolute** (not percentage). Last matching tier wins (not cumulative).
+**Another example:** Ordering 5000 boards, 0402 component with qty 10/board:
+- 5000 × 10 = 50,000 base units
+- Overage at 50,000 threshold = 10,000 extras (20% rule)
+- Order qty = 60,000 units
 
-**Code:** `lib/pricing/overage.ts` — `getOverage(mCode, boardQty, tiers)` and `getOrderQty(qtyPerBoard, boardQty, mCode, tiers)`
+**Code:** `lib/pricing/overage.ts` — `getOverage(mCode, boardQty, tiers)` and `getOrderQty(qtyPerBoard, boardQty, mCode, tiers)`. The tiers come from the `overage_table` in Supabase, not hardcoded.
 
 ---
 
