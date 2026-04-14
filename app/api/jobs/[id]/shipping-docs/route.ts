@@ -246,7 +246,8 @@ function drawWrappedText(
 function drawShipdocLetterhead(
   page: PDFPage,
   fonts: PdfFonts,
-  docTitle: string
+  docTitle: string,
+  logo?: import("pdf-lib").PDFImage | null
 ): number {
   const { bold, regular } = fonts;
   const topY = A4_HEIGHT - MARGIN;
@@ -262,8 +263,16 @@ function drawShipdocLetterhead(
     color: COLOR_ACCENT,
   });
 
-  // Company name (left, bold, large)
-  drawText(page, "R.S. ELECTRONIQUE INC.", MARGIN, topY - 4, bold, 14, COLOR_DARK);
+  // Logo + company name (left)
+  let textX = MARGIN;
+  if (logo) {
+    const logoH = 42;
+    const scale = logoH / logo.height;
+    const logoW = logo.width * scale;
+    page.drawImage(logo, { x: MARGIN, y: topY - logoH + 2, width: logoW, height: logoH });
+    textX = MARGIN + logoW + 8;
+  }
+  drawText(page, "R.S. ELECTRONIQUE INC.", textX, topY - 4, bold, 14, COLOR_DARK);
 
   // Company address/contact lines
   let y = topY - 20;
@@ -273,7 +282,7 @@ function drawShipdocLetterhead(
     "www.rspcbassembly.com",
   ];
   for (const line of contactLines) {
-    drawText(page, line, MARGIN, y, regular, 8, COLOR_MUTED);
+    drawText(page, line, textX, y, regular, 8, COLOR_MUTED);
     y -= 11;
   }
 
@@ -321,12 +330,12 @@ interface PackingSlipParams {
 }
 
 async function generatePackingSlip(p: PackingSlipParams): Promise<Uint8Array> {
-  const { doc, fonts } = await createPdfDoc();
+  const { doc, fonts, logo } = await createPdfDoc();
   const page = doc.addPage([A4_WIDTH, A4_HEIGHT]);
   const dateStr = fmtDate(p.shipDate);
 
   // Letterhead
-  let y = drawShipdocLetterhead(page, fonts, "PACKING SLIP");
+  let y = drawShipdocLetterhead(page, fonts, "PACKING SLIP", logo);
 
   // ---- Info strip: DATE | JOB # | PO # | DELIVERY | FOB ----
   // Two rows of key/value cells matching the Excel layout (rows 2-5 and 6-7)
@@ -698,7 +707,7 @@ interface ComplianceParams {
 async function generateComplianceCertificate(
   p: ComplianceParams
 ): Promise<Uint8Array> {
-  const { doc, fonts } = await createPdfDoc();
+  const { doc, fonts, logo } = await createPdfDoc();
   const dateStr = fmtDate(p.shipDate);
 
   // ============================================================
@@ -706,8 +715,14 @@ async function generateComplianceCertificate(
   // ============================================================
   const page1 = doc.addPage([A4_WIDTH, A4_HEIGHT]);
 
-  // Right-side company block (as in template rows L2-L6)
-  let headerY = A4_HEIGHT - MARGIN;
+  // Left: logo. Right: company block (template rows L2-L6)
+  const headerY = A4_HEIGHT - MARGIN;
+  if (logo) {
+    const logoH = 56;
+    const scale = logoH / logo.height;
+    const logoW = logo.width * scale;
+    page1.drawImage(logo, { x: MARGIN, y: headerY - logoH + 4, width: logoW, height: logoH });
+  }
   const rightX = A4_WIDTH - MARGIN;
   drawTextRight(page1, "R.S. Electronique Inc.", rightX, headerY - 4, fonts.bold, 11, COLOR_DARK);
   drawTextRight(page1, "5580 Vanden Abeele,", rightX, headerY - 18, fonts.regular, 9, COLOR_MUTED);
@@ -927,8 +942,20 @@ async function generateComplianceCertificate(
   // ============================================================
   const page2 = doc.addPage([A4_WIDTH, A4_HEIGHT]);
 
-  // Header block (matches template row 1)
+  // Header block (matches template row 1): centered logo + company
   let y2 = A4_HEIGHT - MARGIN - 4;
+  if (logo) {
+    const logoH = 50;
+    const scale = logoH / logo.height;
+    const logoW = logo.width * scale;
+    page2.drawImage(logo, {
+      x: (A4_WIDTH - logoW) / 2,
+      y: y2 - logoH + 4,
+      width: logoW,
+      height: logoH,
+    });
+    y2 -= logoH + 6;
+  }
   drawTextCenter(page2, "R.S. ELECTRONIQUE INC.", A4_WIDTH / 2, y2, fonts.bold, 16, COLOR_DARK);
   y2 -= 18;
   drawTextCenter(

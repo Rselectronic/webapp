@@ -560,7 +560,7 @@ interface JobCardParams {
 }
 
 async function generateJobCard(p: JobCardParams): Promise<Uint8Array> {
-  const { doc, fonts } = await createPdfDoc();
+  const { doc, fonts, logo } = await createPdfDoc();
   // Landscape A4
   const PAGE_W = A4_HEIGHT; // 841.89
   const PAGE_H = A4_WIDTH;  // 595.28
@@ -572,11 +572,19 @@ async function generateJobCard(p: JobCardParams): Promise<Uint8Array> {
 
   // Company header (smaller so title block dominates like the Excel)
   let y = PAGE_H - M;
+  let textStartX = M;
+  if (logo) {
+    const logoH = 28;
+    const scale = logoH / logo.height;
+    const logoW = logo.width * scale;
+    page.drawImage(logo, { x: M, y: y - logoH, width: logoW, height: logoH });
+    textStartX = M + logoW + 6;
+  }
   page.drawText("R.S. ELECTRONIQUE INC.", {
-    x: M, y, size: 10, font: fonts.bold, color: COLOR_DARK,
+    x: textStartX, y, size: 10, font: fonts.bold, color: COLOR_DARK,
   });
   page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9  |  +1 (438) 833-8477  |  www.rspcbassembly.com", {
-    x: M, y: y - 12, size: 7, font: fonts.regular, color: COLOR_MUTED,
+    x: textStartX, y: y - 12, size: 7, font: fonts.regular, color: COLOR_MUTED,
   });
 
   const printDate = `Printed: ${today}  |  Ref: ${p.jobNumber}  |  ${p.customerCode} — ${p.customerName}`;
@@ -922,7 +930,7 @@ const TRAVELLER_SECTIONS: TravSection[] = [
 ];
 
 async function generateTraveller(p: TravellerParams): Promise<Uint8Array> {
-  const { doc, fonts } = await createPdfDoc();
+  const { doc, fonts, logo } = await createPdfDoc();
 
   const pagesData: TravSection[][] = [];
   // We'll paginate as we go — keep a running y and start a new page when
@@ -952,7 +960,7 @@ async function generateTraveller(p: TravellerParams): Promise<Uint8Array> {
     const y0 = drawHeader(page, fonts, "PRODUCTION TRAVELLER", [
       p.jobNumber,
       `Printed: ${today}`,
-    ]);
+    ], logo);
     return y0;
   }
 
@@ -1193,7 +1201,7 @@ interface PrintBomParams {
 }
 
 async function generatePrintBom(p: PrintBomParams): Promise<Uint8Array> {
-  const { doc, fonts } = await createPdfDoc();
+  const { doc, fonts, logo } = await createPdfDoc();
   const today = new Date().toLocaleDateString("en-CA");
 
   // Landscape A4 (wide table, matches BOM TEMPLATE V1).
@@ -1280,11 +1288,19 @@ async function generatePrintBom(p: PrintBomParams): Promise<Uint8Array> {
 
   function drawPageChrome(page: PDFPage, pageNum: number) {
     let y = PAGE_H - M;
-    page.drawText("R.S. ELECTRONIQUE INC.", { x: M, y, size: 12, font: fonts.bold, color: COLOR_DARK });
+    let textX = M;
+    if (logo) {
+      const logoH = 34;
+      const scale = logoH / logo.height;
+      const logoW = logo.width * scale;
+      page.drawImage(logo, { x: M, y: y - logoH, width: logoW, height: logoH });
+      textX = M + logoW + 8;
+    }
+    page.drawText("R.S. ELECTRONIQUE INC.", { x: textX, y, size: 12, font: fonts.bold, color: COLOR_DARK });
     y -= 11;
-    page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9", { x: M, y, size: 7, font: fonts.regular, color: COLOR_MUTED });
+    page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9", { x: textX, y, size: 7, font: fonts.regular, color: COLOR_MUTED });
     y -= 9;
-    page.drawText("+1 (438) 833-8477 | info@rspcbassembly.com", { x: M, y, size: 7, font: fonts.regular, color: COLOR_MUTED });
+    page.drawText("+1 (438) 833-8477 | info@rspcbassembly.com", { x: textX, y, size: 7, font: fonts.regular, color: COLOR_MUTED });
 
     const titleText = "PRINT COPY BOM";
     const tw = fonts.bold.widthOfTextAtSize(titleText, 18);
@@ -1532,7 +1548,7 @@ const LAND_HEIGHT = A4_WIDTH; // 595.28
 const LAND_MARGIN = 24;
 
 async function generateReception(p: ReceptionParams): Promise<Uint8Array> {
-  const { doc, fonts } = await createPdfDoc();
+  const { doc, fonts, logo } = await createPdfDoc();
   const today = new Date().toLocaleDateString("en-CA");
 
   // Column layout mirrors PROC TEMPLATE V25 "Proc" sheet receiving columns
@@ -1605,8 +1621,16 @@ async function generateReception(p: ReceptionParams): Promise<Uint8Array> {
 
   const drawLandscapeHeader = (page: PDFPage, pageNum: number): number => {
     let y = LAND_HEIGHT - LAND_MARGIN;
+    let textX = LAND_MARGIN;
+    if (logo) {
+      const logoH = 34;
+      const scale = logoH / logo.height;
+      const logoW = logo.width * scale;
+      page.drawImage(logo, { x: LAND_MARGIN, y: y - logoH, width: logoW, height: logoH });
+      textX = LAND_MARGIN + logoW + 8;
+    }
     page.drawText("R.S. ELECTRONIQUE INC.", {
-      x: LAND_MARGIN,
+      x: textX,
       y,
       size: 12,
       font: fonts.bold,
@@ -1615,7 +1639,7 @@ async function generateReception(p: ReceptionParams): Promise<Uint8Array> {
     y -= 12;
     page.drawText(
       "5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9  |  +1 (438) 833-8477  |  info@rspcbassembly.com",
-      { x: LAND_MARGIN, y, size: 7, font: fonts.regular, color: COLOR_MUTED }
+      { x: textX, y, size: 7, font: fonts.regular, color: COLOR_MUTED }
     );
 
     const title = "RECEPTION FILE";

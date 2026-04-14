@@ -1,4 +1,6 @@
-import { PDFDocument, PDFPage, PDFFont, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFImage, PDFPage, PDFFont, StandardFonts, rgb } from "pdf-lib";
+import fs from "node:fs";
+import path from "node:path";
 
 // A4 dimensions in points (595.28 x 841.89)
 export const A4_WIDTH = 595.28;
@@ -24,11 +26,35 @@ export interface PdfFonts {
 export async function createPdfDoc(): Promise<{
   doc: PDFDocument;
   fonts: PdfFonts;
+  /** RS company logo extracted from the invoice Excel template. May be null
+   *  if the file can't be read (falls back to text-only header). */
+  logo: PDFImage | null;
 }> {
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  return { doc, fonts: { regular, bold } };
+  const logo = await loadRsLogo(doc);
+  return { doc, fonts: { regular, bold }, logo };
+}
+
+/**
+ * Load the RS company logo (extracted from RS INVOICE TEMPLATE V3.xlsm)
+ * and embed it into the given PDFDocument.
+ *
+ * Lives at public/pdf/rs-logo.png. Returns null if the file can't be read
+ * so callers can fall back to a text-only header without crashing.
+ *
+ * Cache the returned PDFImage per-document — do not call this twice.
+ */
+export async function loadRsLogo(doc: PDFDocument): Promise<PDFImage | null> {
+  try {
+    const logoPath = path.join(process.cwd(), "public", "pdf", "rs-logo.png");
+    if (!fs.existsSync(logoPath)) return null;
+    const bytes = fs.readFileSync(logoPath);
+    return await doc.embedPng(bytes);
+  } catch {
+    return null;
+  }
 }
 
 export function fmtDate(iso?: string | null): string {
@@ -39,19 +65,45 @@ export function fmtDate(iso?: string | null): string {
 /**
  * Draw the RS company header at the top of a page.
  * Returns the Y position below the header (after the separator line).
+ *
+ * If `logo` is provided, draws it on the left side and pushes the company
+ * text block to the right of it. Matches the RS INVOICE TEMPLATE V3.xlsm
+ * layout (logo top-left, big title top-right).
  */
 export function drawHeader(
   page: PDFPage,
   fonts: PdfFonts,
   title: string,
-  subtitleLines: string[]
+  subtitleLines: string[],
+  logo?: PDFImage | null,
+  options?: { pageWidth?: number; pageHeight?: number; margin?: number }
 ): number {
   const { bold, regular } = fonts;
-  let y = A4_HEIGHT - MARGIN;
+  const pageWidth = options?.pageWidth ?? A4_WIDTH;
+  const pageHeight = options?.pageHeight ?? A4_HEIGHT;
+  const margin = options?.margin ?? MARGIN;
 
-  // Left side: company info
+  let y = pageHeight - margin;
+  let textStartX = margin;
+
+  // Draw logo on the left if provided
+  if (logo) {
+    const logoMaxH = 48;
+    const scale = logoMaxH / logo.height;
+    const logoW = logo.width * scale;
+    const logoH = logoMaxH;
+    page.drawImage(logo, {
+      x: margin,
+      y: y - logoH,
+      width: logoW,
+      height: logoH,
+    });
+    textStartX = margin + logoW + 8;
+  }
+
+  // Left side: company info (pushed right if logo present)
   page.drawText("R.S. ELECTRONIQUE INC.", {
-    x: MARGIN,
+    x: textStartX,
     y,
     size: 14,
     font: bold,
@@ -59,7 +111,7 @@ export function drawHeader(
   });
   y -= 14;
   page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9", {
-    x: MARGIN,
+    x: textStartX,
     y,
     size: 8,
     font: regular,
@@ -67,7 +119,7 @@ export function drawHeader(
   });
   y -= 11;
   page.drawText("+1 (438) 833-8477 | info@rspcbassembly.com", {
-    x: MARGIN,
+    x: textStartX,
     y,
     size: 8,
     font: regular,
@@ -75,7 +127,7 @@ export function drawHeader(
   });
   y -= 11;
   page.drawText("www.rspcbassembly.com", {
-    x: MARGIN,
+    x: textStartX,
     y,
     size: 8,
     font: regular,
@@ -85,18 +137,18 @@ export function drawHeader(
   // Right side: document title
   const titleWidth = bold.widthOfTextAtSize(title, 18);
   page.drawText(title, {
-    x: A4_WIDTH - MARGIN - titleWidth,
-    y: A4_HEIGHT - MARGIN,
+    x: pageWidth - margin - titleWidth,
+    y: pageHeight - margin,
     size: 18,
     font: bold,
     color: COLOR_DARK,
   });
 
-  let rightY = A4_HEIGHT - MARGIN - 20;
+  let rightY = pageHeight - margin - 20;
   for (const line of subtitleLines) {
     const w = regular.widthOfTextAtSize(line, 9);
     page.drawText(line, {
-      x: A4_WIDTH - MARGIN - w,
+      x: pageWidth - margin - w,
       y: rightY,
       size: 9,
       font: regular,
@@ -105,11 +157,12 @@ export function drawHeader(
     rightY -= 13;
   }
 
-  // Separator line
-  const sepY = y - 6;
+  // Header occupies ~60pt when logo is present, less without
+  const minY = logo ? pageHeight - margin - 58 : y - 6;
+  const sepY = Math.min(minY, y - 6);
   page.drawLine({
-    start: { x: MARGIN, y: sepY },
-    end: { x: A4_WIDTH - MARGIN, y: sepY },
+    start: { x: margin, y: sepY },
+    end: { x: pageWidth - margin, y: sepY },
     thickness: 2,
     color: COLOR_DARK,
   });

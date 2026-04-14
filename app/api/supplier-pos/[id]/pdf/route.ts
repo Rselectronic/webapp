@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
+import { loadRsLogo } from "@/lib/pdf/helpers";
 
 interface POLine {
   mpn: string;
@@ -110,6 +111,7 @@ export async function GET(
   const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
   const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const logo = await loadRsLogo(doc);
 
   const PAGE_W = 612; // US Letter (template is US Letter)
   const PAGE_H = 792;
@@ -138,9 +140,17 @@ export async function GET(
   let y = PAGE_H - MARGIN;
 
   // ── Header: Company + PURCHASE ORDER title ──────────────────────
-  // Left: company block
+  // Left: logo + company block
+  let companyX = MARGIN;
+  if (logo) {
+    const logoH = 44;
+    const scale = logoH / logo.height;
+    const logoW = logo.width * scale;
+    page.drawImage(logo, { x: MARGIN, y: y - logoH + 6, width: logoW, height: logoH });
+    companyX = MARGIN + logoW + 8;
+  }
   page.drawText("R.S. \u00C9LECTRONIQUE INC.", {
-    x: MARGIN,
+    x: companyX,
     y,
     size: 16,
     font: fontBold,
@@ -156,7 +166,7 @@ export async function GET(
   ];
   for (const line of addressLines) {
     page.drawText(line, {
-      x: MARGIN,
+      x: companyX,
       y,
       size: 8.5,
       font: fontRegular,

@@ -981,4 +981,40 @@ IMPORTANT RULES:
 - When pushing to main, always merge main into piyush-sandbox so Piyush stays in sync
 ```
 
-*Last updated: April 14, 2026, Session 9 (Piyush feedback round, DM file seeding, classifier rewrite)*
+---
+
+### Session 9 continued — PDFs now use the RS logo everywhere
+
+**29. RS logo embedded in ALL 9 PDFs (was only invoice):**
+- Session 7 extracted the RS logo from `RS INVOICE TEMPLATE V3.xlsm` and embedded it ONLY in the invoice PDF
+- Other 8 PDFs (quote, supplier PO, packing slip, compliance cert, job card, traveller, print BOM, reception file) had text-only headers — looked unbranded
+- Fixed:
+  - New `loadRsLogo(doc)` helper in `lib/pdf/helpers.ts` — reads `public/pdf/rs-logo.png`, embeds as PDFImage, returns null safely if file missing
+  - `createPdfDoc()` now returns `{ doc, fonts, logo }` so every generator that uses the standard helper gets the logo automatically
+  - `drawHeader()` accepts optional `logo` param — draws it top-left and pushes company text to the right
+  - Updated 8 more PDF generators: quote (US Letter landscape, 56pt logo), supplier PO (44pt), packing slip (42pt via `drawShipdocLetterhead`), compliance cert page 1 (56pt) + page 2 (50pt centered), job card (28pt), traveller (via drawHeader), print BOM (34pt), reception file (34pt)
+- All 9 PDFs now open with the real RS logo in the header position that matches each Excel template
+
+**30. BOM revision/version user-specified on upload:**
+- Piyush's filenames often embed the revision (e.g. `TL265-5001-000-TB_V5.xlsx`) but we were defaulting to "1"
+- Added "BOM Revision / Version" input on the upload form, placed between the GMP field and the file drop zone
+- Accepts any format: `1`, `V5`, `Rev A`, `2.1`
+- Helper text reminds users to extract from filename
+- Passed as formData.revision to /api/bom/parse; trimmed + defaults to "1" if empty
+- Stored in existing `boms.revision` column
+- BOM detail page and list already display it — no UI change needed beyond the input
+
+**31. BOM stats tiles showing stale data (Piyush):**
+- Tiles read from `parse_result.classification_summary` which is an upload-time snapshot, never updated
+- Fixed: compute LIVE from the `bom_lines` array every render (same source as the M-Code Distribution pie chart). Filter PCB/DNI, count m_code !== null.
+
+**32. Classification progress bar (Piyush request):**
+- New endpoint `GET /api/bom/[id]/count` — returns `{ total, classifiable, classified, unclassified, pcb, dni }` in ~50ms
+- `AIClassifyButton` now polls `/count` every 500ms during classification
+- Shows determinate progress bar with `X / Y (N%)` counter and smooth blue fill
+- Snaps to 100% when API returns, cleans up poller on unmount
+- Both rule-based phase and AI phase get their own bar
+
+**End state:** 29 tables, 76+ API routes, 40 pages, ~45K lines TypeScript. All 9 PDFs branded with RS logo. BOM revision user-specified. Classification has live progress feedback. Stats tiles live-computed.
+
+*Last updated: April 14, 2026, Session 9 (continued — branding pass, revision input, Piyush progress bar)*

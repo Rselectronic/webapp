@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { loadRsLogo } from "@/lib/pdf/helpers";
 import type { PricingTier } from "@/lib/pricing/types";
 
 function fmt(n: number | null | undefined): string {
@@ -92,6 +93,7 @@ export async function GET(
   const pdfDoc = await PDFDocument.create();
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const logoImg = await loadRsLogo(pdfDoc);
   const page = pdfDoc.addPage([595.28, 841.89]); // A4
   const { width, height } = page.getSize();
 
@@ -106,16 +108,24 @@ export async function GET(
   const leftMargin = 40;
   const rightEdge = width - 40;
 
-  // --- Header ---
-  page.drawText("R.S. ÉLECTRONIQUE INC.", { x: leftMargin, y, font: helveticaBold, size: 14, color: black });
+  // --- Header: logo + company block on left, QUOTATION on right ---
+  let headerTextX = leftMargin;
+  if (logoImg) {
+    const logoH = 56;
+    const scale = logoH / logoImg.height;
+    const logoW = logoImg.width * scale;
+    page.drawImage(logoImg, { x: leftMargin, y: y - logoH + 12, width: logoW, height: logoH });
+    headerTextX = leftMargin + logoW + 8;
+  }
+  page.drawText("R.S. ÉLECTRONIQUE INC.", { x: headerTextX, y, font: helveticaBold, size: 14, color: black });
   y -= 14;
-  page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9", { x: leftMargin, y, font: helvetica, size: 8, color: gray });
+  page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
   y -= 11;
-  page.drawText("+1 (438) 833-8477 · info@rspcbassembly.com", { x: leftMargin, y, font: helvetica, size: 8, color: gray });
+  page.drawText("+1 (438) 833-8477 · info@rspcbassembly.com", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
   y -= 11;
-  page.drawText("www.rspcbassembly.com", { x: leftMargin, y, font: helvetica, size: 8, color: gray });
+  page.drawText("www.rspcbassembly.com", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
   y -= 11;
-  page.drawText("GST/TPS: 840134829 · QST/TVQ: 1214617001", { x: leftMargin, y, font: helvetica, size: 8, color: gray });
+  page.drawText("GST/TPS: 840134829 · QST/TVQ: 1214617001", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
 
   // Right side — QUOTATION title
   page.drawText("QUOTATION", { x: rightEdge - helveticaBold.widthOfTextAtSize("QUOTATION", 18), y: height - 40, font: helveticaBold, size: 18, color: black });
