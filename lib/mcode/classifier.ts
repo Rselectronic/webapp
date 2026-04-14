@@ -158,6 +158,9 @@ export async function classifyComponentFull(
     width_mm: params.width_mm,
     package_case: params.package_case,
     category: params.category,
+    sub_category: params.sub_category,
+    features: params.features,
+    attachment_method: params.attachment_method,
   });
   if (!verdict) return { m_code: null, confidence: 0, source: null };
 
@@ -351,6 +354,9 @@ export async function classifyBomLinesWithAI(
       width_mm: p.width_mm,
       package_case: p.package_case,
       category: p.category,
+      sub_category: p.sub_category,
+      features: p.features,
+      attachment_method: p.attachment_method,
     });
     if (!verdict) {
       results.push({ m_code: null, confidence: 0, source: null });

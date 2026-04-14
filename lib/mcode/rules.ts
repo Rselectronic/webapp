@@ -511,6 +511,9 @@ function getInputField(field: string, input: ClassificationInput): string | numb
     mounting_type: input.mounting_type,
     package_case: input.package_case,
     category: input.category,
+    sub_category: input.sub_category,
+    features: input.features,
+    attachment_method: input.attachment_method,
     length_mm: input.length_mm,
     width_mm: input.width_mm,
   };
@@ -525,12 +528,15 @@ function getInputField(field: string, input: ClassificationInput): string | numb
  */
 function matchesCondition(
   field: string,
-  operator: "equals" | "contains" | "regex" | "in",
+  operator: "equals" | "contains" | "regex" | "in" | "not_contains",
   value: string,
   input: ClassificationInput,
 ): boolean {
   const fieldValue = getInputField(field, input);
-  if (fieldValue === undefined || fieldValue === null) return false;
+  if (fieldValue === undefined || fieldValue === null) {
+    // For "not_contains", a missing field counts as "does not contain" → true
+    return operator === "not_contains";
+  }
 
   // Detect numeric range values for the "regex" operator (e.g. "0.4-0.99")
   if (operator === "regex" && /^\d+(\.\d+)?-\d+(\.\d+)?$/.test(value)) {
@@ -548,11 +554,18 @@ function matchesCondition(
     case "equals":
       return strValue === value;
     case "contains":
-      return strValue.includes(value);
+      return strValue.toLowerCase().includes(value.toLowerCase());
+    case "not_contains": {
+      // The DM Admin sheet uses comma-separated lists for not_contains
+      // (e.g. "SMT, SMD, SURFACE MOUNT" → true only if NONE of those are in strValue)
+      const lowerStr = strValue.toLowerCase();
+      const needles = value.split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+      return !needles.some((n) => lowerStr.includes(n));
+    }
     case "regex": {
       // Strip Python-style (?i) flag and use JS "i" flag instead
       let pattern = value;
-      let flags = "i"; // always case-insensitive for M-Code matching
+      const flags = "i"; // always case-insensitive for M-Code matching
       if (pattern.startsWith("(?i)")) {
         pattern = pattern.slice(4);
       }

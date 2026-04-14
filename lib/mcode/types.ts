@@ -17,6 +17,9 @@ export interface ClassificationInput {
   mounting_type?: string;
   package_case?: string;
   category?: string;
+  sub_category?: string;
+  features?: string;
+  attachment_method?: string;
   length_mm?: number;
   width_mm?: number;
 }
@@ -26,10 +29,10 @@ export interface ParRule {
   priority: number;
   layer: 1 | 2 | 3;
   field_1: string;
-  operator_1: "equals" | "contains" | "regex" | "in";
+  operator_1: "equals" | "contains" | "regex" | "in" | "not_contains";
   value_1: string;
   field_2?: string;
-  operator_2?: "equals" | "contains" | "regex" | "in";
+  operator_2?: "equals" | "contains" | "regex" | "in" | "not_contains";
   value_2?: string;
   assigned_m_code: MCode;
   description: string;

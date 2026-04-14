@@ -15,6 +15,9 @@ export interface ComponentParams {
   width_mm: number | null;
   package_case: string | null;
   category: string | null;
+  sub_category: string | null;
+  features: string | null;
+  attachment_method: string | null;
   reasoning: string;
 }
 
@@ -41,12 +44,15 @@ export async function fetchComponentParams(
 
   try {
     const anthropic = getClient();
-    const prompt = `You are an electronics component database. For the given component, return ONLY these parameters in JSON format:
-- mounting_type: one of "Through Hole", "Surface Mount", "Surface Mount, Through Hole", or null if unknown
+    const prompt = `You are an electronics component database. For the given component, return ONLY these parameters in JSON format (use null for unknown values):
+- mounting_type: one of "Through Hole", "Surface Mount", "Surface Mount, Through Hole", "PCB, Through Hole", "PCB, Surface Mount", "Chassis Mount", "Chassis, Stud Mount", "Panel Mount", "Panel, PCB Through Hole", or null
 - length_mm: package length in millimeters (number), or null
 - width_mm: package width in millimeters (number), or null
 - package_case: package name (e.g. "0402", "SOIC-8", "TO-220", "SOT-23"), or null
-- category: broad category ("Resistor", "Capacitor", "IC", "Connector", "Diode", "Inductor", "Crystal", "Transformer", "Fuse", "Mechanical", "Cable"), or null
+- category: DigiKey top-level category (e.g. "Resistors", "Capacitors", "Integrated Circuits (ICs)", "Connectors, Interconnects", "Discrete Semiconductor Products", "Inductors, Coils, Chokes", "Crystals, Oscillators, Resonators", "Hardware, Fasteners, Accessories", "Cables, Wires - Management", "Development Boards, Kits, Programmers", "Switches", "RF/IF and RFID"), or null
+- sub_category: DigiKey sub-category (e.g. "Chip Resistor - Surface Mount", "Tactile Switches", "Slide Switches", "Film Capacitors", "RF Shields", "Ferrite Cores", "Card Guides", "Board Supports", "Aluminum Electrolytic Capacitors"), or null
+- features: component features if any (e.g. "Surface Mount", "Automotive AEC-Q200"), or null
+- attachment_method: how the part attaches mechanically (e.g. "Bolt On", "Clip On", "Adhesive", "Solder"), or null
 
 Component:
 - MPN: ${mpn}
@@ -54,7 +60,7 @@ Component:
 - Manufacturer: ${manufacturer}
 
 Respond with JSON only, no markdown, no backticks:
-{"mounting_type": "...", "length_mm": 1.0, "width_mm": 0.5, "package_case": "0402", "category": "Resistor"}`;
+{"mounting_type": "...", "length_mm": 1.0, "width_mm": 0.5, "package_case": "0402", "category": "Resistors", "sub_category": "Chip Resistor - Surface Mount", "features": null, "attachment_method": null}`;
 
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -66,23 +72,26 @@ Respond with JSON only, no markdown, no backticks:
     text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     const parsed = JSON.parse(text);
 
-    const mounting = typeof parsed.mounting_type === "string" && parsed.mounting_type.trim() !== ""
-      ? parsed.mounting_type.trim()
-      : null;
-    const length = typeof parsed.length_mm === "number" && isFinite(parsed.length_mm) ? parsed.length_mm : null;
-    const width = typeof parsed.width_mm === "number" && isFinite(parsed.width_mm) ? parsed.width_mm : null;
-    const pkg = typeof parsed.package_case === "string" && parsed.package_case.trim() !== ""
-      ? parsed.package_case.trim()
-      : null;
-    const cat = typeof parsed.category === "string" && parsed.category.trim() !== ""
-      ? parsed.category.trim()
-      : null;
+    const str = (v: unknown): string | null =>
+      typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+    const num = (v: unknown): number | null =>
+      typeof v === "number" && isFinite(v) ? v : null;
+
+    const mounting = str(parsed.mounting_type);
+    const length = num(parsed.length_mm);
+    const width = num(parsed.width_mm);
+    const pkg = str(parsed.package_case);
+    const cat = str(parsed.category);
+    const subCat = str(parsed.sub_category);
+    const features = str(parsed.features);
+    const attachMethod = str(parsed.attachment_method);
 
     const reasoningBits: string[] = [];
     if (mounting) reasoningBits.push(`mounting=${mounting}`);
     if (length !== null && width !== null) reasoningBits.push(`${length}mm x ${width}mm`);
     if (pkg) reasoningBits.push(`pkg=${pkg}`);
-    if (cat) reasoningBits.push(`category=${cat}`);
+    if (subCat) reasoningBits.push(`sub=${subCat}`);
+    else if (cat) reasoningBits.push(`category=${cat}`);
     const reasoning = reasoningBits.length > 0 ? reasoningBits.join(", ") : "no parameters";
 
     return {
@@ -91,6 +100,9 @@ Respond with JSON only, no markdown, no backticks:
       width_mm: width,
       package_case: pkg,
       category: cat,
+      sub_category: subCat,
+      features,
+      attachment_method: attachMethod,
       reasoning,
     };
   } catch (err) {
@@ -151,6 +163,9 @@ export async function classifyWithAI(
     width_mm: params.width_mm,
     package_case: params.package_case,
     category: params.category,
+    sub_category: params.sub_category,
+    features: params.features,
+    attachment_method: params.attachment_method,
   });
   if (!verdict) return null;
 

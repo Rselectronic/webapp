@@ -175,6 +175,9 @@ export interface VbaAlgoInput {
   width_mm: number | null;
   package_case: string | null;
   category: string | null;
+  sub_category?: string | null;
+  features?: string | null;
+  attachment_method?: string | null;
 }
 
 export interface VbaAlgoResult {
@@ -215,9 +218,54 @@ export function applyVbaAlgorithm(input: VbaAlgoInput): VbaAlgoResult | null {
     return { m_code: specialDesc.m_code, confidence: 0.90, reasoning: specialDesc.reasoning };
   }
 
-  // Connectors category branches (VBA lines 351-360)
+  // Sub-category rules (DM Admin sheet PAR-04 through PAR-12, PAR-30 through PAR-34, PAR-38, PAR-42)
+  // Run these BEFORE size lookup because they take precedence.
+  const subCat = (input.sub_category ?? "").trim();
+  if (subCat) {
+    const smt = /\bsurface\s+mount\b/i.test(mounting);
+    if (subCat === "Slide Switches" && smt) return { m_code: "IP", confidence: 0.92, reasoning: `Sub-Category = Slide Switches + SMT → IP` };
+    if (subCat === "Tactile Switches" && smt) return { m_code: "IP", confidence: 0.92, reasoning: `Sub-Category = Tactile Switches + SMT → IP` };
+    if (subCat === "Tactile Switches" && /surface\s+mount,\s*right\s+angle/i.test(mounting)) return { m_code: "IP", confidence: 0.92, reasoning: `Sub-Category = Tactile Switches + Right Angle SMT → IP` };
+    if (subCat === "Slide Switches") return { m_code: "TH", confidence: 0.88, reasoning: `Sub-Category = Slide Switches → TH` };
+    if (subCat === "Tactile Switches") return { m_code: "TH", confidence: 0.88, reasoning: `Sub-Category = Tactile Switches → TH` };
+    if (/RFI and EMI/i.test(subCat)) return { m_code: "Accs", confidence: 0.90, reasoning: `Sub-Category = RFI/EMI gaskets → Accs` };
+    if (subCat === "RF Shields" && /\bsurface\s+mount\b/i.test(desc)) return { m_code: "MANSMT", confidence: 0.90, reasoning: `Sub-Category = RF Shields + SMT desc → MANSMT` };
+    if (subCat === "RF Shields") return { m_code: "MEC", confidence: 0.88, reasoning: `Sub-Category = RF Shields → MEC` };
+    if (subCat === "Ferrite Cores") return { m_code: "MEC", confidence: 0.90, reasoning: `Sub-Category = Ferrite Cores → MEC` };
+    if (subCat === "Film Capacitors") {
+      if (/chassis\s+mount/i.test(mounting) || /requires\s+holder/i.test(mounting) || /stud\s+mount/i.test(mounting) || /through\s+hole/i.test(mounting)) {
+        return { m_code: "TH", confidence: 0.90, reasoning: `Sub-Category = Film Capacitors + chassis/stud/holder/TH mounting → TH` };
+      }
+    }
+    if (subCat === "Card Guides") return { m_code: "Accs", confidence: 0.90, reasoning: `Sub-Category = Card Guides → Accs` };
+    if (subCat === "Board Supports") return { m_code: "MEC", confidence: 0.90, reasoning: `Sub-Category = Board Supports → MEC` };
+  }
+
+  // Description keyword rules (PAR-13 through PAR-17, PAR-37, PAR-41, PAR-43, PAR-44)
+  const features = (input.features ?? "").trim();
+  const attachMethod = (input.attachment_method ?? "").trim();
+  if (/\bstandoff\b/i.test(desc)) {
+    if (/\bsurface\s+mount\b/i.test(features)) return { m_code: "MANSMT", confidence: 0.90, reasoning: `description has "Standoff" + features SMT → MANSMT` };
+    return { m_code: "MEC", confidence: 0.88, reasoning: `description has "Standoff" → MEC` };
+  }
+  if (/\bHEATSINK\b/i.test(desc)) {
+    if (/bolt\s+on/i.test(attachMethod)) return { m_code: "MEC", confidence: 0.90, reasoning: `description has "HEATSINK" + Bolt On → MEC` };
+    return { m_code: "MANSMT", confidence: 0.88, reasoning: `description has "HEATSINK" → MANSMT` };
+  }
+  if (/DPAK\s+TO-252/i.test(desc)) return { m_code: "MANSMT", confidence: 0.90, reasoning: `description has "DPAK TO-252" → MANSMT` };
+  if (/battery\s+insulator/i.test(desc)) return { m_code: "Accs", confidence: 0.90, reasoning: `description has "Battery Insulator" → Accs` };
+  if (/\bspacer\b/i.test(desc)) return { m_code: "Accs", confidence: 0.88, reasoning: `description has "Spacer" → Accs` };
+  if (/\bclip\b/i.test(desc)) return { m_code: "Accs", confidence: 0.85, reasoning: `description has "Clip" → Accs` };
+  if (/\bclamp\b/i.test(desc)) return { m_code: "Accs", confidence: 0.85, reasoning: `description has "Clamp" → Accs` };
+  if (/\brelay\b/i.test(desc) && /\bsurface\s+mount\b/i.test(desc)) return { m_code: "IP", confidence: 0.90, reasoning: `description has "Relay" + SMT → IP` };
+
+  // Category rules (PAR-23 through PAR-29, PAR-39, PAR-40)
+  if (/^cables,\s*wires\s*-\s*management$/i.test(category)) return { m_code: "CABLE", confidence: 0.92, reasoning: `Category = Cables, Wires - Management → CABLE` };
+  if (/^development\s+boards/i.test(category)) return { m_code: "DEV B", confidence: 0.92, reasoning: `Category = Development Boards → DEV B` };
+
+  // Connectors category branches (VBA lines 351-360, PAR-23 to PAR-29)
   if (/^connectors,\s*interconnects$/i.test(category) || /^connectors$/i.test(category) || /^connector$/i.test(category)) {
-    const descHasSmt = /\bsurface\s+mount\b/i.test(desc);
+    const descHasSmt = /\b(surface\s+mount|SMD|SMT)\b/i.test(desc);
     const mountHasSmt = /\bsurface\s+mount\b/i.test(mounting);
     if (descHasSmt || mountHasSmt) {
       return {
@@ -241,6 +289,12 @@ export function applyVbaAlgorithm(input: VbaAlgoInput): VbaAlgoResult | null {
       reasoning: `VBA rule: "Connector Header" + mounting Surface Mount → MANSMT`,
     };
   }
+
+  // Additional mounting type branches (PAR-35, PAR-36, PAR-46, PAR-47)
+  if (/^pcb,\s*through\s+hole$/i.test(mounting)) return { m_code: "TH", confidence: 0.92, reasoning: `mounting = PCB, Through Hole → TH` };
+  if (/^pcb,\s*surface\s+mount$/i.test(mounting)) return { m_code: "MANSMT", confidence: 0.92, reasoning: `mounting = PCB, Surface Mount → MANSMT` };
+  if (/^panel,\s*pcb\s+through\s+hole$/i.test(mounting)) return { m_code: "TH", confidence: 0.92, reasoning: `mounting = Panel, PCB Through Hole → TH` };
+  if (/^panel\s+mount$/i.test(mounting)) return { m_code: "TH", confidence: 0.92, reasoning: `mounting = Panel Mount → TH` };
 
   // Size-based classification (VBA lines 247-342)
   const sizeResult = classifyBySize(input.length_mm, input.width_mm);
