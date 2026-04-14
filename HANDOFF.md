@@ -1092,4 +1092,15 @@ Anas shared reference quote `TLAN0221R5` (KB Rail Canada) showing the target sha
 - New tile in the `/settings` hub grid with a `Key` icon.
 - Zero CLI required — every key operation now lives in the webapp.
 
-*Last updated: April 14, 2026, Session 9 (continued — 4-tier defaults + manual pricing + wipe + BOM→Quote prefill + rs_live API keys + management UI)*
+**40. Performance audit + fixes (Anas: "why is the app slow"):**
+- Survey found three real bottlenecks — NOT a caching problem (auth cookies force dynamic rendering anyway, so `revalidate` is a no-op).
+- **a. `audit_log` backward seq scan:** table was at 3,781 rows (grows every DELETE trigger). Only index was `(table_name, record_id)`. Every `/settings/audit` load did a backward sequential scan. New migration `030_audit_log_created_at_index.sql` adds `idx_audit_log_created_at_desc ON audit_log(created_at DESC)`. EXPLAIN ANALYZE after: `Index Scan Backward using idx_audit_log_created_at_desc` → 2.6 ms for top-100 fetch. Applied live via MCP.
+- **b. Quotes list `SELECT *`:** `app/(dashboard)/quotes/page.tsx` was pulling 17 unused columns per row (bom_id, gmp_id, expires_at, issued_at, accepted_at, notes, pdf_path, component_markup, pcb_cost_per_unit, assembly_cost, nre_charge, labour_rate, smt_rate, validity_days, updated_at, created_by, customer_id). Narrowed to exactly what the JSX renders. Kept `quantities` + `pricing` JSONB since the table reads from them.
+- **c. Invoices list + aging tiles:** the main list query was `SELECT *` with no `.limit()`, and the 4 aging buckets were computed via 4 in-memory `.filter().reduce()` passes over the full array. Fixed in one pass:
+  1. Main fetch narrowed to 9 columns + `customers(code,company_name)` + `jobs(job_number)`, added `.limit(200)`.
+  2. 4 aging buckets replaced with 4 parallel narrow fetches (`.select("total")` + date filters) inside the existing `Promise.all`. Sum + count computed client-side. Currency amounts preserved as primary display, count as secondary line ("3 invoices — past 30 days").
+  3. First attempt at this regressed the tiles to integer counts only — caught and fixed before committing.
+- **What was already fine:** Dashboard (`app/(dashboard)/page.tsx`) — every count query already uses `{ count: "exact", head: true }`, every recent-activity query already had explicit narrow columns + `.limit(5)`, wrapped in `Promise.all`. BOM / Jobs / Procurement list pages — already narrow from prior work. Middleware — matcher excludes static assets, no changes needed.
+- **What was wrong in my initial diagnosis:** I told Anas to "add revalidate to the dashboard" at one point — revisited and dropped it from the plan. Auth-cookie pages can't use revalidate; the fix has to be per-query narrowing, not caching.
+
+*Last updated: April 14, 2026, Session 9 (continued — 4-tier defaults + manual pricing + wipe + BOM→Quote prefill + rs_live API keys + management UI + perf pass)*
