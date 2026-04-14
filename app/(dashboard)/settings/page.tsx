@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database, CreditCard } from "lucide-react";
+import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database, CreditCard, Key } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const settingsLinks = [
@@ -51,6 +51,13 @@ const settingsLinks = [
       "View a chronological log of all data changes across the system. CEO only.",
     href: "/settings/audit",
     icon: ScrollText,
+  },
+  {
+    title: "API Keys",
+    description:
+      "Manage permanent API keys for AI agents connecting to the MCP server. CEO only.",
+    href: "/settings/api-keys",
+    icon: Key,
   },
 ];
 
