@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
-  SUPPLIER_METADATA,
+  getSupplierMetadata,
   getCredential,
   type SupplierName,
 } from "@/lib/supplier-credentials";
@@ -34,10 +34,11 @@ async function requireCeo() {
   return { user, error: null };
 }
 
-function validateSupplier(
+async function validateSupplier(
   supplier: string
-): { ok: true; name: SupplierName } | { ok: false; response: NextResponse } {
-  if (!(supplier in SUPPLIER_METADATA)) {
+): Promise<{ ok: true; name: SupplierName } | { ok: false; response: NextResponse }> {
+  const meta = await getSupplierMetadata(supplier);
+  if (!meta) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -61,14 +62,14 @@ function validateSupplier(
  * - HTTP 401/403 for auth on the admin route itself.
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ supplier: string }> }
 ) {
   const { user, error } = await requireCeo();
   if (error || !user) return error!;
 
   const { supplier } = await params;
-  const validation = validateSupplier(supplier);
+  const validation = await validateSupplier(supplier);
   if (!validation.ok) return validation.response;
 
   const credentials = await getCredential<Record<string, string>>(
@@ -84,8 +85,20 @@ export async function POST(
     );
   }
 
+  // Optional body: { mpn?: string }. Empty/missing → undefined → test
+  // function uses its per-distributor default.
+  const body = (await req.json().catch(() => ({}))) as { mpn?: unknown };
+  const mpn =
+    typeof body.mpn === "string" && body.mpn.trim()
+      ? body.mpn.trim()
+      : undefined;
+
   try {
-    const result = await testSupplierConnection(validation.name, credentials);
+    const result = await testSupplierConnection(
+      validation.name,
+      credentials,
+      mpn
+    );
     return NextResponse.json(result, { status: 200 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
-  SUPPLIER_METADATA,
+  getSupplierMetadata,
   setCredential,
   deleteCredential,
   setPreferredCurrency,
@@ -35,10 +35,11 @@ async function requireCeo() {
   return { user, error: null };
 }
 
-function validateSupplier(
+async function validateSupplier(
   supplier: string
-): { ok: true; name: SupplierName } | { ok: false; response: NextResponse } {
-  if (!(supplier in SUPPLIER_METADATA)) {
+): Promise<{ ok: true; name: SupplierName } | { ok: false; response: NextResponse }> {
+  const meta = await getSupplierMetadata(supplier);
+  if (!meta) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -58,7 +59,7 @@ export async function PUT(
   if (error || !user) return error!;
 
   const { supplier } = await params;
-  const validation = validateSupplier(supplier);
+  const validation = await validateSupplier(supplier);
   if (!validation.ok) return validation.response;
 
   let body: unknown;
@@ -125,7 +126,7 @@ export async function DELETE(
   if (error || !user) return error!;
 
   const { supplier } = await params;
-  const validation = validateSupplier(supplier);
+  const validation = await validateSupplier(supplier);
   if (!validation.ok) return validation.response;
 
   try {
@@ -148,7 +149,7 @@ export async function PATCH(
   if (error || !user) return error!;
 
   const { supplier } = await params;
-  const validation = validateSupplier(supplier);
+  const validation = await validateSupplier(supplier);
   if (!validation.ok) return validation.response;
 
   let body: unknown;

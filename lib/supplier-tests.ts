@@ -11,6 +11,15 @@
  * No caching, no retries, no rate limiting.
  *
  * All test functions are wrapped in a 15 second AbortController timeout.
+ *
+ * Each test function accepts an optional `mpn` override. If not provided,
+ * a per-distributor default is used (ERJ-2GE0R00X for most, IPL1-110-01-S-D
+ * for Samtec, LM358N for TI).
+ *
+ * The TestResult captures the parsed JSON body of the search/probe call into
+ * raw_response so the UI can show the user exactly what the distributor
+ * returned. The request_url is ALWAYS redacted — any API key/secret/token
+ * in a query string is stripped before capture. See redactUrl() below.
  */
 
 import { createHash, createHmac, randomBytes } from "crypto";
@@ -20,10 +29,40 @@ export interface TestResult {
   ok: boolean;
   message: string;
   details?: Record<string, unknown>;
+  raw_response?: unknown;
+  status_code?: number;
+  request_url?: string;
 }
 
-const PROBE_MPN = "ERJ-2GE0R00X"; // Panasonic 0 ohm 0402 — universal stock
+const DEFAULT_PROBE_MPN = "ERJ-2GE0R00X"; // Panasonic 0 ohm 0402 — universal stock
+const SAMTEC_PROBE_MPN = "IPL1-110-01-S-D";
+const TI_PROBE_MPN = "LM358N";
 const TIMEOUT_MS = 15_000;
+
+/**
+ * Strip sensitive query-string params from a URL before it is captured
+ * into a TestResult. NEVER let a raw API key, secret, signature, token,
+ * nonce, or timestamp leak into the UI — the CEO's browser console,
+ * Vercel logs, and screenshots would all expose it.
+ */
+function redactUrl(rawUrl: string, paramsToStrip: string[]): string {
+  try {
+    const url = new URL(rawUrl);
+    for (const p of paramsToStrip) {
+      if (url.searchParams.has(p)) {
+        url.searchParams.set(p, "<redacted>");
+      }
+    }
+    return url.toString();
+  } catch {
+    // Not a parseable URL (shouldn't happen) — return as-is minus any
+    // obvious api_key= patterns.
+    return rawUrl.replace(
+      /([?&](?:apiKey|api_key|key|signature|token|secret|nonce|timestamp)=)[^&]*/gi,
+      "$1<redacted>"
+    );
+  }
+}
 
 /**
  * fetch with an AbortController timeout. Always throws on timeout.
@@ -41,6 +80,21 @@ async function timedFetch(
   }
 }
 
+/**
+ * Parse a Response body as JSON, falling back to text wrapped in a stub
+ * envelope. This guarantees raw_response is always defined (even when the
+ * API returns text/html or an empty body), so the UI can display *something*.
+ */
+async function readBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return { _empty: true };
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { _raw_text: text.slice(0, 4000) };
+  }
+}
+
 function log(supplier: SupplierName, result: TestResult): TestResult {
   // eslint-disable-next-line no-console
   console.log(
@@ -54,52 +108,56 @@ function log(supplier: SupplierName, result: TestResult): TestResult {
  */
 export async function testSupplierConnection(
   supplier: SupplierName,
-  credentials: Record<string, string>
+  credentials: Record<string, string>,
+  mpn?: string
 ): Promise<TestResult> {
   try {
     let result: TestResult;
     switch (supplier) {
       case "digikey":
-        result = await testDigiKey(credentials);
+        result = await testDigiKey(credentials, mpn);
         break;
       case "mouser":
-        result = await testMouser(credentials);
+        result = await testMouser(credentials, mpn);
         break;
       case "lcsc":
-        result = await testLcsc(credentials);
+        result = await testLcsc(credentials, mpn);
         break;
       case "future":
-        result = await testFuture(credentials);
+        result = await testFuture(credentials, mpn);
         break;
       case "avnet":
-        result = await testAvnet(credentials);
+        result = await testAvnet(credentials, mpn);
         break;
       case "arrow":
-        result = await testArrow(credentials);
+        result = await testArrow(credentials, mpn);
         break;
       case "tti":
-        result = await testTti(credentials);
+        result = await testTti(credentials, mpn);
         break;
       case "esonic":
-        result = await testEsonic(credentials);
+        result = await testEsonic(credentials, mpn);
         break;
       case "newark":
-        result = await testNewark(credentials);
+        result = await testNewark(credentials, mpn);
         break;
       case "samtec":
-        result = await testSamtec(credentials);
+        result = await testSamtec(credentials, mpn);
         break;
       case "ti":
-        result = await testTi(credentials);
+        result = await testTi(credentials, mpn);
         break;
       case "tme":
-        result = await testTme(credentials);
+        result = await testTme(credentials, mpn);
         break;
       default: {
-        const exhaustive: never = supplier;
+        // Custom (user-defined) distributors fall through here — they have
+        // no hardcoded test implementation. Credentials are stored encrypted
+        // but we cannot verify them from this UI.
         result = {
           ok: false,
-          message: `Unknown supplier: ${exhaustive as string}`,
+          message:
+            "Custom distributor — no built-in test connection. Credentials are stored encrypted but cannot be verified from this UI.",
         };
       }
     }
@@ -114,8 +172,10 @@ export async function testSupplierConnection(
 // DigiKey — OAuth2 client_credentials + keyword search
 // ---------------------------------------------------------------------------
 async function testDigiKey(
-  creds: Record<string, string>
+  creds: Record<string, string>,
+  mpn?: string
 ): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
   const { client_id, client_secret, environment } = creds;
   if (!client_id || !client_secret) {
     return { ok: false, message: "Missing client_id or client_secret" };
@@ -157,9 +217,10 @@ async function testDigiKey(
     return { ok: false, message: `Auth network error: ${msg}` };
   }
 
-  // Phase 2: search probe
+  // Phase 2: search probe — capture response for UI display
+  const searchUrl = `${base}/products/v4/search/keyword`;
   try {
-    const searchRes = await timedFetch(`${base}/products/v4/search/keyword`, {
+    const searchRes = await timedFetch(searchUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -170,36 +231,42 @@ async function testDigiKey(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        Keywords: PROBE_MPN,
+        Keywords: probeMpn,
         RecordCount: 1,
         RecordStartPosition: 0,
       }),
     });
+    const body = await readBody(searchRes);
     if (!searchRes.ok) {
-      const body = await searchRes.text();
       return {
         ok: true,
-        message: `Connected to DigiKey ${envLabel} — auth OK but search failed: HTTP ${searchRes.status} ${body.slice(0, 120)}`,
+        message: `Connected to DigiKey ${envLabel} — auth OK but search failed: HTTP ${searchRes.status}`,
+        raw_response: body,
+        status_code: searchRes.status,
+        request_url: searchUrl,
       };
     }
-    const data = (await searchRes.json()) as {
+    const data = body as {
       ExactMatches?: unknown[];
       Products?: unknown[];
       ProductsCount?: number;
     };
     const count =
-      (data.ExactMatches?.length ?? 0) +
-      (data.Products?.length ?? 0);
+      (data.ExactMatches?.length ?? 0) + (data.Products?.length ?? 0);
     return {
       ok: true,
       message: `Connected to DigiKey ${envLabel} — auth OK, search returned ${count} parts`,
       details: { environment: envLabel, productsCount: data.ProductsCount },
+      raw_response: body,
+      status_code: searchRes.status,
+      request_url: searchUrl,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: true,
       message: `Connected to DigiKey ${envLabel} — auth OK but search network error: ${msg}`,
+      request_url: searchUrl,
     };
   }
 }
@@ -207,13 +274,18 @@ async function testDigiKey(
 // ---------------------------------------------------------------------------
 // Mouser — API key in query string
 // ---------------------------------------------------------------------------
-async function testMouser(creds: Record<string, string>): Promise<TestResult> {
+async function testMouser(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
   const { api_key } = creds;
   if (!api_key) return { ok: false, message: "Missing api_key" };
 
+  const rawUrl = `https://api.mouser.com/api/v2/search/partnumber?apiKey=${encodeURIComponent(api_key)}`;
+  const safeUrl = redactUrl(rawUrl, ["apiKey"]);
   try {
-    const url = `https://api.mouser.com/api/v2/search/partnumber?apiKey=${encodeURIComponent(api_key)}`;
-    const res = await timedFetch(url, {
+    const res = await timedFetch(rawUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -221,22 +293,31 @@ async function testMouser(creds: Record<string, string>): Promise<TestResult> {
       },
       body: JSON.stringify({
         SearchByPartRequest: {
-          mouserPartNumber: PROBE_MPN,
+          mouserPartNumber: probeMpn,
           partSearchOptions: "BeginsWith",
         },
       }),
     });
+    const body = await readBody(res);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
-    }
-    if (!res.ok) {
-      const body = await res.text();
       return {
         ok: false,
-        message: `HTTP ${res.status} — ${body.slice(0, 200)}`,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
       };
     }
-    const data = (await res.json()) as {
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    const data = body as {
       Errors?: Array<{ Code?: string; Message?: string }>;
       SearchResults?: { Parts?: unknown[]; NumberOfResult?: number };
     };
@@ -244,17 +325,30 @@ async function testMouser(creds: Record<string, string>): Promise<TestResult> {
       const msg = data.Errors.map(
         (e) => `${e.Code ?? ""} ${e.Message ?? ""}`.trim()
       ).join("; ");
-      return { ok: false, message: `Auth failed: ${msg}` };
+      return {
+        ok: false,
+        message: `Auth failed: ${msg}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
     }
     const count = data.SearchResults?.Parts?.length ?? 0;
     return {
       ok: true,
       message: `Connected to Mouser — auth OK, search returned ${count} parts`,
       details: { numberOfResult: data.SearchResults?.NumberOfResult },
+      raw_response: body,
+      status_code: res.status,
+      request_url: safeUrl,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: `Network error: ${msg}` };
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: safeUrl,
+    };
   }
 }
 
@@ -264,7 +358,11 @@ async function testMouser(creds: Record<string, string>): Promise<TestResult> {
 // test will likely fail until they unblock us. Still exercised so it starts
 // passing automatically once unblocked.
 // ---------------------------------------------------------------------------
-async function testLcsc(creds: Record<string, string>): Promise<TestResult> {
+async function testLcsc(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
   const { api_key, api_secret } = creds;
   if (!api_key || !api_secret) {
     return { ok: false, message: "Missing api_key or api_secret" };
@@ -276,29 +374,41 @@ async function testLcsc(creds: Record<string, string>): Promise<TestResult> {
   const signature = createHash("sha1").update(payload).digest("hex");
 
   const params = new URLSearchParams({
-    keyword: PROBE_MPN,
+    keyword: probeMpn,
     key: api_key,
     nonce,
     timestamp,
     signature,
   });
-  const url = `https://ips.lcsc.com/rest/wmsc2agent/search/product?${params.toString()}`;
+  const rawUrl = `https://ips.lcsc.com/rest/wmsc2agent/search/product?${params.toString()}`;
+  // LCSC sends key, nonce, timestamp, signature in the query string — ALL of
+  // these are secrets/credentials and must be redacted.
+  const safeUrl = redactUrl(rawUrl, [
+    "key",
+    "nonce",
+    "timestamp",
+    "signature",
+  ]);
 
   try {
-    const res = await timedFetch(url, {
+    const res = await timedFetch(rawUrl, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "curl/8.0",
       },
     });
+    const body = await readBody(res);
     if (!res.ok) {
       return {
         ok: false,
         message: `LCSC HTTP ${res.status} — API is currently blocked vendor-side per HANDOFF`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
       };
     }
-    const data = (await res.json()) as {
+    const data = body as {
       success?: boolean;
       message?: string;
       result?: { product_list?: unknown[] };
@@ -307,18 +417,25 @@ async function testLcsc(creds: Record<string, string>): Promise<TestResult> {
       return {
         ok: false,
         message: `LCSC rejected: ${data.message ?? "unknown"} — API may be blocked vendor-side per HANDOFF`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
       };
     }
     const count = data.result?.product_list?.length ?? 0;
     return {
       ok: true,
       message: `Connected to LCSC — auth OK, search returned ${count} parts`,
+      raw_response: body,
+      status_code: res.status,
+      request_url: safeUrl,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
       message: `LCSC network error: ${msg} — API is currently blocked vendor-side per HANDOFF`,
+      request_url: safeUrl,
     };
   }
 }
@@ -328,62 +445,83 @@ async function testLcsc(creds: Record<string, string>): Promise<TestResult> {
 // past the truncation point in the reference Python file. We attempt a
 // basic auth probe against the eapi search endpoint.
 // ---------------------------------------------------------------------------
-async function testFuture(creds: Record<string, string>): Promise<TestResult> {
+async function testFuture(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
   const { license_key } = creds;
   if (!license_key) return { ok: false, message: "Missing license_key" };
 
-  // ASSUMPTION: Future Electronics publishes a REST search endpoint at
-  // eapi.futureelectronics.com. We send an ApiKey header and a minimal
-  // search body. If we get 200/204, treat as success. If 401/403, fail.
-  // Any other status is reported honestly.
+  // Future uses header-based auth so URL capture is safe as-is.
+  const url = "https://eapi.futureelectronics.com/Search/SearchPartNumber";
   try {
-    const res = await timedFetch(
-      "https://eapi.futureelectronics.com/Search/SearchPartNumber",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ApiKey: license_key,
-          Authorization: license_key,
-        },
-        body: JSON.stringify({ PartNumber: PROBE_MPN, ResultsLimit: 1 }),
-      }
-    );
+    const res = await timedFetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ApiKey: license_key,
+        Authorization: license_key,
+      },
+      body: JSON.stringify({ PartNumber: probeMpn, ResultsLimit: 1 }),
+    });
+    const body = await readBody(res);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
+      return {
+        ok: false,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: url,
+      };
     }
     if (res.status === 404) {
       return {
         ok: false,
         message:
           "Future Electronics endpoint not found (404) — REST API path not confirmed, test not implemented yet",
+        raw_response: body,
+        status_code: res.status,
+        request_url: url,
       };
     }
     if (res.ok) {
       return {
         ok: true,
         message: `Connected to Future Electronics — HTTP ${res.status} (search endpoint unverified)`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: url,
       };
     }
-    const body = await res.text();
     return {
       ok: false,
-      message: `HTTP ${res.status} — ${body.slice(0, 200)}`,
+      message: `HTTP ${res.status}`,
+      raw_response: body,
+      status_code: res.status,
+      request_url: url,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
       message: `Test not implemented yet — credentials saved but cannot verify from web (${msg})`,
+      request_url: url,
     };
   }
 }
 
 // ---------------------------------------------------------------------------
 // Avnet — OAuth2 client_credentials. Search endpoint not 100% confirmed
-// so we only verify the token call.
+// so we only verify the token call. The access_token is redacted from
+// raw_response so the UI can show the envelope shape without leaking the
+// secret.
 // ---------------------------------------------------------------------------
-async function testAvnet(creds: Record<string, string>): Promise<TestResult> {
+async function testAvnet(
+  creds: Record<string, string>,
+  _mpn?: string
+): Promise<TestResult> {
+  void _mpn; // Avnet test is token-only — MPN not exercised
   const { subscription_key, client_id, client_secret } = creds;
   if (!subscription_key || !client_id || !client_secret) {
     return {
@@ -392,6 +530,7 @@ async function testAvnet(creds: Record<string, string>): Promise<TestResult> {
     };
   }
 
+  const url = "https://api.avnet.com/oauth/token";
   try {
     const form = new URLSearchParams();
     form.set("grant_type", "client_credentials");
@@ -399,7 +538,7 @@ async function testAvnet(creds: Record<string, string>): Promise<TestResult> {
     form.set("client_secret", client_secret);
     form.set("scope", "avnet.api");
 
-    const res = await timedFetch("https://api.avnet.com/oauth/token", {
+    const res = await timedFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -407,117 +546,197 @@ async function testAvnet(creds: Record<string, string>): Promise<TestResult> {
       },
       body: form.toString(),
     });
+    const body = await readBody(res);
+    // Redact access_token if present — shape matters, value does not
+    const redacted = redactTokenField(body);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
-    }
-    if (!res.ok) {
-      const body = await res.text();
       return {
         ok: false,
-        message: `HTTP ${res.status} — ${body.slice(0, 200)}`,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: redacted,
+        status_code: res.status,
+        request_url: url,
       };
     }
-    const data = (await res.json()) as { access_token?: string };
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: redacted,
+        status_code: res.status,
+        request_url: url,
+      };
+    }
+    const data = body as { access_token?: string };
     if (!data.access_token) {
-      return { ok: false, message: "No access_token in response" };
+      return {
+        ok: false,
+        message: "No access_token in response",
+        raw_response: redacted,
+        status_code: res.status,
+        request_url: url,
+      };
     }
     return {
       ok: true,
       message:
         "Connected to Avnet — OAuth token issued, search endpoint not tested (not 100% confirmed)",
+      raw_response: redacted,
+      status_code: res.status,
+      request_url: url,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: `Network error: ${msg}` };
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: url,
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Arrow — OAuth2 client_credentials
+// Arrow — OAuth2 client_credentials. Token-only verification.
 // ---------------------------------------------------------------------------
-async function testArrow(creds: Record<string, string>): Promise<TestResult> {
+async function testArrow(
+  creds: Record<string, string>,
+  _mpn?: string
+): Promise<TestResult> {
+  void _mpn;
   const { client_id, client_secret } = creds;
   if (!client_id || !client_secret) {
     return { ok: false, message: "Missing client_id or client_secret" };
   }
 
+  const url = "https://api.arrow.com/oauth2/token";
   try {
     const form = new URLSearchParams();
     form.set("grant_type", "client_credentials");
     form.set("client_id", client_id);
     form.set("client_secret", client_secret);
 
-    const res = await timedFetch("https://api.arrow.com/oauth2/token", {
+    const res = await timedFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: form.toString(),
     });
+    const body = await readBody(res);
+    const redacted = redactTokenField(body);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
-    }
-    if (!res.ok) {
-      const body = await res.text();
       return {
         ok: false,
-        message: `HTTP ${res.status} — ${body.slice(0, 200)}`,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: redacted,
+        status_code: res.status,
+        request_url: url,
       };
     }
-    const data = (await res.json()) as { access_token?: string };
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: redacted,
+        status_code: res.status,
+        request_url: url,
+      };
+    }
+    const data = body as { access_token?: string };
     if (!data.access_token) {
-      return { ok: false, message: "No access_token in response" };
+      return {
+        ok: false,
+        message: "No access_token in response",
+        raw_response: redacted,
+        status_code: res.status,
+        request_url: url,
+      };
     }
     return {
       ok: true,
       message: "Connected to Arrow — OAuth token issued, search not tested",
+      raw_response: redacted,
+      status_code: res.status,
+      request_url: url,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: `Network error: ${msg}` };
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: url,
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
 // TTI — API key via query string
 // ---------------------------------------------------------------------------
-async function testTti(creds: Record<string, string>): Promise<TestResult> {
+async function testTti(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
   const { api_key } = creds;
   if (!api_key) return { ok: false, message: "Missing api_key" };
 
+  const rawUrl = `https://api.ttiinc.com/v1/items/search?apiKey=${encodeURIComponent(api_key)}&query=${encodeURIComponent(probeMpn)}`;
+  // Strip apiKey (secret) but keep the query param so the user can see what
+  // MPN was sent.
+  const safeUrl = redactUrl(rawUrl, ["apiKey"]);
   try {
-    const url = `https://api.ttiinc.com/v1/items/search?apiKey=${encodeURIComponent(api_key)}&query=${encodeURIComponent(PROBE_MPN)}`;
-    const res = await timedFetch(url, {
+    const res = await timedFetch(rawUrl, {
       method: "GET",
       headers: { Accept: "application/json", Apikey: api_key },
     });
+    const body = await readBody(res);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
-    }
-    if (!res.ok) {
-      const body = await res.text();
       return {
         ok: false,
-        message: `HTTP ${res.status} — ${body.slice(0, 200)}`,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
       };
     }
     return {
       ok: true,
       message: `Connected to TTI — HTTP ${res.status}, search endpoint reachable`,
+      raw_response: body,
+      status_code: res.status,
+      request_url: safeUrl,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: `Network error: ${msg}` };
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: safeUrl,
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
 // e-Sonic — documentation sparse. Not currently testable from web.
 // ---------------------------------------------------------------------------
-async function testEsonic(creds: Record<string, string>): Promise<TestResult> {
+async function testEsonic(
+  creds: Record<string, string>,
+  _mpn?: string
+): Promise<TestResult> {
+  void _mpn;
   const { api_key } = creds;
   if (!api_key) return { ok: false, message: "Missing api_key" };
 
   // TODO: e-Sonic API endpoint not documented / not publicly confirmed.
   // Do not fake success — honestly report the limitation.
+  // raw_response intentionally undefined.
   return {
     ok: false,
     message:
@@ -528,35 +747,49 @@ async function testEsonic(creds: Record<string, string>): Promise<TestResult> {
 // ---------------------------------------------------------------------------
 // Newark / Element14 — REST GET with API key in query params
 // ---------------------------------------------------------------------------
-async function testNewark(creds: Record<string, string>): Promise<TestResult> {
+async function testNewark(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
   const { api_key } = creds;
   if (!api_key) return { ok: false, message: "Missing api_key" };
 
+  const params = new URLSearchParams({
+    "callInfo.responseDataFormat": "json",
+    "callInfo.apiKey": api_key,
+    term: `any:${probeMpn}`,
+    "storeInfo.id": "Newark.com",
+    resultsSettings: "0",
+    "resultsSettings.numberOfResults": "1",
+  });
+  const rawUrl = `https://api.element14.com/catalog/products?${params.toString()}`;
+  const safeUrl = redactUrl(rawUrl, ["callInfo.apiKey"]);
   try {
-    const params = new URLSearchParams({
-      "callInfo.responseDataFormat": "json",
-      "callInfo.apiKey": api_key,
-      term: `any:${PROBE_MPN}`,
-      "storeInfo.id": "Newark.com",
-      resultsSettings: "0",
-      "resultsSettings.numberOfResults": "1",
-    });
-    const url = `https://api.element14.com/catalog/products?${params.toString()}`;
-    const res = await timedFetch(url, {
+    const res = await timedFetch(rawUrl, {
       method: "GET",
       headers: { Accept: "application/json" },
     });
+    const body = await readBody(res);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
-    }
-    if (!res.ok) {
-      const body = await res.text();
       return {
         ok: false,
-        message: `HTTP ${res.status} — ${body.slice(0, 200)}`,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
       };
     }
-    const data = (await res.json()) as {
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    const data = body as {
       manufacturerPartNumberSearchReturn?: {
         numberOfResults?: number;
         products?: unknown[];
@@ -570,23 +803,34 @@ async function testNewark(creds: Record<string, string>): Promise<TestResult> {
     return {
       ok: true,
       message: `Connected to Newark — auth OK, search returned ${results.length} parts`,
+      raw_response: body,
+      status_code: res.status,
+      request_url: safeUrl,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: `Network error: ${msg}` };
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: safeUrl,
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Samtec — Bearer JWT, direct catalog API
+// Samtec — Bearer JWT, direct catalog API. Default MPN is IPL1-110-01-S-D.
 // ---------------------------------------------------------------------------
-async function testSamtec(creds: Record<string, string>): Promise<TestResult> {
+async function testSamtec(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? SAMTEC_PROBE_MPN;
   const { bearer_token } = creds;
   if (!bearer_token) return { ok: false, message: "Missing bearer_token" };
 
+  // partNumber is the MPN (not a secret), bearer is in the header
+  const url = `https://samtec.com/services/api/catalog/v1/parts?partNumber=${encodeURIComponent(probeMpn)}`;
   try {
-    const url =
-      "https://samtec.com/services/api/catalog/v1/parts?partNumber=IPL1-110-01-S-D";
     const res = await timedFetch(url, {
       method: "GET",
       headers: {
@@ -594,30 +838,51 @@ async function testSamtec(creds: Record<string, string>): Promise<TestResult> {
         Accept: "application/json",
       },
     });
+    const body = await readBody(res);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
-    }
-    if (!res.ok) {
-      const body = await res.text();
       return {
         ok: false,
-        message: `HTTP ${res.status} — ${body.slice(0, 200)}`,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: url,
+      };
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: url,
       };
     }
     return {
       ok: true,
       message: `Connected to Samtec — HTTP ${res.status}, catalog endpoint reachable`,
+      raw_response: body,
+      status_code: res.status,
+      request_url: url,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: `Network error: ${msg}` };
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: url,
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Texas Instruments — OAuth2 client_credentials + product probe
+// Texas Instruments — OAuth2 client_credentials + product probe.
+// Default MPN is LM358N.
 // ---------------------------------------------------------------------------
-async function testTi(creds: Record<string, string>): Promise<TestResult> {
+async function testTi(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? TI_PROBE_MPN;
   const { client_id, client_secret } = creds;
   if (!client_id || !client_secret) {
     return { ok: false, message: "Missing client_id or client_secret" };
@@ -655,32 +920,38 @@ async function testTi(creds: Record<string, string>): Promise<TestResult> {
     return { ok: false, message: `Auth network error: ${msg}` };
   }
 
+  const probeUrl = `https://transact.ti.com/v1/store/products/${encodeURIComponent(probeMpn)}`;
   try {
-    const res = await timedFetch(
-      "https://transact.ti.com/v1/store/products/LM358N",
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      }
-    );
+    const res = await timedFetch(probeUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+    const body = await readBody(res);
     if (!res.ok) {
       return {
         ok: true,
         message: `Connected to TI — auth OK but product probe returned HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: probeUrl,
       };
     }
     return {
       ok: true,
       message: "Connected to TI — auth OK, product probe reachable",
+      raw_response: body,
+      status_code: res.status,
+      request_url: probeUrl,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: true,
       message: `Connected to TI — auth OK but product probe network error: ${msg}`,
+      request_url: probeUrl,
     };
   }
 }
@@ -688,20 +959,25 @@ async function testTi(creds: Record<string, string>): Promise<TestResult> {
 // ---------------------------------------------------------------------------
 // TME — HMAC-SHA1 signed POST (Polish distributor)
 // Signature = base64(HMAC-SHA1(secret, METHOD&urlenc(url)&urlenc(sorted_params)))
+// Secrets are in the POST body (not URL), so URL capture is safe as-is.
 // ---------------------------------------------------------------------------
-async function testTme(creds: Record<string, string>): Promise<TestResult> {
+async function testTme(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
   const { token, secret } = creds;
   if (!token || !secret) {
     return { ok: false, message: "Missing token or secret" };
   }
 
+  const url = "https://api.tme.eu/Products/Search.json";
   try {
-    const url = "https://api.tme.eu/Products/Search.json";
     const params: Record<string, string> = {
       Token: token,
       Country: "CA",
       Language: "EN",
-      SearchPlain: PROBE_MPN,
+      SearchPlain: probeMpn,
     };
 
     // Build signature per TME docs:
@@ -709,9 +985,7 @@ async function testTme(creds: Record<string, string>): Promise<TestResult> {
     //   signature = base64(HMAC-SHA1(secret, signatureBase))
     const sortedKeys = Object.keys(params).sort();
     const paramString = sortedKeys
-      .map(
-        (k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`
-      )
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
       .join("&");
     const signatureBase = `POST&${encodeURIComponent(url)}&${encodeURIComponent(paramString)}`;
     const signature = createHmac("sha1", secret)
@@ -727,17 +1001,26 @@ async function testTme(creds: Record<string, string>): Promise<TestResult> {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     });
+    const parsed = await readBody(res);
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: `Auth failed: HTTP ${res.status}` };
-    }
-    if (!res.ok) {
-      const text = await res.text();
       return {
         ok: false,
-        message: `HTTP ${res.status} — ${text.slice(0, 200)} (TME signature scheme may need adjustment)`,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: parsed,
+        status_code: res.status,
+        request_url: url,
       };
     }
-    const data = (await res.json()) as {
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status} (TME signature scheme may need adjustment)`,
+        raw_response: parsed,
+        status_code: res.status,
+        request_url: url,
+      };
+    }
+    const data = parsed as {
       Status?: string;
       Data?: { ProductList?: unknown[] };
     };
@@ -745,18 +1028,50 @@ async function testTme(creds: Record<string, string>): Promise<TestResult> {
       return {
         ok: false,
         message: `TME rejected: Status=${data.Status}`,
+        raw_response: parsed,
+        status_code: res.status,
+        request_url: url,
       };
     }
     const count = data.Data?.ProductList?.length ?? 0;
     return {
       ok: true,
       message: `Connected to TME — auth OK, search returned ${count} parts`,
+      raw_response: parsed,
+      status_code: res.status,
+      request_url: url,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
       message: `TME network error: ${msg} (signature scheme may need adjustment)`,
+      request_url: url,
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * For OAuth token responses (Avnet, Arrow) — replace the actual access_token
+ * value with the literal "<redacted>" but keep the shape of the envelope so
+ * the user can verify the response structure.
+ */
+function redactTokenField(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const obj = body as Record<string, unknown>;
+  const redacted: Record<string, unknown> = { ...obj };
+  for (const key of [
+    "access_token",
+    "refresh_token",
+    "id_token",
+  ]) {
+    if (key in redacted && typeof redacted[key] === "string") {
+      redacted[key] = "<redacted>";
+    }
+  }
+  return redacted;
 }

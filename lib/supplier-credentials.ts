@@ -4,8 +4,14 @@ import { createAdminClient } from "@/lib/supabase/server";
 /**
  * Known suppliers. Each has its own credential schema (different fields).
  * The metadata table below documents what fields each supplier expects.
+ *
+ * SupplierName is a string to allow custom (user-defined) distributors added
+ * at runtime via /settings/api-config → stored in public.custom_suppliers.
+ * Use BuiltInSupplierName / isBuiltInSupplier() when you need to restrict
+ * to the 12 hardcoded distributors that have real test implementations.
  */
-export type SupplierName =
+export type SupplierName = string;
+export type BuiltInSupplierName =
   | "digikey"
   | "mouser"
   | "lcsc"
@@ -18,6 +24,25 @@ export type SupplierName =
   | "samtec"
   | "ti"
   | "tme";
+
+export const BUILT_IN_SUPPLIER_NAMES: ReadonlyArray<BuiltInSupplierName> = [
+  "digikey",
+  "mouser",
+  "lcsc",
+  "future",
+  "avnet",
+  "arrow",
+  "tti",
+  "esonic",
+  "newark",
+  "samtec",
+  "ti",
+  "tme",
+];
+
+export function isBuiltInSupplier(name: string): name is BuiltInSupplierName {
+  return (BUILT_IN_SUPPLIER_NAMES as readonly string[]).includes(name);
+}
 
 export interface SupplierFieldDef {
   key: string;
@@ -38,7 +63,7 @@ export interface SupplierMetadata {
   notes?: string;
 }
 
-export const SUPPLIER_METADATA: Record<SupplierName, SupplierMetadata> = {
+export const SUPPLIER_METADATA: Record<BuiltInSupplierName, SupplierMetadata> = {
   digikey: {
     name: "digikey",
     display_name: "DigiKey",
@@ -234,10 +259,12 @@ function maskValue(v: string): string {
   return v.slice(0, 4) + "•".repeat(Math.min(v.length - 8, 16)) + v.slice(-4);
 }
 
-function buildPreview(supplier: SupplierName, data: Record<string, string>): Record<string, string> {
-  const meta = SUPPLIER_METADATA[supplier];
+function buildPreview(
+  fields: SupplierFieldDef[],
+  data: Record<string, string>
+): Record<string, string> {
   const preview: Record<string, string> = {};
-  for (const f of meta.fields) {
+  for (const f of fields) {
     const val = data[f.key];
     if (!val) continue;
     preview[f.key] = f.type === "password" ? maskValue(val) : val;
@@ -257,6 +284,38 @@ export interface CredentialStatus {
   fields: SupplierFieldDef[];
   docs_url: string;
   notes?: string;
+  is_custom: boolean;
+}
+
+/**
+ * Look up metadata for a supplier — built-in first, falling back to the
+ * custom_suppliers DB table. Returns null if the supplier doesn't exist
+ * in either source.
+ */
+export async function getSupplierMetadata(
+  name: SupplierName
+): Promise<SupplierMetadata | null> {
+  if (isBuiltInSupplier(name)) {
+    return SUPPLIER_METADATA[name];
+  }
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("custom_suppliers")
+    .select(
+      "name, display_name, fields, supported_currencies, default_currency, docs_url, notes"
+    )
+    .eq("name", name)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    name: data.name as string,
+    display_name: data.display_name as string,
+    fields: data.fields as SupplierFieldDef[],
+    supported_currencies: data.supported_currencies as string[],
+    default_currency: data.default_currency as string,
+    docs_url: (data.docs_url as string | null) ?? "",
+    notes: (data.notes as string | null) ?? undefined,
+  };
 }
 
 /**
@@ -286,14 +345,14 @@ export async function getCredential<T = Record<string, string>>(
  * Get a single supplier's preferred currency (or its default if not set).
  */
 export async function getPreferredCurrency(supplier: SupplierName): Promise<string> {
-  const meta = SUPPLIER_METADATA[supplier];
+  const meta = await getSupplierMetadata(supplier);
   const admin = createAdminClient();
   const { data } = await admin
     .from("supplier_credentials")
     .select("preferred_currency")
     .eq("supplier", supplier)
     .maybeSingle();
-  return data?.preferred_currency ?? meta.default_currency;
+  return data?.preferred_currency ?? meta?.default_currency ?? "CAD";
 }
 
 /**
@@ -308,7 +367,7 @@ export async function setCredential(
     updated_by?: string;
   } = {}
 ): Promise<void> {
-  const meta = SUPPLIER_METADATA[supplier];
+  const meta = await getSupplierMetadata(supplier);
   if (!meta) throw new Error(`Unknown supplier: ${supplier}`);
 
   for (const f of meta.fields) {
@@ -318,7 +377,7 @@ export async function setCredential(
   }
 
   const ciphertext = encrypt(JSON.stringify(data));
-  const preview = buildPreview(supplier, data);
+  const preview = buildPreview(meta.fields, data);
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -363,7 +422,8 @@ export async function setPreferredCurrency(
   supplier: SupplierName,
   currency: string
 ): Promise<void> {
-  const meta = SUPPLIER_METADATA[supplier];
+  const meta = await getSupplierMetadata(supplier);
+  if (!meta) throw new Error(`Unknown supplier: ${supplier}`);
   if (!meta.supported_currencies.includes(currency)) {
     throw new Error(`${supplier} does not support currency ${currency}`);
   }
@@ -383,26 +443,45 @@ interface SupplierCredentialRow {
   updated_at: string | null;
 }
 
+interface CustomSupplierRow {
+  name: string;
+  display_name: string;
+  fields: SupplierFieldDef[];
+  supported_currencies: string[];
+  default_currency: string;
+  docs_url: string | null;
+  notes: string | null;
+}
+
 /**
  * List all suppliers (configured + not configured) with their metadata,
  * status, and masked preview. Used by the settings UI.
  *
- * Returns an entry for every supplier in SUPPLIER_METADATA, even ones
- * with no row in the DB yet (configured: false).
+ * Returns an entry for every built-in supplier PLUS every row in
+ * custom_suppliers. Built-ins first (in BUILT_IN_SUPPLIER_NAMES order),
+ * then customs.
  */
 export async function listCredentialStatus(): Promise<CredentialStatus[]> {
   const admin = createAdminClient();
-  const { data: rows } = await admin
-    .from("supplier_credentials")
-    .select("supplier, configured, preferred_currency, preview, updated_at");
 
-  const byName = new Map<string, SupplierCredentialRow>(
-    ((rows ?? []) as SupplierCredentialRow[]).map((r) => [r.supplier, r])
+  const [credsResult, customResult] = await Promise.all([
+    admin
+      .from("supplier_credentials")
+      .select("supplier, configured, preferred_currency, preview, updated_at"),
+    admin
+      .from("custom_suppliers")
+      .select(
+        "name, display_name, fields, supported_currencies, default_currency, docs_url, notes"
+      ),
+  ]);
+
+  const credsByName = new Map<string, SupplierCredentialRow>(
+    ((credsResult.data ?? []) as SupplierCredentialRow[]).map((r) => [r.supplier, r])
   );
 
-  return (Object.keys(SUPPLIER_METADATA) as SupplierName[]).map((name) => {
+  const builtIns: CredentialStatus[] = BUILT_IN_SUPPLIER_NAMES.map((name) => {
     const meta = SUPPLIER_METADATA[name];
-    const row = byName.get(name);
+    const row = credsByName.get(name);
     return {
       supplier: name,
       display_name: meta.display_name,
@@ -410,11 +489,125 @@ export async function listCredentialStatus(): Promise<CredentialStatus[]> {
       preferred_currency: row?.preferred_currency ?? null,
       default_currency: meta.default_currency,
       supported_currencies: meta.supported_currencies,
-      preview: row?.preview ?? {},
+      preview: (row?.preview as Record<string, string>) ?? {},
       updated_at: row?.updated_at ?? null,
       fields: meta.fields,
       docs_url: meta.docs_url,
       notes: meta.notes,
+      is_custom: false,
     };
   });
+
+  const customs: CredentialStatus[] = ((customResult.data ?? []) as CustomSupplierRow[]).map(
+    (c) => {
+      const row = credsByName.get(c.name);
+      return {
+        supplier: c.name,
+        display_name: c.display_name,
+        configured: row?.configured ?? false,
+        preferred_currency: row?.preferred_currency ?? null,
+        default_currency: c.default_currency,
+        supported_currencies: c.supported_currencies,
+        preview: (row?.preview as Record<string, string>) ?? {},
+        updated_at: row?.updated_at ?? null,
+        fields: c.fields,
+        docs_url: c.docs_url ?? "",
+        notes: c.notes ?? undefined,
+        is_custom: true,
+      };
+    }
+  );
+
+  return [...builtIns, ...customs];
+}
+
+export interface AddCustomSupplierInput {
+  name: string;
+  display_name: string;
+  fields: SupplierFieldDef[];
+  supported_currencies: string[];
+  default_currency: string;
+  docs_url?: string;
+  notes?: string;
+}
+
+/**
+ * Add a new custom distributor. Validates that the name doesn't collide
+ * with a built-in supplier and matches the lowercase-alnum naming rule.
+ */
+export async function addCustomSupplier(
+  input: AddCustomSupplierInput,
+  createdBy: string
+): Promise<void> {
+  if (!/^[a-z][a-z0-9_-]*$/.test(input.name)) {
+    throw new Error(
+      "Name must be lowercase letters, numbers, hyphens, or underscores, starting with a letter."
+    );
+  }
+  if (isBuiltInSupplier(input.name)) {
+    throw new Error(
+      `'${input.name}' is reserved for the built-in ${
+        SUPPLIER_METADATA[input.name as BuiltInSupplierName].display_name
+      } supplier.`
+    );
+  }
+  if (!input.display_name || input.display_name.trim().length === 0) {
+    throw new Error("display_name is required.");
+  }
+  if (!input.fields || input.fields.length === 0) {
+    throw new Error("At least one credential field is required.");
+  }
+  if (!input.supported_currencies || input.supported_currencies.length === 0) {
+    throw new Error("At least one supported currency is required.");
+  }
+  if (!input.supported_currencies.includes(input.default_currency)) {
+    throw new Error("Default currency must be in the supported currencies list.");
+  }
+  for (const f of input.fields) {
+    if (!f.key || !f.label || !f.type) {
+      throw new Error("Every field must have a key, label, and type.");
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(f.key)) {
+      throw new Error(
+        `Field key '${f.key}' must be lowercase alphanumeric with underscores.`
+      );
+    }
+    if (!["text", "password", "select"].includes(f.type)) {
+      throw new Error(`Field type must be 'text', 'password', or 'select'.`);
+    }
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("custom_suppliers").insert({
+    name: input.name,
+    display_name: input.display_name,
+    fields: input.fields,
+    supported_currencies: input.supported_currencies,
+    default_currency: input.default_currency,
+    docs_url: input.docs_url ?? null,
+    notes: input.notes ?? null,
+    created_by: createdBy,
+  });
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error(`A distributor named '${input.name}' already exists.`);
+    }
+    throw new Error(`Failed to add custom supplier: ${error.message}`);
+  }
+}
+
+/**
+ * Delete a custom supplier definition AND its stored credentials.
+ * Built-in suppliers cannot be deleted.
+ */
+export async function deleteCustomSupplier(name: string): Promise<void> {
+  if (isBuiltInSupplier(name)) {
+    throw new Error(`Cannot delete built-in supplier '${name}'.`);
+  }
+  const admin = createAdminClient();
+  await admin.from("supplier_credentials").delete().eq("supplier", name);
+  const { error } = await admin.from("custom_suppliers").delete().eq("name", name);
+  if (error) {
+    throw new Error(`Failed to delete custom supplier: ${error.message}`);
+  }
 }
