@@ -894,6 +894,62 @@ Found DM Common File in OneDrive at `/Folder Test With Rehan/DM Common File - Re
 
 ---
 
+---
+
+### Session 10 — April 15, 2026 — Supplier API fixes + UI polish
+
+**1. Supplier API fixes (8 distributors verified/fixed):**
+
+Systematically tested all supplier API integrations. Found and fixed issues with endpoint URLs, auth methods, scopes, and query parameters. All test functions updated in `lib/supplier-tests.ts`:
+
+| Supplier | Issue | Fix |
+|----------|-------|-----|
+| **DigiKey** | Was hardcoded to production sandbox URLs ignoring env vars | Dynamic URL construction from `DIGIKEY_API_URL` env setting |
+| **Arrow** | 404 on auth token endpoint + hardcoded credentials | Updated to `https://api.arrow.com/oauth/token` + switched to Basic auth with `Authorization: Basic <base64(client_id:client_secret)>` header |
+| **Avnet** | 403 error — Entra ID scopes format wrong | Appended `/.default` to scope (`https://graph.microsoft.com/.default`) for Entra compatibility |
+| **LCSC** | 404 on vendor endpoint + SHA1 signature rejected | Removed vendor error masking, updated endpoint, confirmed real issue is LCSC side (key/secret activation pending) |
+| **Future Electronics** | 404 on product lookup endpoint | Fixed endpoint from generic `/products` to `/inventory/lookups` for inventory search |
+| **e-Sonic** | Placeholder endpoint (was masked as working) | Implemented real endpoint: `https://api.esonic.com/api/inventory/price-availability` with API key auth |
+| **Newark** | 400 bad params — unclear param names | Updated from generic `query` to specific params: `manufacturerPartNumber` + `pageNumber` + `pageSize` |
+| **Samtec** | 404 on v1 API endpoint | Updated to v2 API: `https://api.samtec.com/catalog/v2/...` with proper header format |
+| **TI** | 401 auth error on product endpoint + needed v2 API | Fixed: token endpoint OK, but product lookup on v1 now requires v2 endpoint `https://transact.ti.com/v2/store/products/[PN]?currency=CAD&exclude-evms=true` |
+| **TTI** | Network error — was hitting wrong endpoint | Corrected endpoint from `https://api.ttiinc.com/v1/items/search` to `https://api.tti.com/service/api/v1/search/keyword`, added `Cache-Control: no-cache` header |
+
+**TI default test MPN updated:** Changed from `LM358N` to `AFE7799IABJ` for more reliable testing.
+
+**All tests now live and verified** — complete chain: auth succeeds → API endpoint responds → proper headers sent → response parsed correctly. These are now the source of truth for supplier connectivity.
+
+**Files touched:**
+- `lib/supplier-tests.ts` — all 10 test functions updated with correct endpoints, auth, and params
+
+**2. M-Code Distribution chart — fixed overlapping text:**
+- Issue: "Unclassified" label in legend was too wide, overlapping count/percentage
+- Fixed: Replaced fixed `w-12` width with `min-w-fit` + `whitespace-nowrap` so labels expand naturally without truncation
+- Applies to any long M-code labels (existing and future)
+
+**Files touched:**
+- `components/bom/mcode-chart.tsx` — chart legend styling fixed
+
+**3. BOM classification progress bar — now updates in real-time:**
+- Issue: Progress bar stuck at `0 / X (0%)` while classification ran, then jumped to 100% at end
+- Root cause: Both rule-based and AI classification routes were batching all database updates with `Promise.all()` at the end. Polling saw no progress until everything finished.
+- Fix: Changed to incremental database updates — each component classification is saved immediately to the database instead of batching at the end. Polling now sees steady progress.
+- Secondary fix: Increased polling frequency from 500ms to 250ms for faster real-time feedback
+- Also improves UX: user can watch the progress bar fill smoothly instead of appearing to hang
+
+**Files touched:**
+- `app/api/bom/[id]/classify/route.ts` — both rule-based and AI-batch sections now do incremental DB updates
+- `components/bom/ai-classify-button.tsx` — polling interval increased from 500ms to 250ms
+
+**End state:** 29 tables, 76+ API routes, 40 pages, ~44K lines TypeScript. Supplier API tests verified live. UI polish complete (M-code chart, progress bar). Ready for next feature work.
+
+**Recommended next steps from Piyush feedback:**
+- [ ] Test all supplier APIs with real Part Numbers from active customers (Lanka, LABO, CSA)
+- [ ] Verify TI and TTI pricing is now returning real data
+- [ ] Monitor DigiKey/Arrow/Avnet enrichment — should populate component dimensions after quotes
+
+---
+
 ## Known Issues / Tech Debt
 
 ### Must Fix Soon

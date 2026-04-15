@@ -132,8 +132,9 @@ function relativeTime(iso: string | null): string {
 // falls back to when no override is supplied. Used as placeholder text
 // in the expanded panel test input.
 const DEFAULT_TEST_MPN: Record<string, string> = {
+  lcsc: "C2665711",
   samtec: "IPL1-110-01-S-D",
-  ti: "LM358N",
+  ti: "AFE7799IABJ",
 };
 const FALLBACK_TEST_MPN = "ERJ-2GE0R00X";
 
