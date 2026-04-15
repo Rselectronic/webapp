@@ -1,13 +1,55 @@
+import { getCredential, getPreferredCurrency } from "@/lib/supplier-credentials";
+
 const DIGIKEY_TOKEN_URL = "https://api.digikey.com/v1/oauth2/token";
 const DIGIKEY_SEARCH_URL =
   "https://api.digikey.com/products/v4/search/keyword";
 
+interface DigikeyCreds {
+  client_id: string;
+  client_secret: string;
+  environment?: "Production" | "Sandbox";
+}
+
 let cachedToken: { access_token: string; expires_at: number } | null = null;
 
+// Module-level credentials cache. 60-second TTL — keeps hot-path pricing
+// calls off the DB without making rotation feel stale (CEO rotation via UI
+// takes effect within a minute).
+let cachedCreds: { creds: DigikeyCreds; expires_at: number } | null = null;
+const CREDS_TTL_MS = 60_000;
+
+async function getDigikeyCredentials(): Promise<DigikeyCreds | null> {
+  if (cachedCreds && Date.now() < cachedCreds.expires_at) {
+    return cachedCreds.creds;
+  }
+  // Try DB first
+  try {
+    const fromDb = await getCredential<DigikeyCreds>("digikey");
+    if (fromDb?.client_id && fromDb?.client_secret) {
+      cachedCreds = { creds: fromDb, expires_at: Date.now() + CREDS_TTL_MS };
+      return fromDb;
+    }
+  } catch {
+    // DB unavailable / SUPPLIER_CREDENTIALS_KEY missing — fall through
+  }
+  // Fall back to env vars (existing behavior)
+  const client_id = process.env.DIGIKEY_CLIENT_ID;
+  const client_secret = process.env.DIGIKEY_CLIENT_SECRET;
+  if (!client_id || !client_secret) return null;
+  const creds: DigikeyCreds = {
+    client_id,
+    client_secret,
+    environment:
+      (process.env.DIGIKEY_ENVIRONMENT as "Production" | "Sandbox") ??
+      "Production",
+  };
+  cachedCreds = { creds, expires_at: Date.now() + CREDS_TTL_MS };
+  return creds;
+}
+
 async function getAccessToken(): Promise<string> {
-  const clientId = process.env.DIGIKEY_CLIENT_ID;
-  const clientSecret = process.env.DIGIKEY_CLIENT_SECRET;
-  if (!clientId || !clientSecret)
+  const creds = await getDigikeyCredentials();
+  if (!creds)
     throw new Error("DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET must be set");
   if (cachedToken && Date.now() < cachedToken.expires_at - 60_000)
     return cachedToken.access_token;
@@ -17,8 +59,8 @@ async function getAccessToken(): Promise<string> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
+      client_id: creds.client_id,
+      client_secret: creds.client_secret,
     }),
   });
   if (!res.ok)
@@ -53,16 +95,18 @@ export interface DigiKeyPartResult {
 export async function searchPartPrice(
   mpn: string
 ): Promise<DigiKeyPartResult | null> {
+  const creds = await getDigikeyCredentials();
+  if (!creds) return null;
   const token = await getAccessToken();
-  const clientId = process.env.DIGIKEY_CLIENT_ID!;
+  const currency = await getPreferredCurrency("digikey");
   const res = await fetch(DIGIKEY_SEARCH_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
-      "X-DIGIKEY-Client-Id": clientId,
+      "X-DIGIKEY-Client-Id": creds.client_id,
       "X-DIGIKEY-Locale-Site": "CA",
       "X-DIGIKEY-Locale-Language": "en",
-      "X-DIGIKEY-Locale-Currency": "CAD",
+      "X-DIGIKEY-Locale-Currency": currency,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -153,7 +197,7 @@ export async function searchPartPrice(
     mpn: product.ManufacturerProductNumber,
     description: product.Description.ProductDescription,
     unit_price: product.UnitPrice,
-    currency: "CAD",
+    currency,
     in_stock: product.QuantityAvailable > 0,
     digikey_pn: digikeyPn,
     mounting_type: mountingType,

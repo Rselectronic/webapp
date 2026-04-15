@@ -1,7 +1,39 @@
 import { createHash } from "crypto";
+import { getCredential } from "@/lib/supplier-credentials";
 
 const LCSC_SEARCH_URL =
   "https://ips.lcsc.com/rest/wmsc2agent/search/product";
+
+interface LcscCreds {
+  api_key: string;
+  api_secret: string;
+}
+
+// Module-level credentials cache with 60-second TTL — see digikey.ts for
+// rationale. Matches the pattern used by the other pricing clients.
+let cachedCreds: { creds: LcscCreds; expires_at: number } | null = null;
+const CREDS_TTL_MS = 60_000;
+
+async function getLcscCredentials(): Promise<LcscCreds | null> {
+  if (cachedCreds && Date.now() < cachedCreds.expires_at) {
+    return cachedCreds.creds;
+  }
+  try {
+    const fromDb = await getCredential<LcscCreds>("lcsc");
+    if (fromDb?.api_key && fromDb?.api_secret) {
+      cachedCreds = { creds: fromDb, expires_at: Date.now() + CREDS_TTL_MS };
+      return fromDb;
+    }
+  } catch {
+    // DB unavailable / SUPPLIER_CREDENTIALS_KEY missing — fall through
+  }
+  const api_key = process.env.LCSC_API_KEY;
+  const api_secret = process.env.LCSC_API_SECRET;
+  if (!api_key || !api_secret) return null;
+  const creds: LcscCreds = { api_key, api_secret };
+  cachedCreds = { creds, expires_at: Date.now() + CREDS_TTL_MS };
+  return creds;
+}
 
 export interface LCSCPartResult {
   mpn: string;
@@ -29,9 +61,10 @@ function sha1(data: string): string {
 export async function searchLCSCPrice(
   mpn: string
 ): Promise<LCSCPartResult | null> {
-  const key = process.env.LCSC_API_KEY;
-  const secret = process.env.LCSC_API_SECRET;
-  if (!key || !secret) return null;
+  const creds = await getLcscCredentials();
+  if (!creds) return null;
+  const key = creds.api_key;
+  const secret = creds.api_secret;
 
   try {
     const nonce = generateNonce();

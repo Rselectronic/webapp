@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database, CreditCard, Key } from "lucide-react";
+import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database, CreditCard, Key, Plug } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const settingsLinks = [
@@ -58,6 +58,13 @@ const settingsLinks = [
       "Manage permanent API keys for AI agents connecting to the MCP server. CEO only.",
     href: "/settings/api-keys",
     icon: Key,
+  },
+  {
+    title: "API Configuration",
+    description:
+      "Manage distributor API credentials (DigiKey, Mouser, LCSC, Avnet, Arrow, etc.) and preferred currencies. CEO only.",
+    href: "/settings/api-config",
+    icon: Plug,
   },
 ];
 
