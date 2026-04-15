@@ -3753,4 +3753,175 @@ All key operations live in the webapp — no CLI. CEO-only page (same gating pat
 | `components/settings/api-keys-manager.tsx` | Client component — table + dialog + revoke |
 | `app/(dashboard)/settings/page.tsx` | Added `Key` icon tile linking to the new page |
 
+---
+
+## Part 21 — Encrypted distributor credentials store + `/settings/api-config`
+
+Added April 14–15, 2026. Lets the CEO/Ops manager rotate distributor API credentials (DigiKey, Mouser, LCSC, etc.) from inside the webapp instead of editing Vercel env vars. Includes a per-distributor "Test Connection" feature that hits the live API with an MPN and shows the raw JSON response.
+
+### 21.1 The schema (migration 031)
+
+```sql
+CREATE TABLE public.supplier_credentials (
+  supplier              TEXT PRIMARY KEY,
+  ciphertext            TEXT NOT NULL,    -- AES-256-GCM, JSON-encoded {iv, tag, ciphertext}
+  preferred_currency    TEXT,
+  preview               JSONB,            -- masked field-by-field for UI
+  configured            BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ DEFAULT NOW(),
+  updated_by            UUID REFERENCES users(id)
+);
+```
+
+CEO + ops_manager RLS, 4 policies (select/insert/update/delete).
+
+### 21.2 Encryption
+
+- **Algorithm:** AES-256-GCM via Node's built-in `crypto` module
+- **Master key:** `SUPPLIER_CREDENTIALS_KEY` env var, base64-encoded 32 bytes. NEVER stored in DB or repo.
+- **Per-row:** random 12-byte IV, GCM auth tag, ciphertext — all base64'd into a single JSON string stored in `ciphertext TEXT`
+- **Raw key never goes back to the browser:** the `preview` JSONB column stores a masked version (`first4 + bullets + last4`) for display
+
+If `SUPPLIER_CREDENTIALS_KEY` is missing at runtime, the helper functions throw a clear error and the page renders a red error card instead of the manager. **Adding the env var to Vercel does NOT auto-redeploy** — must trigger a fresh build.
+
+### 21.3 Built-in vs custom suppliers (migration 032)
+
+The 12 built-in distributors live in code:
+
+```ts
+// lib/supplier-credentials.ts
+export type BuiltInSupplierName =
+  | "digikey" | "mouser" | "lcsc" | "future" | "avnet"
+  | "arrow" | "tti" | "esonic" | "newark" | "samtec" | "ti" | "tme";
+
+export const SUPPLIER_METADATA: Record<BuiltInSupplierName, SupplierMetadata> = { ... };
+```
+
+Each entry has: display name, field schema (`{key, label, type, required, options?}`), supported currencies, default currency, docs URL, optional notes.
+
+**Custom suppliers** (added at runtime via the UI) live in `custom_suppliers` table with the same shape. The `getSupplierMetadata(name)` helper checks the built-in constant first, falls back to the DB. `SupplierName` is `string` to allow either source.
+
+```sql
+CREATE TABLE public.custom_suppliers (
+  name                  TEXT PRIMARY KEY CHECK (name ~ '^[a-z][a-z0-9_-]*$'),
+  display_name          TEXT NOT NULL,
+  fields                JSONB NOT NULL,
+  supported_currencies  TEXT[] NOT NULL,
+  default_currency      TEXT NOT NULL,
+  docs_url              TEXT,
+  notes                 TEXT,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  created_by            UUID REFERENCES users(id)
+);
+```
+
+Custom suppliers cannot collide with built-in names (validated client AND server side). They get a purple "Custom" badge in the UI and a red "Delete distributor" button.
+
+### 21.4 The pricing-client integration
+
+`lib/pricing/digikey.ts`, `mouser.ts`, `lcsc.ts` were updated to read credentials via:
+
+```ts
+async function getDigikeyCredentials(): Promise<DigikeyCreds | null> {
+  try {
+    const fromDb = await getCredential<DigikeyCreds>("digikey");
+    if (fromDb?.client_id && fromDb?.client_secret) return fromDb;
+  } catch {}
+  // Fall back to env vars (existing Vercel deploy keeps working)
+  const client_id = process.env.DIGIKEY_CLIENT_ID;
+  const client_secret = process.env.DIGIKEY_CLIENT_SECRET;
+  if (!client_id || !client_secret) return null;
+  return { client_id, client_secret, environment: "Production" };
+}
+```
+
+DB wins over env. 60-second module-level cache so we don't hammer the DB on every API call. Currency for outbound API requests now sourced from `getPreferredCurrency(supplier)` instead of hardcoded "CAD".
+
+This means **existing Vercel env vars keep working** — the DB takes over silently the moment the CEO inserts a credential through the UI.
+
+### 21.5 The UI (`api-config-manager.tsx`)
+
+Compact row-based layout matching the CEO's reference screenshot. One row per supplier, sorted alphabetically.
+
+**Collapsed row:**
+```
+DigiKey                 [CAD ▼]   ● API Set   [Test]   ⌄
+```
+
+**Expanded row** (click anywhere on collapsed row to toggle):
+- Notes + docs link
+- One input per credential field (password fields show "Current: kJuY…sQc4" + placeholder "Leave blank to keep current value")
+- "Test the API with a part number" card (input + Test Connection button)
+- Save / Test Connection / (Delete distributor for custom only) button row
+
+**Add Distributor flow:**
+- "+ Add Distributor" button in panel header → Dialog
+- Form: name (lowercase regex), display_name, currency, supported currencies (chip selector), credential fields (dynamic add/remove rows)
+- Live validation, reserved-name check, submit disabled until valid
+- On submit → row inserted into local list and auto-expanded for credential entry
+
+### 21.6 Test Connection — what each distributor does
+
+| Distributor | Probe | Status |
+|---|---|---|
+| DigiKey | OAuth → search MPN | full test |
+| Mouser | POST search MPN | full test |
+| LCSC | SHA1-signed GET search | runs but vendor-blocked |
+| TTI | GET search w/ API key | full test |
+| Newark | element14 catalog API | full test |
+| Samtec | JWT bearer probe | full test |
+| TI | OAuth → product probe | full test |
+| TME | HMAC-SHA1 signed POST | full test |
+| Avnet | OAuth token only (search shape uncertain) | token-only |
+| Arrow | OAuth token only | token-only |
+| Future | Search probe with auth header | assumption-based |
+| e-Sonic | Honest "not testable" — no public docs | N/A |
+| Custom | "Custom distributor — no built-in test connection" | N/A |
+
+### 21.7 MPN-driven test + JSON viewer
+
+The Test Connection feature was upgraded after the first round so the CEO can verify with real part numbers and see the raw API response.
+
+**`TestResult` shape:**
+```ts
+interface TestResult {
+  ok: boolean;
+  message: string;
+  details?: Record<string, unknown>;
+  raw_response?: unknown;       // decoded JSON body from probe call
+  status_code?: number;          // HTTP status
+  request_url?: string;          // URL with secrets redacted
+}
+```
+
+**Per-call MPN:** `testSupplierConnection(supplier, credentials, mpn?)` accepts an optional MPN override. Falls back to per-distributor default (ERJ-2GE0R00X for most, IPL1-110-01-S-D for Samtec, LM358N for TI).
+
+**Secret redaction:** `redactUrl(url, secretParams)` helper strips known secret params before capturing the URL for display. Mouser apiKey, LCSC key/signature/nonce/timestamp, Newark callInfo.apiKey, TTI apiKey. Avnet/Arrow access_tokens replaced with `"<redacted>"` in the captured response body.
+
+**UI viewer:**
+- "Test the API with a part number" card inside the expanded panel (input + Test Connection button + Enter-key trigger)
+- Result lands → row auto-expands if collapsed
+- One-line summary banner (✓ green / ✗ red)
+- `Status: 200 • https://api.digikey.com/...` metadata strip below
+- Collapsible `<details>` JSON viewer — terminal-styled `<pre>` block (`bg-gray-900 text-green-300`, max-h-96, scrollable)
+- Manual × dismiss only — no auto-clear, so the CEO can actually read the JSON
+
+### 21.8 Files
+
+| File | What |
+|------|------|
+| `supabase/migrations/031_supplier_credentials.sql` | Encrypted credentials table |
+| `supabase/migrations/032_custom_suppliers.sql` | Custom distributor metadata table |
+| `lib/supplier-credentials.ts` | Crypto + helpers + 12 built-in metadata |
+| `lib/supplier-tests.ts` | 12 distributor test functions + MPN-driven probe + JSON capture |
+| `app/api/admin/supplier-credentials/route.ts` | GET list |
+| `app/api/admin/supplier-credentials/[supplier]/route.ts` | PUT/DELETE/PATCH |
+| `app/api/admin/supplier-credentials/[supplier]/test/route.ts` | POST `{mpn?}` test |
+| `app/api/admin/supplier-credentials/custom/route.ts` | POST add custom |
+| `app/api/admin/supplier-credentials/custom/[name]/route.ts` | DELETE custom |
+| `app/(dashboard)/settings/api-config/page.tsx` | CEO-gated server page |
+| `components/settings/api-config-manager.tsx` | The whole interactive UI |
+| `app/(dashboard)/settings/page.tsx` | "API Configuration" tile |
+
 All routes share the same cache and enrichment logic — no duplication.
