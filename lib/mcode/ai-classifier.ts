@@ -1,5 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { MCode } from "./types";
+import { recordAiCall } from "@/lib/ai/telemetry";
+
+const CLASSIFIER_MODEL = "claude-haiku-4-5-20251001";
 
 /**
  * Component parameters as fetched from Claude (read from its training knowledge).
@@ -42,6 +45,7 @@ export async function fetchComponentParams(
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
+  const startedAt = Date.now();
   try {
     const anthropic = getClient();
     const prompt = `You are an electronics component database. For the given component, return ONLY these parameters in JSON format (use null for unknown values):
@@ -63,9 +67,20 @@ Respond with JSON only, no markdown, no backticks:
 {"mounting_type": "...", "length_mm": 1.0, "width_mm": 0.5, "package_case": "0402", "category": "Resistors", "sub_category": "Chip Resistor - Surface Mount", "features": null, "attachment_method": null}`;
 
     const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: CLASSIFIER_MODEL,
       max_tokens: 200,
       messages: [{ role: "user", content: prompt }],
+    });
+
+    void recordAiCall({
+      purpose: "mcode_classifier",
+      model: CLASSIFIER_MODEL,
+      input_tokens: response.usage?.input_tokens ?? null,
+      output_tokens: response.usage?.output_tokens ?? null,
+      latency_ms: Date.now() - startedAt,
+      success: true,
+      mpn,
+      metadata: { description, manufacturer },
     });
 
     let text = response.content[0].type === "text" ? response.content[0].text : "";
@@ -106,6 +121,15 @@ Respond with JSON only, no markdown, no backticks:
       reasoning,
     };
   } catch (err) {
+    void recordAiCall({
+      purpose: "mcode_classifier",
+      model: CLASSIFIER_MODEL,
+      latency_ms: Date.now() - startedAt,
+      success: false,
+      error_message: err instanceof Error ? err.message : String(err),
+      mpn,
+      metadata: { description, manufacturer },
+    });
     console.error("[AI PARAMS FETCH]", err instanceof Error ? err.message : err);
     return null;
   }

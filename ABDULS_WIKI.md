@@ -4038,3 +4038,398 @@ interface TestResult {
 | `app/(dashboard)/settings/page.tsx` | "API Configuration" tile |
 
 All routes share the same cache and enrichment logic — no duplication.
+
+---
+
+## PART 22 — Custom Quantities, CPC Cleanup, Auto-PCB (Entry 44, April 15 2026)
+
+### 22.1 The Reality of Customer Purchase Orders
+
+When we send a quote to a customer, we quote 4 price tiers: 50 / 100 / 250 / 500 units. The customer sees per-unit prices that get cheaper at higher quantities — that's how we win business, volume discounts.
+
+But customers don't always buy in those exact tier sizes. A Lanka engineer looks at our quote, sees that 50 pcs is $637/unit and 100 pcs is $624/unit, and then cuts a PO for **75 pcs**. Now what?
+
+**The business rule (from Anas, 2026-04-15):** the customer pays the unit price of the **next lower tier**. Ordering 75 uses the 50-unit price ($637/unit). Ordering 120 uses the 100-unit price ($624/unit). Ordering 49 falls below the smallest tier, so it still uses the 50-unit price (we don't extrapolate down — it would be loss-making).
+
+Why not average between tiers? Because our costing isn't linear — setup costs, NRE, and overage attrition are step functions, not continuous. Using the next-lower-tier's price is a conservative rule that protects margin.
+
+### 22.2 How the Create Job Dialog Handles This
+
+[components/quotes/quote-actions.tsx](components/quotes/quote-actions.tsx) — after a quote is marked `accepted`, clicking "Create Job" opens a dialog. The dialog shows:
+1. **Tier picker** — 4 cards (one per quoted tier). Click to select the canonical tier price.
+2. **Custom quantity input** — "Or enter custom order quantity" text field. Typing a number clears the tier picker. It computes live:
+   - Finds the highest quoted tier whose `board_qty ≤ customQty` (or falls back to the smallest tier).
+   - Displays: "Pricing from the 50-unit tier ($637/unit) → $47,781 for 75 units".
+3. **Create Job button** — submits `POST /api/jobs` with the effective quantity. The API is unchanged — it always took `quantity` directly; we're just sending a non-tier value now.
+
+The job's `quantity` column is authoritative. The per-unit price is **not** stored on the job (it can always be re-derived by looking up the quote's tiers and applying the "next lower tier" rule). When the invoice is generated later, it reads the job quantity, re-resolves the tier, and computes the line total.
+
+### 22.3 Lanka CPC Deduplication
+
+Lanka's BOM files follow `columns_fixed: ["qty", "designator", "cpc", "description", "mpn", "manufacturer"]`. Fine on paper — position 2 is CPC. But in the actual files Piyush sends us, position 2 contains **the same MPN string as position 4**. Lanka doesn't have a real internal part code system; they use the manufacturer part number as their own CPC.
+
+The parser correctly preserves whatever the file contains, so CPC and MPN display as identical. Piyush complained that it was noise — he couldn't tell at a glance whether a row had a real CPC or not.
+
+**Fix:** [lib/bom/parser.ts:161-175](lib/bom/parser.ts#L161-L175). After extracting `cpc` and `mpn` from the row, if `cpc.trim() === mpn.trim()`, store `null` for CPC. The table now shows `—` in the CPC column for Lanka rows, and real CPCs (from Legend, Signel, GoLabo, etc. which have internal part numbering) still render correctly.
+
+This is a **display-layer dedup**, not a data transformation — the original file is untouched in Supabase Storage. Any future consumer (M-code classifier, API pricing) reads the same `cpc` field; it's just `null` instead of `"same as MPN"`.
+
+### 22.4 Auto-PCB Resurrection
+
+Rule 8 in the 9 CP IP BOM rules is **Auto-PCB from Gerber**: if the customer's BOM has no PCB row, fabricate one. On 2026-04-14 Anas told me to disable this because "the GMP itself represents the board". On 2026-04-15 he reversed that: operators want a PCB row visible in the BOM table always, because:
+
+- The quote engine needs a PCB line to attach the board fab cost to.
+- Procurement generates a purchase order against the PCB line when ordering from the fab house (WMD, Candor, PCBWay).
+- Having the PCB show as "missing" in the table was confusing shop floor.
+
+**Re-enabled fallback chain** [lib/bom/parser.ts:186-220](lib/bom/parser.ts#L186-L220):
+1. **GMP number** — if the user uploaded the BOM against GMP `TL265-5040-000-T`, synthesize `PCB1 | TL265-5040-000-T | Lanka Test Board`. This is the preferred path — the GMP is authoritative.
+2. **Filename extraction** — strip `BOM_`, `CP_IP_`, file extension, `RevX`, date suffixes. `BOM_TL265-5040-000-T_RevB.xlsx` → `TL265-5040-000-T`.
+3. **Both fail** — log `AUTO-PCB-FAIL` and continue without a PCB row. The BOM still parses, but procurement will need to add the PCB manually.
+
+The synthesized row has `is_pcb: true` so it pins to the top of the sorted output (Rule 9), and downstream classification skips it (PCB rows don't get M-codes).
+
+### 22.5 The Filter Bar Everyone Missed
+
+Commit fdb29ae (Apr 14) built a full filter + search panel for the BOM detail view: search input, M-code multi-select chips, "show only unclassified" toggle. Piyush's feedback came from an older cached deploy so he asked for it again.
+
+Rather than re-implement, I made the existing panel **visually unmissable**: blue-tinted border, "FILTER & SEARCH" heading with a search icon, expanded search placeholder to mention every searchable field. [components/bom/bom-table.tsx:222-250](components/bom/bom-table.tsx#L222-L250).
+
+**Lesson:** next time a user reports "feature X is missing" and the code clearly has feature X, check the deploy date first before writing new code. It's been a recurring pattern — Piyush lives on a different schedule (he's 9.5h ahead in India) so when he looks at the Vercel preview URL between deploys, he sometimes sees stale state.
+
+### 22.6 Component Database Edit Button
+
+[app/(dashboard)/settings/components/page.tsx](app/(dashboard)/settings/components/page.tsx) already had inline edit: clicking the M-code badge opens a dropdown. But the badge looked like a read-only label, so Anas kept not realizing it was editable.
+
+Added an explicit `Pencil` icon button next to the `Trash2` delete button in the Actions column. Clicking it calls `startEdit(comp)` — same code path as clicking the badge. Actions column widened 16 → 24 to fit both icons.
+
+### 22.7 The DM Pricing Parameters Gap
+
+`lib/pricing/engine.ts` has defaults for everything: component markup 20%, PCB markup 30%, SMT $0.35/placement, TH $0.75/placement, labour $130/hr, setup time, programming time, NRE components. These are **placeholder values from CLAUDE.md**, not the real numbers from DM Common File V11.
+
+Until Anas exports the Size Table, MachineCodes, and Admin sheets from DM V11, **quotes generated by the web app will NOT match quotes generated by the Excel DM**. This is a data-import task, not a code task. It's been flagged in every session since Sprint 3 started. The webapp will produce internally-consistent quotes but they'll be wrong by whatever delta exists between our placeholders and the real DM numbers.
+
+**Action item owned by Anas:** open DM Common File V11, export Size Table / MachineCodes / Admin tabs to CSV, send to Abdul. Abdul seeds them into `pricing_rules` + `m_code_rules` + `overage_table`. Until then, every quote needs a human review before being sent.
+
+*Part 22 last updated: April 15, 2026, Session 11*
+
+---
+
+## PART 23 — Ingesting the DM V11 Admin File (April 15, 2026)
+
+### 23.1 What Anas Sent
+
+One xlsx file: `admin file.xlsx`, 20 KB, three sheets. This is the authoritative export of the classification rules from DM Common File V11. Before today we had been working off an extract Abdul made on April 14 from the VBA source code (`mod_OthF_Digikey_Parameters.bas`). That extract was *almost* right but missed a handful of entries that only exist in the workbook's worksheet data, not the VBA code.
+
+The three sheets:
+1. **Admin** — 47 PAR (Parameter) rules. These are conditional M-code assignments keyed on mounting type, sub-category, description keywords, etc. Each rule has up to two conditions (field + operator + value) and produces one M-code. Example: `PAR-01: mounting_type equals "Through Hole" → TH`.
+2. **Size Table** — 5 rows mapping length × width ranges (mm) to size-tier M-codes: 0201, 0402, CP, CPEXP, IP. Used by the size-rank algorithm in `vba-algorithm.ts`.
+3. **MachineCodes** — 238 rows mapping package keywords ("SOIC-8", "DPAK", "TO-92", etc.) to M-codes. This is the big lookup table that the classifier's Layer 1b uses to short-circuit obvious classifications without hitting the AI layer.
+
+### 23.2 What Was Already Right
+
+Migration 026 (April 14) and `lib/mcode/vba-algorithm.ts` had been built from the VBA-source extract. Diffing the new file against what we already had:
+- **Size Table** — 100% match. No update needed.
+- **47 PAR rules** — 46 of 47 already present. The one missing: **PAR-02A**.
+- **MachineCodes** — 233 of 238 already present. Five new ones.
+
+So today's ingest was small — a refresh delta rather than a from-scratch seed.
+
+### 23.3 The Five New MachineCodes
+
+| Keyword | M-code | Why it matters |
+|---|---|---|
+| `8-MSOP` | CPEXP | MSOP-8 variant naming — different distributors use different dash positions |
+| `1806` | CP | Smaller capacitor package, bumps to CP |
+| `DO-214BA` | CP | SMD diode package variant |
+| `806` | CP | Metric-format 0806 (resistor/cap) |
+| `16-TSSOP` | IP | TSSOP-16 with the dash — distributor naming inconsistency |
+
+Four of these (`8-MSOP`, `16-TSSOP`, `1806`, `806`) are **naming variants** of packages we already had (MSOP8, TSSOP16, 1806, 0806). They exist because DigiKey and Mouser format their `Package/Case` field inconsistently — sometimes with dashes, sometimes without, sometimes with size prefixes. Every variant we miss is an extra AI call we could have avoided.
+
+`DO-214BA` is new data — not a variant, just a package we hadn't seen before.
+
+### 23.4 PAR-02A — The New Rule
+
+```
+PAR-02A: mounting_type equals "Panel Mount, Through Hole, Right Angle" → TH
+```
+
+Very specific string match. Covers right-angle panel-mounted through-hole connectors — things like side-exit PCB headers that mount through the board but pointing sideways off the panel. The old code would have fallen through to the generic "Panel Mount" rule (PAR-47) which also gives TH, so the final classification was right — but now it happens via a specific-rule hit with higher confidence instead of a generic fallthrough.
+
+Added to `vba-algorithm.ts` as an explicit `if (mounting === "Panel Mount, Through Hole, Right Angle")` short-circuit at the top of `applyVbaAlgorithm` so it fires without a DB round trip.
+
+### 23.5 How This Got Applied
+
+Migration 033 — additive, idempotent, `ON CONFLICT DO NOTHING` on both inserts. Applied to the live Supabase DB via `apply_migration`. Confirmed afterwards:
+- `mcode_keyword_lookup`: 211 → 216 active rows (+5 as expected)
+- `m_code_rules`: 43 → 44 active rows (+1 PAR-02A)
+
+Seed CSVs in `supabase/seed-data/dm-file/` were rewritten byte-for-byte from the xlsx source so they stay in sync. The xlsx source itself is archived at `supabase/seed-data/dm-file/_SOURCE_admin_file_2026-04-15.xlsx` with a prefix that makes it clear it's raw source data, not a seed.
+
+### 23.6 The DB Drift Problem
+
+When I queried the live DB before applying migration 033, it had **211 keywords and 43 PAR rules**, not the 218 / 47 that migration 026 was supposed to insert on April 14. Either:
+- Migration 026 partially failed silently during apply
+- Some rows got deactivated (`is_active = false`) after insert
+- Migration 026 was edited and some rows quietly removed
+
+Didn't investigate. Migration 033 is additive and doesn't care about the pre-existing state, so today's ingest isn't blocked. But **someone needs to re-seed the full 218 / 47 from the current CSVs** to guarantee the live DB matches the source of truth before Sprint 3 pricing verification. Flagged as a Sprint 3 cleanup task owned by Abdul.
+
+### 23.7 What This File Did NOT Give Us
+
+`admin file.xlsx` is the **classification** data export. It does NOT contain:
+- Component markup percentages (currently placeholder 20%)
+- PCB markup (placeholder 30%)
+- Labour rates ($130/hr placeholder)
+- SMT / TH / MANSMT per-placement costs ($0.35, $0.75, ? placeholder)
+- NRE breakdowns (stencil, setup, programming, misc)
+- Setup time + programming time defaults
+
+Those live in different tabs of the main DM Common File V11 workbook — probably in "Admin", "Rates", "Settings", or similar. Anas still needs to export those separately. Until he does, **every quote the web app produces will drift from DM Excel output** by whatever delta exists between CLAUDE.md placeholders and the real rates.
+
+The DM-pricing-params-pending memory entry stays OPEN.
+
+*Part 23 last updated: April 15, 2026, Session 11 (DM Admin ingest)*
+
+---
+
+## PART 24 — Reading Pricing Out of the VBA Code (April 15, 2026)
+
+### 24.1 Why We Did This
+
+The DM pricing parameters (markup, labour, SMT rate, NRE breakdowns) have been flagged as BLOCKED in every session since Sprint 3 started. Anas kept saying "I'll export the sheet later" and never did. Today he flipped the ask: **"seed it from the VBA code alone"**. OK. Let's see what the VBA code actually has.
+
+VBA workbooks in `All vba codes/` contain the full macro source for every DM/TIME/PROC/Job Queue/Invoice template. The most interesting one for pricing is `DM Common File - Reel Pricing V11/Calculation_V1.bas` (the active BOM calculation routine) and `Generate_TIME_File_V4.bas` (the macro that used to populate the TIME workbook's Settings sheet with default values before every quote run).
+
+### 24.2 What The VBA Actually Contains
+
+**`Calculation_V1.bas` — active code, runs on every quote:**
+
+```vba
+shipping = 200           ' line 121
+markup = 0.3             ' line 122 — this is PCB markup
+```
+
+So shipping flat is $200 and PCB markup is 30%. These are literal hardcoded constants in the actively-executing calculation routine. High confidence.
+
+**`Generate_TIME_File_V4.bas` — commented-out legacy initialization code:**
+
+```vba
+''        Dim m As Integer
+''        For m = 1 To 4
+''            Set_Labour_Rate_Rng.Offset(m, 0).value = 130     ' line 858
+''            Set_SMT_Rate_Rng.Offset(m, 0).value = 165        ' line 860
+''        Next m
+''        'TimeWS.Range("F15:F18") = 0.3        ' standard PCB Markup       line 862
+''        'TimeWS.Range("H15:H18") = 0.3        ' standard components markup line 863
+```
+
+These are **commented-out** with `''` (double apostrophe, the VBA idiom for legacy-but-keep-for-reference). They represent the default values that the TIME file's Settings sheet used to be populated with at quote-creation time. At some point someone switched this off so the Settings sheet could be edited by hand without being reset on every run.
+
+So these aren't "live" defaults in the sense that they're applied today — they're the BASELINE numbers that RS started with:
+- Labour rate: **$130/hr**
+- SMT rate: **$165/hr**
+- PCB markup: **30%** (matches Calculation_V1.bas — internally consistent ✓)
+- Component markup: **30%**
+
+The current DM workbook's Settings sheet could have different values now if Anas has been tweaking them manually. But without opening the xlsx in Excel, the VBA code is our only source of truth, and these are the values it tells us to seed.
+
+### 24.3 Mapping VBA → app_settings
+
+Before this session, `app_settings.pricing` in the live DB had these values:
+
+| Field | Value | Source |
+|---|---|---|
+| component_markup_pct | 20 | Migration 006 placeholder from CLAUDE.md |
+| labour_rate_per_hour | 75 | Migration 006 placeholder |
+| smt_rate_per_hour | 165 | ✓ already matched VBA (from some prior edit) |
+| pcb_markup_pct | 30 | ✓ already matched |
+| default_shipping | 200 | ✓ already matched |
+
+Two values were stale. Today's update fixed them: **component_markup 20 → 30, labour_rate 75 → 130**. Also added `_vba_sourced: true` and `_vba_sourced_at: '2026-04-15'` as JSONB audit flags so future sessions know the provenance.
+
+### 24.4 What's Still Not From VBA
+
+These live in `app_settings.pricing` but are NOT in the VBA source. They were placeholder guesses from CLAUDE.md and we can't seed them from VBA alone:
+
+- `smt_cost_per_placement`, `th_cost_per_placement`, `mansmt_cost_per_placement` — per-placement cost model. The real DM formula is `time × hourly rate`, not `placements × flat cost`. The web app's engine.ts uses the simplified per-placement approach as an approximation. To match DM exactly, we'd need the `smt_hours` calculation formula from the Settings worksheet.
+- `setup_time_hours`, `programming_time_hours` — per-BOM lookup. `Calculation_V1.bas:185-195` shows the "Programming" worksheet has a table that maps BOM line count + single/double-side → programming fee. That data is in worksheet cells (rows 2..N of the Programming sheet), not in VBA. Without the xlsx open, we can't extract it.
+- `nre_programming / nre_stencil / nre_pcb_fab / nre_misc` — NREs are entered PER-BOM by Piyush in the DataInputSheets sheet. Never hardcoded. There's no "default" — each board gets its own figures.
+
+### 24.5 The DB Drift Fix
+
+Separate task in this same session: migration 033 (earlier today) noted that the live DB had 211 keywords / 43 PAR rules, not the 218 / 47 that migration 026 was supposed to insert on April 14. Several rows went missing somehow. Migration 034 fixes this by `TRUNCATE + INSERT` — full reseed from the current CSVs (which themselves were rewritten from `admin file.xlsx` in entry 45).
+
+Post-reseed state (verified via `SELECT COUNT(*)`):
+- 48 PAR rules (47 from DM + PAR-02A from entry 45)
+- 224 unique keywords (Piyush's April 14 extract had 218; today's source-of-truth has 224)
+
+No more drift. If the app_settings-style silent failure ever happens again (e.g. "why does the DB have N rows when migration X inserted M?"), the first check is always: **did any `BEFORE` / `AFTER` trigger on the target table silently reject inserts?** Which brings us to…
+
+### 24.6 The Audit Trigger Bug (audit_trigger_func is partially broken)
+
+Migration 024 applied an audit trigger to `app_settings` using the same `audit_trigger_func()` as every other audited table. But the function body uses `NEW.id` to populate `audit_log.record_id`:
+
+```sql
+IF TG_OP = 'INSERT' THEN
+    _record_id := NEW.id;      -- ← breaks when table PK is not `id`
+```
+
+**`app_settings` has no `id` column.** Its primary key is `key TEXT`. So every UPDATE to the pricing row has been failing with `ERROR: 42703: record "new" has no field "id"` since migration 024 landed. We never noticed because nothing in the app's server-side code was actually trying to update pricing settings until today.
+
+I hit this when trying to apply migration 034's UPDATE step. Fix was simple: DROP the broken trigger (migration 034a), then apply the reseed (034b), then add `COMMENT ON TABLE app_settings` documenting why auditing is disabled until the function is fixed.
+
+I also ran this diagnostic query to find any OTHER audited tables lacking an `id` column:
+
+```sql
+SELECT t.event_object_table
+FROM information_schema.triggers t
+WHERE t.action_statement LIKE '%audit_trigger_func%'
+GROUP BY t.event_object_table
+HAVING NOT EXISTS (
+  SELECT 1 FROM information_schema.columns c
+  WHERE c.table_name = t.event_object_table AND c.column_name = 'id'
+);
+```
+
+Result: `app_settings` is the only one. Good — no other silent failures lurking.
+
+**Sprint 3 cleanup:** rewrite `audit_trigger_func()` to detect the PK column dynamically from `pg_index` + `information_schema`, then re-enable `audit_app_settings`. Auditing rate changes is genuinely useful — Anas wants to know when someone bumps the labour rate — we just can't have it until the trigger function handles text PKs. Ticket it.
+
+### 24.7 What Happens to Quotes Now
+
+Every new quote generated after this session will use:
+- Component markup 30% (was 20% — **quotes will be ~10 percentage points higher**)
+- Labour rate $130/hr (was $75/hr — **labour cost calculations will be ~73% higher** than before for any quote that uses the labour_rate_per_hour setting)
+- Everything else unchanged
+
+**Heads up:** open quotes that were already generated with the old 20%/75% numbers are NOT recomputed by this change. Their `pricing` JSONB was written at quote-generation time. If we need them refreshed, that's a separate "recompute all open quotes" task — probably one line per quote in the jobs queue calling `recompute.ts`.
+
+Also: any quoted batch that was captured with `component_markup_pct: 20` will continue using that value because it's stored on the batch row. New batches will pick up 30% via the updated `?? 30` fallback in `run-pricing/route.ts`.
+
+### 24.8 What To Do If Anas Ever Sends the Real Settings Export
+
+When/if the DM Settings sheet export arrives:
+
+1. Diff the new values against the `_vba_sourced` ones in app_settings.pricing. If they're materially different, Anas has been tweaking rates and the VBA defaults are stale.
+2. Update app_settings.pricing with the new values, and flip `_vba_sourced: false` + add `_real_sourced_at: '<date>'`.
+3. Re-flag open quotes that need recomputation.
+4. The programming fee lookup table goes into a new `programming_fees` table, and setup_time_hours becomes a derived value, not a stored default.
+
+*Part 24 last updated: April 15, 2026, Session 11 (DB reseed + VBA pricing)*
+
+---
+
+## PART 25 — AI Agents in the Repo, What They Do, and How We See What They're Doing (April 15, 2026)
+
+### 25.1 The Three Live AI Things
+
+The webapp has **three** Claude/AI integration surfaces, each with a different job:
+
+**1. M-code AI classifier** — [lib/mcode/ai-classifier.ts](lib/mcode/ai-classifier.ts)
+
+The BOM classifier has a 4-layer pipeline:
+- Layer 1a: database lookup (is this MPN already in `components` table?)
+- Layer 1b: keyword lookup (does the package name match one of our 224 keywords?)
+- Layer 2: PAR rules (description contains "HEATSINK" → MEC, etc.)
+- Layer 3: **Claude** — last-resort fallback
+
+Per Piyush's 2026-04-14 feedback, Claude does NOT pick the M-code itself. It only returns physical parameters (`mounting_type`, `length_mm`, `width_mm`, `package_case`, `category`, `sub_category`, `features`, `attachment_method`). Those parameters then feed the deterministic VBA algorithm in [vba-algorithm.ts](lib/mcode/vba-algorithm.ts). The VBA code decides the M-code using the same size-rank logic as the original `mod_OthF_Digikey_Parameters.bas` macro. This keeps Claude out of subjective judgment calls.
+
+Model: `claude-haiku-4-5-20251001` (the cheap fast one). Average latency ~1.5s per component. Called in batches of 10 parallel calls for BOM-level classification.
+
+**Critical insight from entry 47's audit:** after today's reseed, **only 9.5% of BOM lines actually fall through to Claude.** The keyword table catches 78% on its own. See `HANDOFF.md` entry 47 for the full layer-by-layer breakdown.
+
+**2. BOM column AI mapper** — [lib/bom/ai-column-mapper.ts](lib/bom/ai-column-mapper.ts)
+
+When a customer uploads a BOM with weird column headers (`"Qté"`, `"成本"`, `"P/N"`, `"Ref"`, `"Position sur circuit"`, etc.), the deterministic keyword-based column detector in `column-mapper.ts` runs first. If it can't identify the qty/designator/mpn columns, this AI fallback kicks in. Claude sees the headers + 5 sample rows and returns a JSON mapping.
+
+Same model as classifier (Haiku 4.5). Only fires on upload, only when deterministic parsing fails — so typical usage is a few calls per week, not per BOM.
+
+**3. In-app chat assistant** — [app/api/chat/route.ts](app/api/chat/route.ts) + [components/chat/ai-chat.tsx](components/chat/ai-chat.tsx)
+
+This is the big one. 1229 lines of route handler with **38 tools** covering every major domain. The user clicks the chat icon, sees a sidebar, and talks to Claude like it's an employee:
+
+- **Read tools:** listCustomers, getCustomer, businessOverview, listQuotes, listJobs, listInvoices, searchAll, listNCRs, getBGStock, getJobSerials, getJobDetail, getBomLines, getJobProfitability, getPricing, getProductionSchedule, getLabourCost, getAgingReport, listProcurements, getWorkflowGuide
+- **Classify tools:** classifyComponent, classifyBomLine, classifyBomBatch, correctMCode
+- **Action tools (mutating):** updateJobStatus, createProcurement, generateSerials, logProductionEvent, createQuote, updateQuoteStatus, createJobFromQuote, scheduleJob, createInvoice, markInvoicePaid, orderProcurementLines, receiveProcurementLine, createNCR, updateCustomer, generateDocument
+
+"Create an invoice for job JB-2604-TLAN-003" → the chat agent looks up the job, pulls its pricing from the linked quote, generates the invoice PDF, marks the job as `invoiced`, and tells the user the URL. No clicking.
+
+Uses Vercel AI SDK (`@ai-sdk/anthropic` + `streamText`) with `claude-sonnet-4-20250514` — more capable than Haiku, slower, handles complex tool orchestration. Page-context aware: detects which URL the user is on and injects a summary of that entity into the system prompt so Claude knows "the user is looking at quote QT-2604-013" without being told.
+
+Conversations are persisted in `chat_conversations` + `chat_messages` tables. File uploads work too (images, PDFs attached to messages).
+
+Role-gated: shop floor users get a stripped-down tool set (no writes).
+
+### 25.2 The Fourth Thing: The MCP Server
+
+The MCP (Model Context Protocol) server at [app/api/mcp/route.ts](app/api/mcp/route.ts) is different from the chat agent. It's not a chat at all — it's an **endpoint that any MCP-compatible AI can connect to and use as a business-context layer.**
+
+When Anas wants Claude Desktop to know about RS, he adds this to his `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "rs-pcb-assembly": {
+      "url": "https://webapp-fawn-seven.vercel.app/api/mcp",
+      "headers": { "Authorization": "Bearer <his-supabase-jwt>" }
+    }
+  }
+}
+```
+
+From that moment on, every conversation he has with Claude Desktop has access to tools like `rs_list_jobs`, `rs_get_customer`, `rs_get_profitability` — same shape as the chat tools but exposed over MCP. No duplicate chat window, no separate UI. Claude Desktop just knows how to query RS.
+
+This uses `WebStandardStreamableHTTPServerTransport` (stateless — a new McpServer instance is built per request by `buildMcpServerForRole()` in [lib/mcp/server.ts](lib/mcp/server.ts)). 20 tools grouped by domain: overview, customers, boms, quotes, jobs, procurement, production, invoices, inventory, search. Role-gated via `allowedToolsForRole()` in [lib/mcp/auth.ts](lib/mcp/auth.ts).
+
+**Why this matters for BLANQ:** the MCP server is the product. Any EMS shop that installs RS's webapp gets an AI-pluggable business layer for free. No other ERP does this. When Abdul packages the webapp for BLANQ clients, `/api/mcp` is the thing that makes it instantly useful with whatever AI tool the client already has.
+
+### 25.3 What Got Deleted Today
+
+Entry 47's audit found two things that needed to go:
+
+**`erp-rs-mcp/`** (67 MB standalone package) — this was the original stdio-transport MCP server from April 6. Anas's idea was "run it locally via `npx erp-rs-mcp --transport stdio` for developer CLIs". A week later the team built the same functionality inside the webapp as `/api/mcp` (streamable HTTP, safer for serverless). The standalone package was never updated. Diffing `erp-rs-mcp/src/tools/*.ts` against `lib/mcp/tools/*.ts` showed all 10 tool files had drifted — different implementations, different queries. Nothing in the webapp imported from it. Deleted.
+
+**`app/api/mcp/classify/route.ts` + `app/api/mcp/overview/route.ts`** — two JSON-REST shim endpoints. The doc said they were "for backwards compatibility with the in-app Chat", but grepping every TypeScript file in the repo found zero callers. The chat route imports `classifyWithAI` directly from the library. These endpoints were leftovers from before the full MCP transport was wired up. Deleted.
+
+**Lesson:** documentation drift is real. The doc claiming "keep this for chat compatibility" was written before the chat route existed, and nobody updated it when reality changed. Grepping beats trusting docs every time.
+
+### 25.4 AI Telemetry — Why and What
+
+Before today there was zero visibility into AI usage. Anas couldn't answer:
+- "How much am I spending on Claude per month?"
+- "Why are BOM uploads slow sometimes?"
+- "Is the classifier actually using Claude less after the reseed, or am I just hoping?"
+- "Are any of my AI calls failing in production?"
+
+The fix is [lib/ai/telemetry.ts](lib/ai/telemetry.ts) + migration 035 (`ai_call_log` table). Every AI invocation writes one row. The schema captures purpose, model, token counts, latency, success/failure, and context (bom_id, mpn, conversation_id, user_id) where available.
+
+**Insertion pattern:** fire-and-forget. The wrapper catches any telemetry error and logs it to the console — a Supabase outage on the log table should never break an actual AI call. This is important because the classifier runs during BOM uploads; a telemetry failure should not fail the upload.
+
+**Instrumentation:** all three Live AI surfaces now call `recordAiCall()` on success and failure:
+- `ai-classifier.ts` records token counts from `response.usage` (Anthropic SDK returns them on every call).
+- `ai-column-mapper.ts` same pattern.
+- `app/api/chat/route.ts` uses the Vercel AI SDK's `onFinish` callback, which fires after the full stream completes and hands you `usage.inputTokens` / `usage.outputTokens`. Also wired an `onError` callback for error capture.
+
+**Reading it:** the RLS policy lets CEO + Operations Manager SELECT from the table. Regular users can't. The wrapper uses the admin client with the service role to insert, bypassing RLS entirely — so telemetry writes succeed regardless of who triggered the AI call.
+
+**The follow-up you'll want:** a Settings → AI Usage page that renders daily/weekly/monthly charts of calls per purpose, token spend, latency distribution, error rate. It's just a SQL query plus a Recharts line chart. Maybe 2-3 hours of work. Deferred to when Anas actually asks "show me this month's AI bill".
+
+### 25.5 The Deferred Refactor: Chat Tools ↔ MCP Tools
+
+Nine of the chat agent's 38 tools duplicate logic that also exists in `lib/mcp/tools/*`. Two separate implementations of "list customers by filter", two separate "get job detail" queries, etc. When someone fixes a bug in one ("make the customer search case-insensitive"), the other drifts out of sync.
+
+The right fix is to refactor the chat tools to import from `lib/mcp/tools/*` instead of re-implementing queries. It's a 30-60 minute task with side-by-side diffing to make sure the shapes match. Not urgent — the two currently agree on the important stuff — but worth doing before they drift meaningfully.
+
+Saved to entry 47 as a known follow-up.
+
+### 25.6 What's Still Missing
+
+- **Keyword suffix variants** to catch the 15 word-boundary near-misses found in the classifier simulation (1206L, SOD323F, HTSSOP-16, STQFP100, etc.). Trivial data migration. Pushes auto-classification from 90.5% → 95%+.
+- **AI Usage dashboard page** (`/settings/ai-usage`). SQL queries already work, just needs a frontend.
+- **Keyword learning loop** — right now, when Claude classifies a component via Layer 3 AI, the result is saved to `components` table but the PACKAGE_CASE value isn't added to `mcode_keyword_lookup`. If Claude tells us `HTSSOP-16 → IP`, we should add `HTSSOP-16` as a keyword automatically so the next same-package part never needs Claude. Probably worth a small background worker that watches for new `components` rows and derives keyword candidates.
+- **Vercel AI Gateway** migration — would give us provider failover and a unified observability dashboard, but entry 47's own telemetry solution covers most of the "I want to see usage" use case in our own DB. Deferred unless we want to try non-Anthropic models.
+
+*Part 25 last updated: April 15, 2026, Session 11 (AI audit + telemetry)*

@@ -1,6 +1,7 @@
 Parameter ID,Columns To Check,Operator,Keyword to Find,Columns To Check,Operator,Keyword to Find,Mcodes,Comments
 PAR-01,Mounting Type,equals,Through Hole,,,,TH,"If Mounting Type is equals to ""Through Hole"" then it is TH"
 PAR-02,Mounting Type,equals,"Surface Mount, Through Hole",,,,MANSMT,"If Mounting Type is equals to ""Surface Mount, Through Hole"" then it is MANSMT"
+PAR-02A,Mounting Type,equals,"Panel Mount, Through Hole, Right Angle",,,,TH,
 PAR-03,Product Description,include,End Launch Solder,,,,TH,"If Product Description include keyword ""End Launch Solder"" then it is TH"
 PAR-04,Sub-Category,equals,Slide Switches,Mounting Type,equals,Surface Mount,IP,"If Sub-Category is equals to ""Slide Switches"" and Mounting Type is equals to ""Surface Mount"" then it is IP"
 PAR-05,Sub-Category,equals,Tactile Switches,Mounting Type,equals,Surface Mount,IP,"If Sub-Category is equals to ""Tactile Switches"" and Mounting Type is equals to ""Surface Mount"" then it is IP"

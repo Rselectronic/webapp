@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/auth/api-auth";
 import { recomputeQuotePricing } from "@/lib/pricing/recompute";
 import type { TierInput } from "@/lib/pricing/types";
 
@@ -7,11 +8,7 @@ import type { TierInput } from "@/lib/pricing/types";
 // GET /api/quotes — List quotes with optional filters
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, supabase } = await getAuthUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -71,11 +68,7 @@ interface CreateQuoteBody {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, supabase } = await getAuthUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -176,7 +169,7 @@ export async function POST(req: NextRequest) {
         missing_price_components: pricing.missing_price_components,
         tier_inputs: resolvedTiers,
       },
-      component_markup: settings.component_markup_pct ?? 20,
+      component_markup: settings.component_markup_pct ?? 30,
       pcb_cost_per_unit: resolvedTiers[0]?.pcb_unit_price ?? 0,
       assembly_cost: pricing.tiers[0]?.assembly_cost ?? 0,
       nre_charge: pricing.tiers[0]?.nre_charge ?? 0,

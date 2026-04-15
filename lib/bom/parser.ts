@@ -158,12 +158,22 @@ export function parseBom(
       continue;
     }
 
-    // CPC: preserve what was in the source BOM. If the customer's BOM has no CPC
-    // column, or the cell is empty / "N/A", store null — do NOT fall back to MPN.
-    // Piyush needs to see when a CPC is genuinely missing vs. present.
-    const cpcNormalized = cpc && cpc.toUpperCase() !== "N/A" && cpc.toUpperCase() !== "NA"
-      ? cpc
-      : null;
+    // CPC: preserve what was in the source BOM. Rules:
+    //   - Empty / "N/A" / "NA" → null
+    //   - CPC byte-identical to MPN → null (Lanka and other customers sometimes
+    //     duplicate the MPN into the CPC column; showing the same value twice
+    //     is noise. Piyush/Anas want null in that case so a missing CPC is
+    //     visually distinct.)
+    const cpcTrimmed = cpc?.trim() ?? "";
+    const cpcUpper = cpcTrimmed.toUpperCase();
+    const mpnTrimmed = (mpn ?? "").trim();
+    const cpcNormalized =
+      cpcTrimmed &&
+      cpcUpper !== "N/A" &&
+      cpcUpper !== "NA" &&
+      cpcTrimmed !== mpnTrimmed
+        ? cpcTrimmed
+        : null;
 
     included.push({
       line_number: lineCounter++,
@@ -183,11 +193,40 @@ export function parseBom(
   // Rule 7: MPN Merge — same MPN → combine rows
   const merged = mergeSameMpn(included, log, stats);
 
-  // Rule 8: Auto-PCB disabled per Anas (2026-04-14).
-  // If the BOM has a PCB row, we keep it. If not, we do NOT fabricate one.
-  // The GMP itself represents the board — no need for a ghost row in the BOM view.
+  // Rule 8: Auto-PCB — if the BOM has no PCB row, synthesize one using the
+  // GMP number (preferred), then BOM filename. Re-enabled per Anas 2026-04-15:
+  // operators want a PCB line always present so procurement and the quote
+  // engine have a row to attach the board cost to, even when the customer's
+  // BOM omits it.
   if (!pcbRow) {
-    log.push({ raw_row_index: -1, action: "AUTO-PCB-FAIL", detail: "BOM has no PCB row. Auto-creation disabled per Anas 2026-04-14 — the GMP itself represents the board." });
+    const pcbName =
+      gmpInfo?.gmp_number?.trim() ||
+      (bomFileName ? extractPcbNameFromFile(bomFileName) : null);
+    if (pcbName) {
+      pcbRow = {
+        line_number: 0,
+        quantity: 1,
+        reference_designator: "PCB1",
+        cpc: null,
+        description: gmpInfo?.board_name || pcbName,
+        mpn: pcbName,
+        manufacturer: "",
+        is_pcb: true,
+        is_dni: false,
+      };
+      stats.auto_pcb = true;
+      log.push({
+        raw_row_index: -1,
+        action: "AUTO-PCB",
+        detail: `Synthesized PCB row "${pcbName}" — BOM had no PCB line`,
+      });
+    } else {
+      log.push({
+        raw_row_index: -1,
+        action: "AUTO-PCB-FAIL",
+        detail: "BOM has no PCB row and no GMP / filename to synthesize one from",
+      });
+    }
   }
 
   // Rule 9: Sort — quantity DESC, then first designator ASC (natural sort)

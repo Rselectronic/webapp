@@ -1,5 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ColumnMapping } from "./types";
+import { recordAiCall } from "@/lib/ai/telemetry";
+
+const COLUMN_MAPPER_MODEL = "claude-haiku-4-5-20251001";
 
 /**
  * AI fallback for column mapping when keyword detection fails.
@@ -56,12 +59,23 @@ Rules:
 Respond with JSON only, no markdown:
 {"qty": "...", "designator": "...", "mpn": "...", "manufacturer": "...", "description": "...", "cpc": null}`;
 
+  const startedAt = Date.now();
   try {
     const anthropic = getClient();
     const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: COLUMN_MAPPER_MODEL,
       max_tokens: 300,
       messages: [{ role: "user", content: prompt }],
+    });
+
+    void recordAiCall({
+      purpose: "bom_column_mapper",
+      model: COLUMN_MAPPER_MODEL,
+      input_tokens: response.usage?.input_tokens ?? null,
+      output_tokens: response.usage?.output_tokens ?? null,
+      latency_ms: Date.now() - startedAt,
+      success: true,
+      metadata: { header_count: headers.length, sample_rows: sampleRows.length },
     });
 
     let text = response.content[0].type === "text" ? response.content[0].text : "";
@@ -103,6 +117,14 @@ Respond with JSON only, no markdown:
 
     return mapping;
   } catch (err) {
+    void recordAiCall({
+      purpose: "bom_column_mapper",
+      model: COLUMN_MAPPER_MODEL,
+      latency_ms: Date.now() - startedAt,
+      success: false,
+      error_message: err instanceof Error ? err.message : String(err),
+      metadata: { header_count: headers.length, sample_rows: sampleRows.length },
+    });
     console.error("[AI COLUMN MAPPER]", err instanceof Error ? err.message : err);
     return null;
   }

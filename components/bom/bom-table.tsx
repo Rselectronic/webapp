@@ -219,16 +219,20 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
           )}
         </div>
 
-        {/* Filter bar */}
-        <div className="rounded-lg border bg-white p-3 space-y-3 dark:border-gray-800 dark:bg-gray-950">
+        {/* Filter + search bar — always visible above the table */}
+        <div className="rounded-lg border-2 border-blue-100 bg-blue-50/40 p-3 space-y-3 dark:border-blue-900/40 dark:bg-blue-950/20">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+            <Search className="h-3.5 w-3.5" />
+            Filter &amp; Search
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[240px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search MPN, description, designator..."
-                className="pl-8 pr-8 h-9"
+                placeholder="Search MPN, description, designator, CPC, manufacturer..."
+                className="pl-8 pr-8 h-9 bg-white dark:bg-gray-950"
               />
               {search && (
                 <button

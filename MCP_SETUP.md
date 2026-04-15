@@ -208,12 +208,21 @@ as `shop_floor` — that's expected.
   (customers, boms, quotes, jobs, procurement, production, invoices,
   inventory, search, overview).
 
-The original **`erp-rs-mcp/`** standalone stdio package remains in the
-repo for local Claude Code / CLI use over stdio — it shares the same
-tool semantics but is a separate build. For remote use (Claude
-Desktop / OpenClaw / hosted Claude) go through `/api/mcp`.
+The `/api/mcp` streamable-HTTP endpoint is the **only** MCP server
+the app ships. Claude Desktop, OpenClaw, mcp-inspector, and any other
+MCP client should point at that URL with a Supabase JWT in the
+`Authorization: Bearer <token>` header.
 
-The legacy JSON-only routes `app/api/mcp/overview/route.ts` and
-`app/api/mcp/classify/route.ts` are still present for backwards
-compatibility with the in-app Chat that uses plain REST. They are
-**not** MCP — use `/api/mcp` for real MCP access.
+### History (removed 2026-04-15)
+
+- **`erp-rs-mcp/`** — a standalone stdio MCP package that predated the
+  in-app server. Its tool files drifted out of sync with `lib/mcp/tools/`
+  and nothing was wired to it in the webapp. Deleted. If stdio access
+  is needed locally, write a thin `stdin/stdout` wrapper around
+  `/api/mcp` or re-introduce the package and mirror `lib/mcp/tools/`.
+- **`app/api/mcp/classify/route.ts`** and **`app/api/mcp/overview/route.ts`** —
+  legacy JSON-REST shims that predated the streamable HTTP transport.
+  Comment in the old doc claimed these were "for backwards compatibility
+  with the in-app Chat", but a grep of every TS file in the repo found
+  zero callers — the chat route imports `classifyWithAI` directly from
+  `lib/mcode/ai-classifier` and never hit these endpoints. Deleted.

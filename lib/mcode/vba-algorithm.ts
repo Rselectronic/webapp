@@ -196,7 +196,7 @@ export function applyVbaAlgorithm(input: VbaAlgoInput): VbaAlgoResult | null {
   const mounting = (input.mounting_type ?? "").trim();
   const category = (input.category ?? "").trim();
 
-  // 1. Mounting type short-circuits (VBA lines 195-202)
+  // 1. Mounting type short-circuits (VBA lines 195-202, + PAR-02A added 2026-04-15)
   if (mounting === "Through Hole") {
     return {
       m_code: "TH",
@@ -209,6 +209,16 @@ export function applyVbaAlgorithm(input: VbaAlgoInput): VbaAlgoResult | null {
       m_code: "MANSMT",
       confidence: 0.92,
       reasoning: `VBA rule: mounting_type = Surface Mount, Through Hole → MANSMT`,
+    };
+  }
+  // PAR-02A (added from DM V11 Admin sheet on 2026-04-15): panel-mount parts
+  // that are through-hole AND right-angle are still through-hole from a
+  // placement standpoint → TH.
+  if (mounting === "Panel Mount, Through Hole, Right Angle") {
+    return {
+      m_code: "TH",
+      confidence: 0.92,
+      reasoning: `PAR-02A: mounting_type = Panel Mount, Through Hole, Right Angle → TH`,
     };
   }
 

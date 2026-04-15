@@ -4,10 +4,13 @@ import { z } from "zod";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { classifyWithAI } from "@/lib/mcode/ai-classifier";
 import { detectPageContext, fetchPageContextSummary } from "@/lib/chat/page-context";
+import { recordAiCall } from "@/lib/ai/telemetry";
 
 const anthropic = createAnthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
+
+const CHAT_MODEL = "claude-sonnet-4-20250514";
 
 const SYSTEM_PROMPT = `You are the AI assistant for RS PCB Assembly (R.S. Électronique Inc.), a $2.5M/year contract electronics manufacturer in Montreal (5-6 people). You help the team manage the full PCBA lifecycle.
 
@@ -215,10 +218,39 @@ export async function POST(req: Request) {
     systemPrompt += `\n\n## UPLOADED FILE CONTEXT\nThe user has uploaded a file in this conversation. Here is the parsed content:\n\n${fileContext}\n\nUse this data when answering questions about the file. If it looks like a BOM, help identify components and M-Codes.`;
   }
 
+  const chatStartedAt = Date.now();
   const result = streamText({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CHAT_MODEL),
     system: systemPrompt,
     messages,
+    onFinish: ({ usage }) => {
+      void recordAiCall({
+        purpose: "chat_assistant",
+        model: CHAT_MODEL,
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - chatStartedAt,
+        success: true,
+        user_id: user.id,
+        conversation_id: conversationId ?? null,
+        metadata: {
+          message_count: messages.length,
+          has_page_context: Boolean(pageContextSummary),
+          has_file_context: Boolean(fileContext),
+        },
+      });
+    },
+    onError: ({ error }) => {
+      void recordAiCall({
+        purpose: "chat_assistant",
+        model: CHAT_MODEL,
+        latency_ms: Date.now() - chatStartedAt,
+        success: false,
+        error_message: error instanceof Error ? error.message : String(error),
+        user_id: user.id,
+        conversation_id: conversationId ?? null,
+      });
+    },
     tools: {
       listCustomers: {
         description: "List all active customers",

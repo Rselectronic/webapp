@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Plus, ChevronLeft, ChevronRight, Loader2, Trash2, Check, X } from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, Loader2, Trash2, Check, X, Pencil } from "lucide-react";
 
 const M_CODES = [
   "0201", "0402", "CP", "CPEXP", "IP", "TH", "MANSMT", "MEC", "Accs", "CABLE", "DEV B",
@@ -431,7 +431,7 @@ export default function ComponentsPage() {
                 <TableHead className="w-28">M-Code</TableHead>
                 <TableHead className="w-24">Source</TableHead>
                 <TableHead className="w-28 hidden sm:table-cell">Updated</TableHead>
-                <TableHead className="w-16 text-center">Actions</TableHead>
+                <TableHead className="w-24 text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -503,14 +503,26 @@ export default function ComponentsPage() {
                     {formatDate(comp.updated_at)}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => deleteComponent(comp.id, comp.mpn)}
-                      title="Delete component"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-gray-400 hover:text-red-500" />
-                    </Button>
+                    <div className="flex items-center justify-center gap-0.5">
+                      {editingId !== comp.id && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => startEdit(comp)}
+                          title="Edit M-Code"
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-gray-400 hover:text-blue-600" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => deleteComponent(comp.id, comp.mpn)}
+                        title="Delete component"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-gray-400 hover:text-red-500" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

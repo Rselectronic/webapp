@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils/format";
 
 const STATUS_TRANSITIONS: Record<string, { label: string; next: string }> = {
@@ -47,11 +48,46 @@ export function QuoteActions({
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTierIdx, setSelectedTierIdx] = useState<number | null>(null);
+  const [customQty, setCustomQty] = useState<string>("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const transition = STATUS_TRANSITIONS[currentStatus];
   const hasTiers = Array.isArray(tiers) && tiers.length > 0;
+
+  // Tiers sorted by board_qty ascending — used to resolve which tier's unit
+  // price applies when the customer orders a qty that falls between tiers.
+  // Rule: customer gets the unit price of the NEXT LOWER tier (inclusive).
+  // If below the smallest tier, use the smallest tier's price.
+  const sortedTiers = useMemo(
+    () => (tiers ? [...tiers].sort((a, b) => a.board_qty - b.board_qty) : []),
+    [tiers]
+  );
+
+  // Resolve the effective tier + subtotal for a given custom order quantity.
+  function resolveForQty(qty: number): {
+    tier: QuoteTier;
+    subtotal: number;
+    perUnit: number;
+  } | null {
+    if (sortedTiers.length === 0 || qty <= 0) return null;
+    // Find the highest tier whose board_qty <= qty; fall back to smallest tier.
+    let matched = sortedTiers[0];
+    for (const t of sortedTiers) {
+      if (t.board_qty <= qty) matched = t;
+    }
+    const perUnit = matched.per_unit;
+    return {
+      tier: matched,
+      subtotal: perUnit * qty,
+      perUnit,
+    };
+  }
+
+  const parsedCustomQty = Number.parseInt(customQty, 10);
+  const customQtyValid =
+    Number.isFinite(parsedCustomQty) && parsedCustomQty > 0;
+  const customResolved = customQtyValid ? resolveForQty(parsedCustomQty) : null;
 
   async function handleAdvance() {
     if (!transition) return;
@@ -82,6 +118,7 @@ export function QuoteActions({
       // Reset state after close animation
       setTimeout(() => {
         setSelectedTierIdx(null);
+        setCustomQty("");
         setCreateError(null);
         setCreating(false);
       }, 150);
@@ -89,9 +126,15 @@ export function QuoteActions({
   }
 
   async function handleCreateJob() {
-    if (selectedTierIdx === null || !tiers) return;
-    const tier = tiers[selectedTierIdx];
-    if (!tier) return;
+    // Determine effective quantity: custom input takes precedence.
+    let effectiveQty: number | null = null;
+    if (customQtyValid) {
+      effectiveQty = parsedCustomQty;
+    } else if (selectedTierIdx !== null && tiers) {
+      effectiveQty = tiers[selectedTierIdx]?.board_qty ?? null;
+    }
+    if (!effectiveQty || effectiveQty <= 0) return;
+
     setCreating(true);
     setCreateError(null);
     try {
@@ -100,7 +143,7 @@ export function QuoteActions({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quote_id: quoteId,
-          quantity: tier.board_qty,
+          quantity: effectiveQty,
         }),
       });
       if (!res.ok) {
@@ -147,20 +190,24 @@ export function QuoteActions({
             <DialogHeader>
               <DialogTitle>Create Job from Quote</DialogTitle>
               <DialogDescription>
-                Select the quantity tier the customer accepted. This quantity
-                will be locked into the job.
+                Pick a quoted tier, or enter a custom order quantity below. A
+                custom quantity uses the unit price from the next lower tier.
               </DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-2 py-2 sm:grid-cols-2">
               {hasTiers &&
                 tiers!.map((tier, idx) => {
-                  const isSelected = selectedTierIdx === idx;
+                  const isSelected =
+                    !customQtyValid && selectedTierIdx === idx;
                   return (
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => setSelectedTierIdx(idx)}
+                      onClick={() => {
+                        setSelectedTierIdx(idx);
+                        setCustomQty("");
+                      }}
                       disabled={creating}
                       className={`cursor-pointer rounded-lg border-2 p-3 text-left transition-colors ${
                         isSelected
@@ -182,6 +229,50 @@ export function QuoteActions({
                 })}
             </div>
 
+            {/* Custom quantity entry — for orders that fall between tiers */}
+            <div className="rounded-lg border border-dashed border-gray-300 p-3 dark:border-gray-700">
+              <label
+                htmlFor="custom-qty-input"
+                className="mb-1.5 block text-sm font-medium text-gray-900 dark:text-gray-100"
+              >
+                Or enter custom order quantity
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="custom-qty-input"
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 75"
+                  value={customQty}
+                  disabled={creating}
+                  onChange={(e) => {
+                    setCustomQty(e.target.value);
+                    if (e.target.value) setSelectedTierIdx(null);
+                  }}
+                  className="w-32"
+                />
+                <span className="text-sm text-gray-500">units</span>
+              </div>
+              {customQtyValid && customResolved && (
+                <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                  Pricing from the{" "}
+                  <span className="font-semibold">
+                    {customResolved.tier.board_qty}-unit tier
+                  </span>{" "}
+                  ({formatCurrency(customResolved.perUnit)} / unit) →{" "}
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">
+                    {formatCurrency(customResolved.subtotal)}
+                  </span>{" "}
+                  for {parsedCustomQty} units
+                </div>
+              )}
+              {customQty && !customQtyValid && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  Enter a positive whole number.
+                </p>
+              )}
+            </div>
+
             {createError && (
               <p className="text-sm text-red-600 dark:text-red-400">
                 {createError}
@@ -200,7 +291,10 @@ export function QuoteActions({
               <Button
                 type="button"
                 onClick={handleCreateJob}
-                disabled={creating || selectedTierIdx === null}
+                disabled={
+                  creating ||
+                  (selectedTierIdx === null && !customQtyValid)
+                }
               >
                 {creating ? (
                   <>

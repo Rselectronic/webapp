@@ -97,8 +97,7 @@ D-SUB,TH
 ECG CAPACITOR ELECT,IP
 Electrolytic Capacitor,IP
 Header straight solder pin,TH
-"LITE-ON INC 
-LED SMT LED Blue Clear 466nm",CP
+LITE-ON INC  LED SMT LED Blue Clear 466nm,CP
 LQFP144,IP
 MELF,CP
 minimelf,CP
@@ -198,12 +197,10 @@ T/H,TH
 TERM BLOCK,TH
 TERM BLOCK HDR,TH
 TH,TH
-Th,TH
-TH ,TH
 "TH,",TH
 Through hole,TH
 Through Hole,TH
-through hole ,TH
+through hole,TH
 Thru-Hole,TH
 THT,TH
 TO-236-3,CP
@@ -237,3 +234,8 @@ SOT-26,CP
 1005,402
 SOT-25,CP
 TO-277A,CPEXP
+8-MSOP,CPEXP
+1806,CP
+DO-214BA,CP
+806,CP
+16-TSSOP,IP
