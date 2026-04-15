@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
         missing_price_components: pricing.missing_price_components,
         tier_inputs: resolvedTiers,
       },
-      component_markup: settings.component_markup_pct ?? 30,
+      component_markup: settings.component_markup_pct ?? 25,
       pcb_cost_per_unit: resolvedTiers[0]?.pcb_unit_price ?? 0,
       assembly_cost: pricing.tiers[0]?.assembly_cost ?? 0,
       nre_charge: pricing.tiers[0]?.nre_charge ?? 0,

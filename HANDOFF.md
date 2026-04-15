@@ -1439,6 +1439,116 @@ A dedicated Settings → AI Usage page is a follow-up (2-3 hours). For now, SQL 
 TypeScript clean (`tsc --noEmit` exit 0). Nothing committed yet — user should review and commit.
 
 *Entry 47 last updated: April 15, 2026, Session 11 (AI audit + telemetry)*
+
+---
+
+## Entry 48 — April 15, 2026 (Session 11 cont.) — Real pricing from DM/TIME xlsm + markup correction
+
+Anas authorized me to force-extract the pricing data from the DM and TIME workbooks directly instead of waiting for a clean export. Found both files on his disk under `/Users/rselectronicpc/Downloads/RS Master/`, copied them into `supabase/seed-data/dm-file/` as immutable source-of-truth artifacts, and read out the pricing values.
+
+### ⚠️ IMPORTANT CORRECTION to entry 46
+
+**Entry 46 seeded `component_markup_pct = 30` and `pcb_markup_pct = 30` based on commented-out VBA defaults in `Generate_TIME_File_V4.bas` lines 862-863. THESE WERE STALE.**
+
+The **actual live values** from the TIME V11 `final` sheet rows 15-18 (the 4 quantity tiers) are:
+
+```
+Qty 1-4:  Labour 130   SMT 165   PCB markup 0.25   Component markup 0.25
+```
+
+**Both markups are 25%, not 30%.** Migration 036 fixes this.
+
+Impact: any quote generated today under commit `042c366` that used the fallback `?? 30` in the batch-pricing or quote-creation paths was billing at **30% component markup** — 5 percentage points too high vs what DM Excel would output. Any quote generated using the live `app_settings.pricing.component_markup_pct` value was also 30% — same problem. Both are now corrected to 25%.
+
+**Heads up:** the chat conversation / audit log from today may show some discussion of 30% markup that's now historically incorrect. Anas should NOT go back and retroactively re-invoice based on that number. The correct rate for quotes is 25%, and the DB has 25% from migration 036 onwards.
+
+### What entry 48 shipped
+
+**1. Source xlsm archives copied into the repo** (for provenance; we don't touch the originals):
+- `supabase/seed-data/dm-file/_SOURCE_DM_Common_File_V11_2026-04-15.xlsm` (9.2 MB)
+- `supabase/seed-data/dm-file/_SOURCE_TIME_V11_2026-04-15.xlsm` (561 KB)
+- (Already had `_SOURCE_admin_file_2026-04-15.xlsx` from entry 45.)
+
+**2. Migration 036** [supabase/migrations/036_programming_fees_and_real_markups.sql](supabase/migrations/036_programming_fees_and_real_markups.sql):
+
+**Part A — New `programming_fees` table:**
+- 28 rows from DM V11 Programming sheet.
+- Schema: `bom_lines (PK) | additional_cost | standard_price | double_side_price | source`.
+- Query pattern: `SELECT * FROM programming_fees WHERE bom_lines <= $1 ORDER BY bom_lines DESC LIMIT 1; pick standard_price or double_side_price based on assembly_type`.
+- Coverage: 1 line → $300/$400 up to 300 lines → $2250/$2350. Incremental: $50/10 lines below 70 lines, $75/10 lines above.
+- RLS: read-only for any authenticated user (reference data, not transactional).
+
+**Part B — app_settings.pricing updates:**
+- `component_markup_pct`: 30 → **25** ✓
+- `pcb_markup_pct`: 30 → **25** ✓
+- `board_setup_fee_standard`: new = $250 (from DM Programming sheet "Type of Board" table)
+- `board_setup_fee_double_side`: new = $350
+- `_xlsm_sourced: true` audit flag (replaces/augments `_vba_sourced`)
+- `_xlsm_sourced_at: '2026-04-15'`
+- `_xlsm_sources`: jsonb array naming which sheets gave us which values
+
+**3. Code fallbacks corrected** from entry 46's `?? 30` to `?? 25`:
+- [app/api/quotes/route.ts:172](app/api/quotes/route.ts#L172)
+- [app/api/quote-batches/[id]/run-pricing/route.ts:64](app/api/quote-batches/[id]/run-pricing/route.ts#L64)
+
+**4. Programming fee seed CSV:**
+- [supabase/seed-data/dm-file/programming_fees.csv](supabase/seed-data/dm-file/programming_fees.csv) — 28 rows, versioned alongside the other DM seeds.
+
+### Verified post-apply state
+
+```
+programming_rows:      28
+comp_markup:           25
+pcb_markup:            25
+labour_rate:           130
+smt_rate:              165
+std_setup_fee:         250
+double_setup_fee:      350
+xlsm_sourced:          true
+```
+
+Applied via MCP `apply_migration`. Local file at `supabase/migrations/036_programming_fees_and_real_markups.sql` matches what was run.
+
+### Discovery: the real SMT time model
+
+While reading TIME V11's `final` sheet I also noticed:
+
+```
+Row 30: 'CP CPH'    Qty1=4.5  Qty2=4.5  Qty3=4.5  Qty4=4.5
+Row 31: 'IP CPH'    Qty1=2sec Qty2=2sec Qty3=2sec Qty4=2sec  (datetime.timedelta)
+```
+
+Plus the `Settings` sheet in TIME V11 maps 80+ named ranges (`Set_SMT_Placement_Rng`, `Set_CP_Feeders_Rng`, `Set_Total_Printer_Time_Rng`, `Set_Total_Setup_Time_Rng`, etc.) to specific cell addresses in the `final` sheet. The SMT cost in DM is calculated as **placement_count / CPH → hours → × rate**, NOT as a flat `per_placement × placements` product.
+
+**This means `lib/pricing/engine.ts`'s per-placement cost model (`smt_cost_per_placement 0.35`, `th_cost_per_placement 0.75`) is architecturally wrong — it's a simplified approximation that can drift materially from DM output when placement counts are large or feeder counts skew the CPH calculation.**
+
+Porting the full time-based model requires:
+1. New `smt_time_params` table or app_settings fields: `cp_cph`, `ip_cph`, `th_placement_time`, `setup_time_per_feeder`, `printer_load_time`, etc. (~20 values to lift from TIME V11 Settings sheet's named ranges).
+2. Rewrite `lib/pricing/engine.ts` to compute `smt_hours = f(placements, feeders, CPH, setup_time)` per tier, then `labour_cost = smt_hours × smt_rate`.
+3. Regression-test against a few real quotes to confirm parity with DM Excel output.
+
+This is a ~4-6 hour task. NOT done in entry 48 because Anas said don't break anything. Flagged as a bigger follow-up for when we have a clean branch.
+
+### Files touched in entry 48
+
+- `supabase/migrations/036_programming_fees_and_real_markups.sql` — new (applied live)
+- `supabase/seed-data/dm-file/programming_fees.csv` — new
+- `supabase/seed-data/dm-file/_SOURCE_DM_Common_File_V11_2026-04-15.xlsm` — new (archived copy)
+- `supabase/seed-data/dm-file/_SOURCE_TIME_V11_2026-04-15.xlsm` — new (archived copy)
+- `app/api/quotes/route.ts` — fallback 30 → 25
+- `app/api/quote-batches/[id]/run-pricing/route.ts` — fallback 30 → 25
+- `HANDOFF.md`, `ABDULS_WIKI.md`, memory — this entry
+
+TypeScript clean (`tsc --noEmit` exit 0).
+
+### What's still open
+
+- **SMT time model port** (4-6 hrs) — described above. The biggest remaining gap between web app quotes and DM Excel.
+- **Use `programming_fees` in engine.ts** — right now the table exists but `engine.ts` still uses `settings.programming_time_hours × labour_rate`. Should switch to a DB lookup based on `bomLines` + `assembly_type`. 30-60 min wire-up.
+- **Keyword suffix variants** (from entry 47 follow-up list) — 1206L, SOD323F, HTSSOP-16, STQFP100 — trivial data migration to push classification from 90.5% → 95%+.
+- **Settings → AI Usage page** — once `ai_call_log` has a few days of data.
+
+*Entry 48 last updated: April 15, 2026, Session 11 (real pricing extraction + markup correction)*
 - 12 distributors (DigiKey, Mouser, LCSC, Avnet, Arrow, TTI, Newark, Samtec, TI, TME, Future, e-Sonic) now have credentials stored AES-256-GCM encrypted in `supplier_credentials` table (migration 031). Master key in `SUPPLIER_CREDENTIALS_KEY` env var, never in DB or repo.
 - `lib/supplier-credentials.ts` exposes `getCredential`, `setCredential`, `deleteCredential`, `getPreferredCurrency`, `setPreferredCurrency`, `listCredentialStatus`, plus the `SUPPLIER_METADATA` registry (per-supplier field schemas, supported currencies, default currency, docs URL).
 - `/settings/api-config` page (CEO-only): compact row-based layout matching the reference screenshot Anas sent. One row per distributor → click to expand inline → credential fields with "leave blank to keep current" UX → Save / Test Connection.

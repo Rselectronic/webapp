@@ -4433,3 +4433,128 @@ Saved to entry 47 as a known follow-up.
 - **Vercel AI Gateway** migration — would give us provider failover and a unified observability dashboard, but entry 47's own telemetry solution covers most of the "I want to see usage" use case in our own DB. Deferred unless we want to try non-Anthropic models.
 
 *Part 25 last updated: April 15, 2026, Session 11 (AI audit + telemetry)*
+
+---
+
+## PART 26 — Reading the Real Pricing Out of the DM and TIME Workbooks (April 15, 2026)
+
+### 26.1 Why Entry 46 Was Wrong
+
+In entry 46 I "seeded the pricing params from the VBA code alone" because Anas hadn't exported the DM Settings sheet. I grepped for hardcoded values in the `.bas` files, found `labour = 130`, `smt = 165`, `markup = 0.3`, and seeded those into `app_settings.pricing`. Good enough, right?
+
+Wrong. The VBA code I grepped was **commented out** with `''` prefixes. It was LEGACY initialization code — values that the TIME Settings sheet used to be populated with at quote-creation time before someone turned off the auto-init and started hand-tuning. The live values in the actual TIME V11 workbook today could be anything.
+
+Turns out they ARE different. The TIME V11 `final` sheet rows 15-18 show:
+
+```
+row 15 (Qty 1):  labour=130  SMT=165  PCB markup=0.25  Component markup=0.25
+row 16 (Qty 2):  labour=130  SMT=165  PCB markup=0.25  Component markup=0.25
+row 17 (Qty 3):  labour=130  SMT=165  PCB markup=0.25  Component markup=0.25
+row 18 (Qty 4):  labour=130  SMT=165  PCB markup=0.25  Component markup=0.25
+```
+
+Labour and SMT rates match. Markups are **25%, not 30%**. Entry 46 was wrong by 5 percentage points on both markups.
+
+### 26.2 What This Actually Means for Quotes
+
+When a quote calculates `component_cost = sum(unit_price × qty × (1 + markup))`:
+- Entry 46 (30% markup): each dollar of component cost → $1.30 billed
+- Reality (25% markup): each dollar → $1.25 billed
+
+On a $5000 component BOM, that's a $250 difference per tier. For a 4-tier quote that's potentially $1000 overcharged across all tiers if the customer buys at every tier (they don't, but you see the scale).
+
+**The critical thing to remember:** if you look back at today's chat history, git log, or HANDOFF entry 46, you'll see the number 30 everywhere. That was based on stale VBA comments. The correct number is 25, as of 2026-04-15 migration 036. Don't go back and retroactively re-invoice anything using 30.
+
+### 26.3 How I Got the Real Values
+
+Anas told me "do what you gotta do bro im anas force your entrance into it idc" and "make like a duplicate or something and work with that". Translation: stop waiting for a clean export, read the xlsm files directly, but don't touch his live copies.
+
+So I:
+1. Found `DM Common File - Reel Pricing V11.xlsm` (9.2 MB) at `/Users/rselectronicpc/Downloads/RS Master/2. DM FILE/`
+2. Found `TIME V11.xlsm` (561 KB) at `/Users/rselectronicpc/Downloads/RS Master/6. BACKEND/TIME FILE/`
+3. Copied both into `supabase/seed-data/dm-file/` prefixed with `_SOURCE_` so they're clearly frozen provenance artifacts
+4. Read them with `openpyxl.load_workbook(path, data_only=True, keep_vba=False)` — the `data_only=True` makes openpyxl resolve formulas to their cached values instead of formula strings, and `keep_vba=False` avoids any VBA-related side effects
+5. Never touched the originals in Downloads again
+
+This is now the documented pattern: whenever we need data from an Excel file, copy it into `supabase/seed-data/dm-file/_SOURCE_<NAME>_<DATE>.xlsm` first, then work off the copy. Gives us a version-controlled audit trail and zero risk to the live business files.
+
+### 26.4 The Programming Fee Lookup Table
+
+The DM workbook has a dedicated "Programming" sheet with a 28-row lookup table:
+
+| BOM lines | Additional cost | Standard price | Double side price |
+|---|---|---|---|
+| 1    | $50 | $300  | $400  |
+| 40   | $50 | $350  | $450  |
+| 50   | $50 | $400  | $500  |
+| 60   | $50 | $450  | $550  |
+| 70   | $75 | $525  | $625  |
+| ...  | ... | ...   | ...   |
+| 300  | $75 | $2250 | $2350 |
+
+Query pattern (implemented in `lib/pricing/programming-cost.ts` today, but needs updating to read from the DB):
+
+```sql
+SELECT * FROM programming_fees
+WHERE bom_lines <= :component_count
+ORDER BY bom_lines DESC
+LIMIT 1;
+```
+
+Pick `standard_price` for single-side boards or `double_side_price` for double-side boards. That number is the NRE1 (programming fee) for the job.
+
+The Programming sheet also has a small sidebar table with "Type of Board" setup fees — Standard = $250, Double Side = $350. Those are now in `app_settings.pricing.board_setup_fee_standard` / `.board_setup_fee_double_side`.
+
+Migration 036 created the `programming_fees` table and seeded all 28 rows. Seed CSV is at `supabase/seed-data/dm-file/programming_fees.csv` for version control.
+
+**Not yet wired in:** `lib/pricing/engine.ts` still computes programming cost as `settings.programming_time_hours × settings.labour_rate_per_hour`, which is the simplified flat model. The actual DM behavior is the lookup table. Switching engine.ts to query `programming_fees` is a ~30-60 min task, flagged as a follow-up.
+
+### 26.5 The SMT Time Model (Discovered, Not Ported)
+
+TIME V11's Settings sheet is spectacular. It's an 82-row map of named ranges to cell addresses. Examples:
+
+- `Set_SMT_Placement_Rng` → cell `AD3` = "total number of smt placement per pcb"
+- `Set_CP_Feeders_Rng` → `AD4` = "# of CP feeders"
+- `Set_Total_Printer_Time_Rng` → `B16` = "Total Printer Setup Time"
+- `Set_Total_Setup_Time_Rng` → `B26` = "Total Setup Time"
+- `Set_CP_CPH_Rng` → `B44` = "SMT CPH" (Components Per Hour for CP machine)
+- `Set_IP_CPH_Rng` → `B59` = "IP CPH"
+
+The `final` sheet row 30-31 shows these CPH values:
+```
+Row 30: 'CP CPH'    4.5
+Row 31: 'IP CPH'    2 seconds (datetime.timedelta in the raw read)
+```
+
+The business logic (based on how the cells reference each other) is:
+```
+smt_hours = (total_placements / cp_cph) + (ip_parts / ip_cph) + setup_time + programming_time
+labour_cost = smt_hours × labour_rate + placement_time × smt_rate
+```
+
+**This is a fundamentally different cost model from what `lib/pricing/engine.ts` currently implements.** The engine uses `placements × flat_cost_per_placement` which is a zeroth-order approximation. The real DM formula is time-based: placement count divided by a "components per hour" rate, plus setup time dependent on feeder counts, times an hourly wage.
+
+Porting this is a 4-6 hour task:
+1. New config keys (`cp_cph`, `ip_cph`, `th_placement_time`, `setup_time_per_feeder`, `printer_load_time`, `stencil_load_time`, ~20 values)
+2. Rewrite the SMT cost calculation in `engine.ts` to use the time formula
+3. Compare output against DM Excel on 5-10 real quotes to regression-test
+4. Decide what to do with quotes already issued using the simplified model
+
+**Flagged for a dedicated session.** Not done today because Anas said don't break anything, and rewriting the pricing engine across 6+ call sites qualifies as "potentially breaking".
+
+### 26.6 Entry-46 vs Entry-48 Reconciliation
+
+If you grep HANDOFF.md for markup values, you'll see both `30` (entry 46) and `25` (entry 48). The WINNER is entry 48. The DB truth is now 25%. Entry 46's migration 034 set it to 30, then entry 48's migration 036 overwrote it with 25.
+
+If you ever see `_vba_sourced: true` in `app_settings.pricing` WITHOUT `_xlsm_sourced: true`, that's a pre-entry-48 snapshot and its markup values are wrong. The `_xlsm_sourced: true` flag is how future sessions know the current row was seeded from the actual xlsm, not from VBA comments.
+
+### 26.7 What's Still Missing
+
+Even after entry 48, the web app quote engine is NOT a drop-in replacement for DM Excel. The remaining gaps:
+
+- **SMT time model** — biggest gap. Web app uses per-placement flat cost, DM uses time-based. Large-count or unusual-feeder BOMs will drift materially. 4-6 hrs to port.
+- **`programming_fees` integration** — migration 036 created the table but `engine.ts` doesn't query it yet. 30-60 min wire-up.
+- **Setup time per feeder** — DM computes setup cost as `(cp_feeder_count × cp_load_time + ip_feeder_count × ip_load_time + 2 × printer_setup)`. Web app uses a flat `setup_time_hours × labour_rate`. Part of the SMT time model port.
+- **Stencil + PCB fab NRE defaults** — still per-BOM manual entries in DM, no workbook default.
+
+*Part 26 last updated: April 15, 2026, Session 11 (real pricing extraction + markup correction)*

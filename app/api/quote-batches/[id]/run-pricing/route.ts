@@ -61,7 +61,7 @@ export async function POST(
     return NextResponse.json({ error: "No component lines found" }, { status: 400 });
   }
 
-  const markup = (batch.component_markup_pct ?? 30) / 100;
+  const markup = (batch.component_markup_pct ?? 25) / 100;
   let apiCalls = 0;
   let cacheHits = 0;
   let pricingErrors = 0;
