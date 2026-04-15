@@ -88,10 +88,23 @@ export async function searchLCSCPrice(
       headers: { Accept: "application/json" },
     });
 
-    if (!res.ok) return null;
+    // Ported from lib/supplier-tests.ts fix by Piyush 2026-04-15 (Session 10 entry 1)
+    // The old client silently returned null on HTTP error / non-200 `code` /
+    // missing product — so LCSC outages looked identical to a genuine cache
+    // miss and nobody noticed the API had been blocked vendor-side for weeks.
+    // We still return null (the engine falls back to the next supplier) but
+    // we emit a warning so the issue shows up in Vercel logs.
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.warn(
+        `[lcsc] HTTP ${res.status} for mpn=${mpn} — ${body.slice(0, 200)}`
+      );
+      return null;
+    }
 
     const data = (await res.json()) as {
       code: number;
+      message?: string;
       result?: {
         tipProductDetailUrlVO?: Array<{
           productModel: string;
@@ -108,7 +121,12 @@ export async function searchLCSCPrice(
       };
     };
 
-    if (data.code !== 200) return null;
+    if (data.code !== 200) {
+      console.warn(
+        `[lcsc] API error code=${data.code} for mpn=${mpn} — ${data.message ?? "no message"}`
+      );
+      return null;
+    }
 
     const product = data.result?.tipProductDetailUrlVO?.[0];
     if (!product) return null;
@@ -126,7 +144,12 @@ export async function searchLCSCPrice(
       lcsc_pn: product.productCode,
       stock_qty: product.stockNumber,
     };
-  } catch {
+  } catch (e) {
+    // Ported from lib/supplier-tests.ts fix by Piyush 2026-04-15 (Session 10 entry 1)
+    // Previously `catch {}` — network errors vanished. Log instead so the
+    // vendor-side LCSC blockage (per HANDOFF) is visible in Vercel logs.
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[lcsc] network error for mpn=${mpn} — ${msg}`);
     return null;
   }
 }

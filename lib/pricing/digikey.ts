@@ -1,8 +1,18 @@
 import { getCredential, getPreferredCurrency } from "@/lib/supplier-credentials";
 
-const DIGIKEY_TOKEN_URL = "https://api.digikey.com/v1/oauth2/token";
-const DIGIKEY_SEARCH_URL =
-  "https://api.digikey.com/products/v4/search/keyword";
+// Ported from lib/supplier-tests.ts fix by Piyush 2026-04-15 (Session 10 entry 1)
+// DigiKey base URL is now derived from the credentials' `environment` field
+// (or DIGIKEY_ENVIRONMENT env var) so the Sandbox flag actually takes effect
+// on the runtime pricing path. The old hardcoded `https://api.digikey.com/`
+// silently ignored sandbox creds and hit prod, which passed the Test button
+// but failed real quote runs when sandbox was selected.
+const DIGIKEY_PROD_BASE = "https://api.digikey.com";
+const DIGIKEY_SANDBOX_BASE = "https://sandbox-api.digikey.com";
+
+function digikeyBaseUrl(env: string | undefined): string {
+  const isSandbox = (env ?? "").toLowerCase().startsWith("sand");
+  return isSandbox ? DIGIKEY_SANDBOX_BASE : DIGIKEY_PROD_BASE;
+}
 
 interface DigikeyCreds {
   client_id: string;
@@ -54,7 +64,9 @@ async function getAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expires_at - 60_000)
     return cachedToken.access_token;
 
-  const res = await fetch(DIGIKEY_TOKEN_URL, {
+  // Ported from lib/supplier-tests.ts fix by Piyush 2026-04-15 (Session 10 entry 1)
+  const tokenUrl = `${digikeyBaseUrl(creds.environment)}/v1/oauth2/token`;
+  const res = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -99,7 +111,9 @@ export async function searchPartPrice(
   if (!creds) return null;
   const token = await getAccessToken();
   const currency = await getPreferredCurrency("digikey");
-  const res = await fetch(DIGIKEY_SEARCH_URL, {
+  // Ported from lib/supplier-tests.ts fix by Piyush 2026-04-15 (Session 10 entry 1)
+  const searchUrl = `${digikeyBaseUrl(creds.environment)}/products/v4/search/keyword`;
+  const res = await fetch(searchUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

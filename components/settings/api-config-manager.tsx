@@ -150,6 +150,33 @@ type TestResult = {
   request_url?: string;
 };
 
+// Aggregated bulk-test response from POST /api/admin/supplier-credentials/test-all
+interface BulkTestRow {
+  supplier: string;
+  display_name: string;
+  ok: boolean;
+  message: string;
+  status_code?: number;
+  request_url?: string;
+  duration_ms: number;
+}
+interface BulkTestResults {
+  mpn: string | null;
+  results: BulkTestRow[];
+  summary: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    not_configured: number;
+    duration_ms: number;
+  };
+}
+
+function truncate(str: string, max = 40): string {
+  if (str.length <= max) return str;
+  return str.slice(0, max - 1) + "…";
+}
+
 export function ApiConfigManager({ initialSuppliers }: ApiConfigManagerProps) {
   const [suppliers, setSuppliers] = useState<CredentialStatus[]>(
     [...initialSuppliers].sort((a, b) =>
@@ -174,6 +201,12 @@ export function ApiConfigManager({ initialSuppliers }: ApiConfigManagerProps) {
   // Per-supplier MPN override typed into the expanded-panel test input.
   // Empty/missing → default is sent (handled server-side).
   const [testMpns, setTestMpns] = useState<Record<string, string>>({});
+
+  // Bulk "Test All Distributors" state — drives the card at the top of
+  // the page. Independent from the per-row testing state above.
+  const [bulkMpn, setBulkMpn] = useState("");
+  const [bulkTesting, setBulkTesting] = useState(false);
+  const [bulkResults, setBulkResults] = useState<BulkTestResults | null>(null);
 
   // Add Distributor dialog state
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -522,6 +555,51 @@ export function ApiConfigManager({ initialSuppliers }: ApiConfigManagerProps) {
     }
   };
 
+  const handleBulkTest = async () => {
+    setBulkTesting(true);
+    try {
+      const payload: Record<string, string> = {};
+      const trimmed = bulkMpn.trim();
+      if (trimmed) payload.mpn = trimmed;
+      const res = await fetch(
+        "/api/admin/supplier-credentials/test-all",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const json = (await res.json().catch(() => null)) as
+        | BulkTestResults
+        | { error?: string }
+        | null;
+      if (!res.ok || !json || "error" in json) {
+        const msg =
+          json && "error" in json && json.error
+            ? json.error
+            : `HTTP ${res.status}`;
+        toast.error(`Bulk test failed: ${msg}`);
+        return;
+      }
+      setBulkResults(json as BulkTestResults);
+      const { summary } = json as BulkTestResults;
+      if (summary.failed === 0) {
+        toast.success(
+          `All ${summary.succeeded} distributors passed in ${(summary.duration_ms / 1000).toFixed(1)}s`
+        );
+      } else {
+        toast.warning(
+          `${summary.succeeded}/${summary.total} passed — ${summary.failed} failed`
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Bulk test error: ${msg}`);
+    } finally {
+      setBulkTesting(false);
+    }
+  };
+
   const handleTest = async (s: CredentialStatus, mpnOverride?: string) => {
     const supplier = s.supplier;
     setTesting((p) => ({ ...p, [supplier]: true }));
@@ -587,11 +665,142 @@ export function ApiConfigManager({ initialSuppliers }: ApiConfigManagerProps) {
     }
   };
 
+  const bulkSummaryTone = bulkResults
+    ? bulkResults.summary.failed === 0
+      ? "text-green-600 dark:text-green-400"
+      : bulkResults.summary.failed * 2 > bulkResults.summary.total
+        ? "text-red-600 dark:text-red-400"
+        : "text-amber-600 dark:text-amber-400"
+    : "";
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Distributor Configuration</CardTitle>
+    <div className="space-y-6">
+      {/* Bulk-test card — fires a single MPN across every configured
+          distributor in parallel so the CEO doesn't click 12 buttons
+          one at a time. Does NOT replace the per-row Test buttons; both
+          workflows coexist. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Test All Distributors</CardTitle>
+          <p className="text-sm text-gray-500">
+            Fire a single MPN across every configured distributor and see
+            which ones return real data.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              placeholder={FALLBACK_TEST_MPN}
+              value={bulkMpn}
+              onChange={(e) => setBulkMpn(e.target.value)}
+              disabled={bulkTesting}
+              className="sm:max-w-xs"
+              aria-label="MPN to test across all distributors"
+            />
+            <Button
+              onClick={handleBulkTest}
+              disabled={bulkTesting}
+              className="gap-1.5"
+            >
+              {bulkTesting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plug className="h-4 w-4" />
+              )}
+              Run All Tests
+            </Button>
+          </div>
+
+          {bulkResults && (
+            <>
+              <div className={"text-sm font-medium " + bulkSummaryTone}>
+                Last run: {(bulkResults.summary.duration_ms / 1000).toFixed(1)}s
+                {" • "}
+                {bulkResults.summary.succeeded}/{bulkResults.summary.total}{" "}
+                succeeded
+                {" • "}
+                {bulkResults.summary.failed} failed
+                {" • "}
+                {bulkResults.summary.not_configured} n/c
+                {bulkResults.mpn && (
+                  <span className="text-gray-500 font-normal">
+                    {" "}
+                    · MPN: {bulkResults.mpn}
+                  </span>
+                )}
+              </div>
+
+              {bulkResults.results.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">
+                  No distributors configured. Add credentials below to run bulk
+                  tests.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded border border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-900/40 text-left">
+                      <tr className="border-b border-gray-200 dark:border-gray-800">
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-300">
+                          Distributor
+                        </th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-300">
+                          Result
+                        </th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-300 w-20">
+                          Status
+                        </th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-300 w-24">
+                          Duration
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                      {bulkResults.results.map((row) => (
+                        <tr
+                          key={row.supplier}
+                          className="hover:bg-gray-50/50 dark:hover:bg-gray-900/30"
+                        >
+                          <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
+                            {row.display_name}
+                          </td>
+                          <td className="px-3 py-2">
+                            {row.ok ? (
+                              <span
+                                className="text-green-600 dark:text-green-400"
+                                title={row.message}
+                              >
+                                ✓ OK
+                              </span>
+                            ) : (
+                              <span
+                                className="text-red-600 dark:text-red-400"
+                                title={row.message}
+                              >
+                                ✗ {truncate(row.message)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">
+                            {row.status_code ?? "—"}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">
+                            {row.duration_ms}ms
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Distributor Configuration</CardTitle>
           <p className="text-sm text-gray-500">
             {configuredCount} of {totalCount} distributors configured
           </p>
@@ -1274,6 +1483,7 @@ export function ApiConfigManager({ initialSuppliers }: ApiConfigManagerProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+      </Card>
+    </div>
   );
 }
