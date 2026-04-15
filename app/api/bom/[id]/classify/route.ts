@@ -50,35 +50,29 @@ export async function POST(
       }))
     );
 
-    // Batch DB updates: collect all successful classifications, update in parallel
+    // Incremental DB updates: update each component immediately as it's classified
+    // This allows the polling frontend to see real progress
     let classifiedCount = 0;
     const results: { mpn: string; m_code: string | null; confidence: number }[] = [];
-    const updatePromises: PromiseLike<void>[] = [];
 
     for (let i = 0; i < unclassified.length; i++) {
       const result = aiResults[i];
       if (result?.m_code && result.confidence >= 0.7) {
-        updatePromises.push(
-          supabase
-            .from("bom_lines")
-            .update({
-              m_code: result.m_code,
-              m_code_source: "ai",
-              m_code_confidence: result.confidence,
-              m_code_reasoning: `AI: ${result.reasoning}`,
-            })
-            .eq("id", unclassified[i].id)
-            .then(() => {})
-        );
+        await supabase
+          .from("bom_lines")
+          .update({
+            m_code: result.m_code,
+            m_code_source: "ai",
+            m_code_confidence: result.confidence,
+            m_code_reasoning: `AI: ${result.reasoning}`,
+          })
+          .eq("id", unclassified[i].id);
         classifiedCount++;
         results.push({ mpn: unclassified[i].mpn ?? "", m_code: result.m_code, confidence: result.confidence });
       } else {
         results.push({ mpn: unclassified[i].mpn ?? "", m_code: null, confidence: result?.confidence ?? 0 });
       }
     }
-
-    // Fire all DB updates in parallel
-    await Promise.all(updatePromises);
 
     return NextResponse.json({
       total_unclassified: unclassified.length,
@@ -106,26 +100,22 @@ export async function POST(
   let classified = 0;
   let unclassified = 0;
 
-  // Batch DB updates in parallel instead of sequential
-  const updatePromises: PromiseLike<void>[] = [];
+  // Incremental DB updates: update each component immediately as it's classified
+  // This allows the polling frontend to see real progress in the progress bar
   for (let i = 0; i < toClassify.length; i++) {
     const result = ruleResults[i];
-    updatePromises.push(
-      supabase
-        .from("bom_lines")
-        .update({
-          m_code: result.m_code,
-          m_code_confidence: result.confidence,
-          m_code_source: result.source,
-          m_code_reasoning: result.rule_id ?? null,
-        })
-        .eq("id", toClassify[i].id)
-        .then(() => {})
-    );
+    await supabase
+      .from("bom_lines")
+      .update({
+        m_code: result.m_code,
+        m_code_confidence: result.confidence,
+        m_code_source: result.source,
+        m_code_reasoning: result.rule_id ?? null,
+      })
+      .eq("id", toClassify[i].id);
     if (result.m_code) classified++;
     else unclassified++;
   }
-  await Promise.all(updatePromises);
 
   const manual = lines.length - toClassify.length;
 

@@ -126,7 +126,7 @@ export function MCodeChart({ distribution }: MCodeChartProps) {
               className="inline-block h-3 w-3 flex-shrink-0 rounded-sm"
               style={{ backgroundColor: seg.color }}
             />
-            <span className="font-mono text-xs font-semibold w-12">
+            <span className="font-mono text-xs font-semibold min-w-fit whitespace-nowrap">
               {seg.mcode}
             </span>
             <span className="text-muted-foreground text-xs">

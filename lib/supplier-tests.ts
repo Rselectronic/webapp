@@ -36,7 +36,7 @@ export interface TestResult {
 
 const DEFAULT_PROBE_MPN = "ERJ-2GE0R00X"; // Panasonic 0 ohm 0402 — universal stock
 const SAMTEC_PROBE_MPN = "IPL1-110-01-S-D";
-const TI_PROBE_MPN = "LM358N";
+const TI_PROBE_MPN = "AFE7799IABJ";
 const TIMEOUT_MS = 15_000;
 
 /**
@@ -362,7 +362,7 @@ async function testLcsc(
   creds: Record<string, string>,
   mpn?: string
 ): Promise<TestResult> {
-  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
+  const probeMpn = mpn ?? "C2665711";
   const { api_key, api_secret } = creds;
   if (!api_key || !api_secret) {
     return { ok: false, message: "Missing api_key or api_secret" };
@@ -374,13 +374,14 @@ async function testLcsc(
   const signature = createHash("sha1").update(payload).digest("hex");
 
   const params = new URLSearchParams({
-    keyword: probeMpn,
     key: api_key,
     nonce,
     timestamp,
     signature,
   });
-  const rawUrl = `https://ips.lcsc.com/rest/wmsc2agent/search/product?${params.toString()}`;
+  const rawUrl = `https://ips.lcsc.com/rest/wmsc2agent/product/info/${encodeURIComponent(
+    probeMpn
+  )}?${params.toString()}`;
   // LCSC sends key, nonce, timestamp, signature in the query string — ALL of
   // these are secrets/credentials and must be redacted.
   const safeUrl = redactUrl(rawUrl, [
@@ -395,7 +396,6 @@ async function testLcsc(
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "curl/8.0",
       },
     });
     const body = await readBody(res);
@@ -416,7 +416,7 @@ async function testLcsc(
     if (!data.success) {
       return {
         ok: false,
-        message: `LCSC rejected: ${data.message ?? "unknown"} — API may be blocked vendor-side per HANDOFF`,
+        message: `LCSC rejected: ${data.message ?? "unknown"} — product may not exist on LCSC or is unavailable`,
         raw_response: body,
         status_code: res.status,
         request_url: safeUrl,
@@ -434,7 +434,7 @@ async function testLcsc(
     const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
-      message: `LCSC network error: ${msg} — API is currently blocked vendor-side per HANDOFF`,
+      message: `LCSC network error: ${msg}`,
       request_url: safeUrl,
     };
   }
@@ -449,21 +449,23 @@ async function testFuture(
   creds: Record<string, string>,
   mpn?: string
 ): Promise<TestResult> {
-  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
+  const probeMpn = mpn ?? "RCLAMP3354S.TCT";
   const { license_key } = creds;
   if (!license_key) return { ok: false, message: "Missing license_key" };
 
-  // Future uses header-based auth so URL capture is safe as-is.
-  const url = "https://eapi.futureelectronics.com/Search/SearchPartNumber";
+  const params = new URLSearchParams({
+    part_number: probeMpn,
+    lookup_type: "contains",
+  });
+  const url = `https://api.futureelectronics.com/api/v1/pim-future/lookup?${params.toString()}`;
   try {
     const res = await timedFetch(url, {
-      method: "POST",
+      method: "GET",
       headers: {
+        Accept: "application/json,text/javascript",
         "Content-Type": "application/json",
-        ApiKey: license_key,
-        Authorization: license_key,
+        "x-orbweaver-licensekey": license_key,
       },
-      body: JSON.stringify({ PartNumber: probeMpn, ResultsLimit: 1 }),
     });
     const body = await readBody(res);
     if (res.status === 401 || res.status === 403) {
@@ -475,28 +477,18 @@ async function testFuture(
         request_url: url,
       };
     }
-    if (res.status === 404) {
+    if (!res.ok) {
       return {
         ok: false,
-        message:
-          "Future Electronics endpoint not found (404) — REST API path not confirmed, test not implemented yet",
-        raw_response: body,
-        status_code: res.status,
-        request_url: url,
-      };
-    }
-    if (res.ok) {
-      return {
-        ok: true,
-        message: `Connected to Future Electronics — HTTP ${res.status} (search endpoint unverified)`,
+        message: `HTTP ${res.status}`,
         raw_response: body,
         status_code: res.status,
         request_url: url,
       };
     }
     return {
-      ok: false,
-      message: `HTTP ${res.status}`,
+      ok: true,
+      message: `Connected to Future Electronics — auth OK, lookup endpoint reachable`,
       raw_response: body,
       status_code: res.status,
       request_url: url,
@@ -505,7 +497,7 @@ async function testFuture(
     const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
-      message: `Test not implemented yet — credentials saved but cannot verify from web (${msg})`,
+      message: `Network error: ${msg}`,
       request_url: url,
     };
   }
@@ -530,13 +522,13 @@ async function testAvnet(
     };
   }
 
-  const url = "https://api.avnet.com/oauth/token";
+  const url = "https://apigw.avnet.com/external/getToken/oauth2/v2.0/token";
   try {
     const form = new URLSearchParams();
     form.set("grant_type", "client_credentials");
     form.set("client_id", client_id);
     form.set("client_secret", client_secret);
-    form.set("scope", "avnet.api");
+    form.set("scope", "api://9ee39226-6a78-4bc4-8ed2-bcc547eac437/.default");
 
     const res = await timedFetch(url, {
       method: "POST",
@@ -608,17 +600,18 @@ async function testArrow(
     return { ok: false, message: "Missing client_id or client_secret" };
   }
 
-  const url = "https://api.arrow.com/oauth2/token";
+  const url = "https://my.arrow.com/api/security/oauth/token";
   try {
-    const form = new URLSearchParams();
-    form.set("grant_type", "client_credentials");
-    form.set("client_id", client_id);
-    form.set("client_secret", client_secret);
+    const auth = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
 
     const res = await timedFetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "client_id": client_id,
+        "Authorization": `Basic ${auth}`,
+      },
+      body: "grant_type=client_credentials",
     });
     const body = await readBody(res);
     const redacted = redactTokenField(body);
@@ -678,14 +671,18 @@ async function testTti(
   const { api_key } = creds;
   if (!api_key) return { ok: false, message: "Missing api_key" };
 
-  const rawUrl = `https://api.ttiinc.com/v1/items/search?apiKey=${encodeURIComponent(api_key)}&query=${encodeURIComponent(probeMpn)}`;
+  const rawUrl = `https://api.tti.com/service/api/v1/search/keyword?searchTerms=${encodeURIComponent(probeMpn)}`;
   // Strip apiKey (secret) but keep the query param so the user can see what
   // MPN was sent.
   const safeUrl = redactUrl(rawUrl, ["apiKey"]);
   try {
     const res = await timedFetch(rawUrl, {
       method: "GET",
-      headers: { Accept: "application/json", Apikey: api_key },
+      headers: {
+        Accept: "application/json",
+        apiKey: api_key,
+        "Cache-Control": "no-cache",
+      },
     });
     const body = await readBody(res);
     if (res.status === 401 || res.status === 403) {
@@ -724,24 +721,60 @@ async function testTti(
 }
 
 // ---------------------------------------------------------------------------
-// e-Sonic — documentation sparse. Not currently testable from web.
+// e-Sonic — HTTP GET to the published WAPI price/availability endpoint.
 // ---------------------------------------------------------------------------
 async function testEsonic(
   creds: Record<string, string>,
-  _mpn?: string
+  mpn?: string
 ): Promise<TestResult> {
-  void _mpn;
+  const probeMpn = mpn ?? "XF2M-5015-1A-R100";
   const { api_key } = creds;
   if (!api_key) return { ok: false, message: "Missing api_key" };
 
-  // TODO: e-Sonic API endpoint not documented / not publicly confirmed.
-  // Do not fake success — honestly report the limitation.
-  // raw_response intentionally undefined.
-  return {
-    ok: false,
-    message:
-      "e-Sonic API endpoint not configured — credentials saved but not testable from web",
-  };
+  const rawUrl = `https://api.e-sonic.com/wapi/v3/cgpriceavailability/${encodeURIComponent(
+    probeMpn
+  )}/0/1/10/${encodeURIComponent(api_key)}`;
+  const safeUrl = rawUrl.replace(api_key, "<redacted>");
+
+  try {
+    const res = await timedFetch(rawUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const body = await readBody(res);
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    return {
+      ok: true,
+      message: `Connected to e-Sonic — auth OK, price/availability endpoint reachable`,
+      raw_response: body,
+      status_code: res.status,
+      request_url: safeUrl,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: safeUrl,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -756,12 +789,15 @@ async function testNewark(
   if (!api_key) return { ok: false, message: "Missing api_key" };
 
   const params = new URLSearchParams({
+    versionNumber: "1.4",
+    term: `manuPartNum: ${probeMpn}`,
+    "storeInfo.id": "canada.newark.com",
+    "resultsSettings.offset": "0",
+    "resultsSettings.numberOfResults": "1",
+    "resultsSettings.responseGroup": "large",
+    "callInfo.omitXmlSchema": "false",
     "callInfo.responseDataFormat": "json",
     "callInfo.apiKey": api_key,
-    term: `any:${probeMpn}`,
-    "storeInfo.id": "Newark.com",
-    resultsSettings: "0",
-    "resultsSettings.numberOfResults": "1",
   });
   const rawUrl = `https://api.element14.com/catalog/products?${params.toString()}`;
   const safeUrl = redactUrl(rawUrl, ["callInfo.apiKey"]);
@@ -829,12 +865,15 @@ async function testSamtec(
   if (!bearer_token) return { ok: false, message: "Missing bearer_token" };
 
   // partNumber is the MPN (not a secret), bearer is in the header
-  const url = `https://samtec.com/services/api/catalog/v1/parts?partNumber=${encodeURIComponent(probeMpn)}`;
+  const url = `https://api.samtec.com/catalog/v3/${encodeURIComponent(
+    probeMpn
+  )}?includeRelatedParts=false&includeAdditionalDocuments=false`;
   try {
     const res = await timedFetch(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${bearer_token}`,
+        "client-app-name": "swagger-ui",
         Accept: "application/json",
       },
     });
@@ -920,7 +959,7 @@ async function testTi(
     return { ok: false, message: `Auth network error: ${msg}` };
   }
 
-  const probeUrl = `https://transact.ti.com/v1/store/products/${encodeURIComponent(probeMpn)}`;
+  const probeUrl = `https://transact.ti.com/v2/store/products/${encodeURIComponent(probeMpn)}?currency=CAD&exclude-evms=true`;
   try {
     const res = await timedFetch(probeUrl, {
       method: "GET",

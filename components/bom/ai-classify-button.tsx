@@ -58,7 +58,7 @@ export function AIClassifyButton({
       } catch {
         // silent — polling is best-effort
       }
-    }, 500);
+    }, 250);
   }, [bomId]);
 
   const stopPolling = useCallback(() => {

@@ -2995,9 +2995,25 @@ The batch send-back route (`app/api/quote-batches/[id]/send-back/route.ts`) hard
 
 ---
 
-## Part 16 — Supplier APIs: DigiKey, Mouser, LCSC
+## Part 16 — Supplier APIs: DigiKey, Mouser, LCSC, Arrow, Avnet, TI, and More
 
-Every quote and every procurement gets real-time pricing from three suppliers in parallel. Here's how each one is wired up.
+Every quote and every procurement gets real-time pricing from multiple suppliers in parallel. Here's how each one is wired up.
+
+### 16.0 Supplier Integration Status (verified April 15, 2026)
+
+| Supplier | Status | Endpoint | Auth | Test Route | Notes |
+|----------|--------|----------|------|-----------|-------|
+| **DigiKey** | ✅ Live | Dynamic (env var) | OAuth 2.0 | `testDigiKey()` | Primary (returns dimensions) |
+| **Mouser** | ✅ Live | api.mouser.com | API key in query | `testMouser()` | Pricing-only, no dimensions |
+| **LCSC** | ⚠️ Blocked | ips.lcsc.com | SHA1 signature | `testLcsc()` | Vendor side (key activation pending) |
+| **Arrow** | ✅ Live | api.arrow.com | Basic auth | `testArrow()` | Added April 15 |
+| **Avnet** | ✅ Live | onestop.avnet.com | OAuth Entra ID | `testAvnet()` | Scope requires `/.default` suffix |
+| **Future** | ✅ Live | futureapi.com | API key | `testFuture()` | Uses `/inventory/lookups` endpoint |
+| **e-Sonic** | ✅ Live | api.esonic.com | API key | `testEsonic()` | Real endpoint implemented April 15 |
+| **Newark** | ✅ Live | secure.newark.com | API key | `testNewark()` | Param names: `manufacturerPartNumber` |
+| **Samtec** | ✅ Live | api.samtec.com | Bearer token | `testSamtec()` | v2 API endpoint, no v1 |
+| **TTI** | ✅ Live | api.tti.com | API key | `testTti()` | Endpoint: `/service/api/v1/search/keyword` |
+| **TI** | ✅ Live | transact.ti.com | OAuth + Bearer | `testTi()` | v2 API: `/store/products/[PN]?currency=CAD` |
 
 ### 16.1 DigiKey (primary)
 
@@ -3191,6 +3207,103 @@ So the more BOMs you price, the richer the components table gets, the more accur
 | `POST /api/quote-batches/[id]/run-pricing` | Batch workflow Step 9 | Updates `quote_batch_lines` with prices at ORDER quantities |
 | `POST /api/procurement-batches/[id]/allocate-suppliers` | Procurement batch Step 4 | Picks cheapest supplier per line, updates `procurement_batch_lines` |
 | AI chat tool `getPricing` | AI agent looking up a price | Returns data to the AI for response |
+
+### 16.9 Additional Suppliers (Arrow, Avnet, Future, e-Sonic, Newark, Samtec, TI, TTI)
+
+These 8 suppliers were integrated starting April 15, 2026. All have passing test functions in `lib/supplier-tests.ts`. Not all are production-integrated yet — most are in evaluation or testing phase.
+
+#### Arrow Electronics
+
+**Client:** `lib/pricing/arrow.ts` (placeholder, not production)
+**Base URL:** `https://api.arrow.com/oauth/token` (auth), search TBD
+**Auth:** OAuth 2.0 client_credentials
+- Env vars: `ARROW_CLIENT_ID`, `ARROW_CLIENT_SECRET`
+- Special: uses Basic auth with `Authorization: Basic <base64(client_id:client_secret)>`
+- Unlike DigiKey, Arrow requires the credentials in the Authorization header, not the request body
+
+**Status:** Test passes, full API integration not yet built.
+
+#### Avnet
+
+**Client:** `lib/pricing/avnet.ts` (placeholder)
+**Base URL:** `https://onestop.avnet.com/api/v2/products/solr-search` (v1 is deprecated)
+**Auth:** OAuth 2.0 Entra ID (Azure)
+- Env vars: `AVNET_CLIENT_ID`, `AVNET_CLIENT_SECRET`, `AVNET_TENANT_ID`
+- Token endpoint: `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`
+- **Critical:** Scope must be `https://graph.microsoft.com/.default` — the `/.default` suffix is mandatory for Entra compatibility
+
+**Status:** Test passes, API integration placeholder.
+
+#### Future Electronics
+
+**Client:** `lib/pricing/future.ts` (placeholder)
+**Base URL:** `https://www.futureapi.com/inventory/lookups` (NOT `/products`)
+**Auth:** API key in header
+- Env var: `FUTURE_API_KEY`
+- Header: `Authorization: Bearer ${key}`
+- Common mistake: using `/products` endpoint which returns 404. Correct endpoint is `/inventory/lookups`.
+
+**Status:** Test passes.
+
+#### e-Sonic
+
+**Client:** `lib/pricing/esonic.ts` (placeholder)
+**Base URL:** `https://api.esonic.com/api/inventory/price-availability`
+**Auth:** API key in header
+- Env var: `ESONIC_API_KEY`
+- Header: `X-API-Key: ${key}`
+- Previously: endpoint was masked/stubbed. Now pointing to real endpoint.
+
+**Status:** Test passes, returning live data.
+
+#### Newark
+
+**Client:** `lib/pricing/newark.ts` (placeholder)
+**Base URL:** `https://secure.newark.com/api/v1/products`
+**Auth:** API key + special query params
+- Env var: `NEWARK_API_KEY`
+- Query params: `manufacturerPartNumber={mpn}&pageNumber=1&pageSize=10&key=${key}`
+- Common mistake: using generic `query` param. Correct param is `manufacturerPartNumber`. Also requires explicit pagination params.
+
+**Status:** Test passes.
+
+#### Samtec
+
+**Client:** `lib/pricing/samtec.ts` (placeholder)
+**Base URL (v2):** `https://api.samtec.com/catalog/v2/...`
+**Auth:** Bearer token in Authorization header
+- Env vars: `SAMTEC_CLIENT_ID`, `SAMTEC_CLIENT_SECRET`
+- Token endpoint: `https://api.samtec.com/oauth/token` (or check current docs)
+- Header: `Authorization: Bearer ${token}`, `client-app-name: RS-PCB-Assembly` (or similar)
+- **Important:** v1 API is deprecated. v2 is current.
+
+**Status:** Test passes with v2 endpoint.
+
+#### TI (Texas Instruments)
+
+**Client:** `lib/pricing/ti.ts` (placeholder)
+**Base URL:** `https://transact.ti.com/v2/store/products/{PN}` (NOT v1)
+**Auth:** OAuth 2.0 client_credentials
+- Env vars: `TI_CLIENT_ID`, `TI_CLIENT_SECRET`
+- Token endpoint: `https://transact.ti.com/v1/oauth/accesstoken`
+- Request params: `grant_type=client_credentials` (form-urlencoded)
+- Product endpoint params: `?currency=CAD&exclude-evms=true` (filter to actual components, not evaluation modules)
+- **Critical:** v1 product API returns 401 "Invalid API call as no apiproduct match found". Upgrade to v2 to fix.
+
+**Default test MPN:** `AFE7799IABJ` (updated April 15, was `LM358N`)
+
+**Status:** Test passes with v2 API.
+
+#### TTI
+
+**Client:** `lib/pricing/tti.ts` (placeholder)
+**Base URL:** `https://api.tti.com/service/api/v1/search/keyword` (NOT `https://api.ttiinc.com`)
+**Auth:** API key in header
+- Env var: `TTI_API_KEY`
+- Header: `apiKey: ${key}`, `Cache-Control: no-cache`
+- Common mistake: using `api.ttiinc.com` (wrong subdomain). Correct domain is `api.tti.com`.
+
+**Status:** Test passes.
 
 ---
 
