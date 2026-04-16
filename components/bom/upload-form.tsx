@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/select";
 import { Upload, FileSpreadsheet, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ColumnMapper, type ColumnMapping } from "./column-mapper";
+import * as XLSX from "xlsx";
 
 interface Customer {
   id: string;
@@ -44,6 +46,11 @@ export function UploadForm({ customers }: UploadFormProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  // Column mapper preview state
+  const [previewHeaders, setPreviewHeaders] = useState<string[]>([]);
+  const [previewRows, setPreviewRows] = useState<string[][]>([]);
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({});
+  const [showMapper, setShowMapper] = useState(false);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -71,11 +78,97 @@ export function UploadForm({ customers }: UploadFormProps) {
     }
   }, []);
 
+  // Auto-detect keywords for column mapping (matches server-side column-mapper.ts)
+  const AUTO_KEYWORDS: Record<string, string[]> = {
+    qty: ["qty", "quantity", "qté", "count", "amount"],
+    designator: ["designator", "designation", "ref des", "refdes", "reference", "index"],
+    mpn: ["mpn", "manufacturer part", "part number", "mfr#", "partnumber", "mfg p/n", "p/n", "pn"],
+    manufacturer: ["manufacturer", "mfg", "mfr", "vendor"],
+    description: ["description", "desc", "name", "comment", "value", "spec"],
+    cpc: ["cpc", "erp_pn", "customer part", "internal pn", "legend p/n", "fiso#"],
+  };
+
+  function autoDetectMapping(headers: string[]): ColumnMapping {
+    const mapping: ColumnMapping = {};
+    const usedIndices = new Set<number>();
+    const normalized = headers.map((h) => h.toLowerCase().trim());
+
+    for (const [field, keywords] of Object.entries(AUTO_KEYWORDS)) {
+      for (let i = 0; i < normalized.length; i++) {
+        if (usedIndices.has(i)) continue;
+        if (keywords.some((kw) => normalized[i].includes(kw))) {
+          mapping[field] = headers[i];
+          usedIndices.add(i);
+          break;
+        }
+      }
+    }
+    return mapping;
+  }
+
+  async function readFilePreview(f: File) {
+    try {
+      const buffer = await f.arrayBuffer();
+      const ext = f.name.split(".").pop()?.toLowerCase();
+      let allRows: (string | number | null)[][];
+
+      if (ext === "csv" || ext === "tsv") {
+        const text = new TextDecoder("utf-8").decode(buffer);
+        allRows = text
+          .split("\n")
+          .filter((line) => line.trim())
+          .map((line) => line.split(ext === "tsv" ? "\t" : ","));
+      } else {
+        const wb = XLSX.read(buffer, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+      }
+
+      if (allRows.length === 0) return;
+
+      // Find the header row (first row with 3+ non-empty text cells)
+      let headerIdx = 0;
+      for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+        const textCells = (allRows[i] ?? [])
+          .map((c) => String(c ?? "").trim())
+          .filter((s) => s.length > 1 && isNaN(Number(s)));
+        if (textCells.length >= 3) {
+          headerIdx = i;
+          break;
+        }
+      }
+
+      const hdrs = (allRows[headerIdx] ?? []).map((c) => String(c ?? "").trim());
+      const samples = allRows
+        .slice(headerIdx + 1, headerIdx + 6)
+        .map((row) =>
+          hdrs.map((_, ci) => String(row[ci] ?? "").trim())
+        );
+
+      setPreviewHeaders(hdrs);
+      setPreviewRows(samples);
+      setColumnMapping(autoDetectMapping(hdrs));
+      setShowMapper(true);
+    } catch {
+      // If preview fails, still allow upload (server will handle parsing)
+      setShowMapper(false);
+    }
+  }
+
+  function handleFileSelected(f: File | null) {
+    setFile(f);
+    setShowMapper(false);
+    setPreviewHeaders([]);
+    setPreviewRows([]);
+    setColumnMapping({});
+    if (f) void readFilePreview(f);
+  }
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const dropped = e.dataTransfer.files[0];
-    if (dropped) setFile(dropped);
+    if (dropped) handleFileSelected(dropped);
   }, []);
 
   // Filtered GMPs based on input text
@@ -165,6 +258,10 @@ export function UploadForm({ customers }: UploadFormProps) {
       formData.append("customer_id", customerId);
       formData.append("gmp_id", resolvedGmpId);
       formData.append("revision", revision.trim() || "1");
+      // Send the user's column mapping so the server uses it instead of auto-detect
+      if (Object.keys(columnMapping).length > 0) {
+        formData.append("column_mapping", JSON.stringify(columnMapping));
+      }
 
       const res = await fetch("/api/bom/parse", { method: "POST", body: formData });
       if (!res.ok) {
@@ -293,7 +390,7 @@ export function UploadForm({ customers }: UploadFormProps) {
               <FileSpreadsheet className="h-10 w-10 text-green-500" />
               <p className="font-medium">{file.name}</p>
               <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-              <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
+              <Button variant="ghost" size="sm" onClick={() => handleFileSelected(null)}>
                 Remove
               </Button>
             </div>
@@ -308,7 +405,7 @@ export function UploadForm({ customers }: UploadFormProps) {
                   type="file"
                   accept=".xlsx,.xls,.csv"
                   className="hidden"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => handleFileSelected(e.target.files?.[0] ?? null)}
                 />
                 <Button
                   variant="outline"
@@ -322,6 +419,16 @@ export function UploadForm({ customers }: UploadFormProps) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Column mapper preview */}
+      {showMapper && previewHeaders.length > 0 && (
+        <ColumnMapper
+          headers={previewHeaders}
+          sampleRows={previewRows}
+          mapping={columnMapping}
+          onMappingChange={setColumnMapping}
+        />
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}

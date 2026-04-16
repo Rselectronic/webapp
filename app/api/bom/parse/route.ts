@@ -87,6 +87,16 @@ export async function POST(request: Request) {
   const revisionInput = ((formData.get("revision") as string) ?? "").trim();
   const revision = revisionInput || "1";
 
+  // Optional: explicit column mapping from the UI's column mapper.
+  // If provided, overrides the customer's bom_config for column detection.
+  const rawColumnMapping = formData.get("column_mapping") as string | null;
+  let userColumnMapping: Record<string, string> | null = null;
+  if (rawColumnMapping) {
+    try {
+      userColumnMapping = JSON.parse(rawColumnMapping);
+    } catch { /* ignore bad JSON */ }
+  }
+
   if (!file || !customerId || !gmpId) {
     return NextResponse.json(
       { error: "Missing required fields: file, customer_id, gmp_id" },
@@ -208,22 +218,45 @@ export async function POST(request: Request) {
       return obj;
     });
 
-    // Resolve column mapping. Three tiers:
+    // Resolve column mapping. Priority:
+    //   0. User-provided mapping from the UI column mapper (highest priority)
     //   1. Customer bom_config (explicit) or keyword auto-detect
     //   2. AI fallback — Claude reads headers + sample rows and proposes a mapping
     //   3. Hard fail with helpful error
     let mapping: ColumnMapping | null = null;
-    let mappingSource: "keyword" | "ai" = "keyword";
-    try {
-      mapping = resolveColumnMapping(bomConfig, headers);
-    } catch {
-      // Keyword matching failed — try the AI mapper
-      const sampleRows = allRows.slice(dataStartIndex, dataStartIndex + 5);
-      const aiMapping = await aiMapColumns(headers, sampleRows);
-      if (aiMapping) {
-        mapping = aiMapping;
-        mappingSource = "ai";
-        console.log("[BOM PARSE] AI column mapper succeeded:", aiMapping);
+    let mappingSource: "keyword" | "ai" | "user" = "keyword";
+
+    if (userColumnMapping && Object.keys(userColumnMapping).length >= 2) {
+      // User explicitly mapped columns in the UI — use their mapping directly.
+      // The mapping is { field: headerName }, need to convert to ColumnMapping
+      // which is { field: columnIndex }.
+      const m: Partial<ColumnMapping> = {};
+      for (const [field, headerName] of Object.entries(userColumnMapping)) {
+        const idx = headers.findIndex(
+          (h) => h.toLowerCase().trim() === headerName.toLowerCase().trim()
+        );
+        if (idx !== -1) {
+          (m as Record<string, number>)[field] = idx;
+        }
+      }
+      if (m.mpn !== undefined || m.description !== undefined) {
+        mapping = m as ColumnMapping;
+        mappingSource = "user";
+      }
+    }
+
+    if (!mapping) {
+      try {
+        mapping = resolveColumnMapping(bomConfig, headers);
+      } catch {
+        // Keyword matching failed — try the AI mapper
+        const sampleRows = allRows.slice(dataStartIndex, dataStartIndex + 5);
+        const aiMapping = await aiMapColumns(headers, sampleRows);
+        if (aiMapping) {
+          mapping = aiMapping;
+          mappingSource = "ai";
+          console.log("[BOM PARSE] AI column mapper succeeded:", aiMapping);
+        }
       }
     }
 

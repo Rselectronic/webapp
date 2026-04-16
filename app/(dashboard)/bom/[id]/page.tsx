@@ -110,11 +110,11 @@ export default async function BomDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {bom.status === "parsed" && !linkedQuote && (
+          {bom.status === "parsed" && (
             <Link href={`/quotes/new?bom_id=${id}`}>
               <Button size="sm" className="gap-1.5">
                 <Calculator className="h-4 w-4" />
-                Create Quote
+                {linkedQuote ? "New Quote" : "Create Quote"}
               </Button>
             </Link>
           )}
