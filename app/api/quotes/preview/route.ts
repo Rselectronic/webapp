@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   // --- Fetch BOM lines (non-PCB only) ---
   const { data: bomLines, error: bomError } = await supabase
     .from("bom_lines")
-    .select("id, mpn, description, m_code, quantity")
+    .select("id, mpn, cpc, description, m_code, quantity")
     .eq("bom_id", bom_id)
     .eq("is_pcb", false)
     .eq("is_dni", false);
@@ -96,20 +96,31 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Step 1: Check cached prices ---
+  // Include CPC and bom_line_id as fallback search keys for MPN-less components
   const mpns = [...new Set(bomLines.map((l) => l.mpn).filter(Boolean))] as string[];
-  const { data: priceRows } = await supabase
-    .from("api_pricing_cache")
-    .select("search_key, unit_price, source")
-    .in("search_key", mpns)
-    .gte("expires_at", new Date().toISOString());
+  const cpcs = [...new Set(bomLines.map((l) => l.cpc).filter(Boolean))] as string[];
+  const fallbackIds = bomLines.filter((l) => !l.mpn && !l.cpc).map((l) => l.id);
+  const allSearchKeys = [...new Set([...mpns, ...cpcs, ...fallbackIds, ...mpns.map((m) => m.toUpperCase()), ...cpcs.map((c) => c.toUpperCase()), ...fallbackIds.map((id) => id.toUpperCase())])];
+  const { data: priceRows } = allSearchKeys.length > 0
+    ? await supabase
+        .from("api_pricing_cache")
+        .select("search_key, unit_price, source")
+        .in("search_key", allSearchKeys)
+        .gte("expires_at", new Date().toISOString())
+    : { data: [] };
 
   const priceMap = new Map<string, { unit_price: number; source: string }>();
   for (const row of priceRows ?? []) {
-    if (
-      row.unit_price !== null &&
-      (!priceMap.has(row.search_key) ||
-        row.unit_price < priceMap.get(row.search_key)!.unit_price)
-    ) {
+    if (row.unit_price === null) continue;
+    const key = row.search_key.toUpperCase();
+    if (!priceMap.has(key) || row.unit_price < priceMap.get(key)!.unit_price) {
+      priceMap.set(key, {
+        unit_price: row.unit_price,
+        source: row.source,
+      });
+    }
+    // Also keep original-case key for backward compat with uncachedMpns check below
+    if (!priceMap.has(row.search_key) || row.unit_price < priceMap.get(row.search_key)!.unit_price) {
       priceMap.set(row.search_key, {
         unit_price: row.unit_price,
         source: row.source,
@@ -215,7 +226,11 @@ export async function POST(req: NextRequest) {
 
   // --- Step 3: Build PricingLine array ---
   const pricingLines: PricingLine[] = bomLines.map((line) => {
-    const cached = line.mpn ? priceMap.get(line.mpn) : undefined;
+    // Try MPN first, then CPC, then bom_line_id as cache key
+    const cached =
+      (line.mpn ? priceMap.get(line.mpn.toUpperCase()) ?? priceMap.get(line.mpn) : undefined) ??
+      (line.cpc ? priceMap.get(line.cpc.toUpperCase()) ?? priceMap.get(line.cpc) : undefined) ??
+      priceMap.get(line.id.toUpperCase());
     return {
       bom_line_id: line.id,
       mpn: line.mpn ?? "",

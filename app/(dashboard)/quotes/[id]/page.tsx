@@ -105,24 +105,42 @@ export default async function QuoteDetailPage({
   if (missingPriceComponents.length === 0 && warnings.some((w) => w.includes("no price"))) {
     const { data: bomLines } = await supabase
       .from("bom_lines")
-      .select("mpn, description, quantity")
+      .select("id, mpn, cpc, description, quantity")
       .eq("bom_id", quote.bom_id)
       .eq("is_pcb", false)
-      .eq("is_dni", false)
-      .not("mpn", "is", null);
+      .eq("is_dni", false);
 
     if (bomLines && bomLines.length > 0) {
-      const mpns = [...new Set(bomLines.map((l) => l.mpn).filter(Boolean))] as string[];
-      const { data: cached } = await supabase
-        .from("api_pricing_cache")
-        .select("search_key")
-        .in("search_key", mpns)
-        .gte("expires_at", new Date().toISOString());
+      // Build search keys: include both MPN and CPC values for cache lookup
+      const searchKeys = new Set<string>();
+      for (const l of bomLines) {
+        if (l.mpn) searchKeys.add(l.mpn);
+        if (l.cpc) searchKeys.add(l.cpc);
+      }
+      const keysArr = [...searchKeys];
+      const { data: cached } = keysArr.length > 0
+        ? await supabase
+            .from("api_pricing_cache")
+            .select("search_key")
+            .in("search_key", keysArr)
+            .gte("expires_at", new Date().toISOString())
+        : { data: [] };
 
-      const cachedMpns = new Set((cached ?? []).map((c) => c.search_key));
+      const cachedKeys = new Set((cached ?? []).map((c) => c.search_key));
       missingPriceComponents = bomLines
-        .filter((l) => l.mpn && !cachedMpns.has(l.mpn))
-        .map((l) => ({ mpn: l.mpn ?? "", description: l.description ?? "", qty_per_board: l.quantity }));
+        .filter((l) => {
+          // Component has a price if its MPN or CPC is in the cache
+          const hasMpnPrice = l.mpn && cachedKeys.has(l.mpn);
+          const hasCpcPrice = l.cpc && cachedKeys.has(l.cpc);
+          return !hasMpnPrice && !hasCpcPrice;
+        })
+        .map((l) => ({
+          bom_line_id: l.id,
+          mpn: l.mpn || l.cpc || l.id,  // fallback to CPC then bom_line UUID
+          cpc: l.cpc ?? undefined,
+          description: l.description ?? "",
+          qty_per_board: l.quantity,
+        }));
     }
   }
 

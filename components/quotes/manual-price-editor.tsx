@@ -18,6 +18,13 @@ export function ManualPriceEditor({
   missingComponents,
 }: ManualPriceEditorProps) {
   const router = useRouter();
+  // Use bom_line_id as the stable key when available, fall back to mpn
+  const stableKey = (c: MissingPriceComponent) => c.bom_line_id ?? c.mpn;
+
+  // Detect if a string looks like a UUID (bom_line_id fallback)
+  const isUuid = (s: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -29,11 +36,16 @@ export function ManualPriceEditor({
   });
   const canSave = enteredEntries.length > 0 && !saving;
 
-  const handleChange = (mpn: string, value: string) => {
-    setPrices((prev) => ({ ...prev, [mpn]: value }));
+  const handleChange = (key: string, value: string) => {
+    setPrices((prev) => ({ ...prev, [key]: value }));
     if (success) setSuccess(null);
     if (error) setError(null);
   };
+
+  // Look up the component by its stable key to send the right payload
+  const componentByKey = new Map(
+    missingComponents.map((c) => [stableKey(c), c])
+  );
 
   const handleSave = async () => {
     setSaving(true);
@@ -43,23 +55,33 @@ export function ManualPriceEditor({
     try {
       // 1. Save all manual prices in parallel
       const saveResults = await Promise.all(
-        enteredEntries.map(async ([mpn, value]) => {
+        enteredEntries.map(async ([key, value]) => {
+          const comp = componentByKey.get(key);
+          // Build payload: prefer bom_line_id for components without a real MPN
+          const payload: Record<string, unknown> = {
+            unit_price: parseFloat(value),
+          };
+          if (comp?.bom_line_id) {
+            payload.bom_line_id = comp.bom_line_id;
+          }
+          // Send real MPN only if it's not a UUID fallback
+          const mpnVal = comp?.mpn ?? key;
+          if (mpnVal && !isUuid(mpnVal)) {
+            payload.mpn = mpnVal;
+          }
           const res = await fetch("/api/pricing/manual", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              mpn,
-              unit_price: parseFloat(value),
-            }),
+            body: JSON.stringify(payload),
           });
           if (!res.ok) {
             const data = await res.json().catch(() => ({}));
             throw new Error(
               (data as { error?: string }).error ??
-                `Failed to save price for ${mpn}`
+                `Failed to save price for ${mpnVal}`
             );
           }
-          return mpn;
+          return key;
         })
       );
 
@@ -108,7 +130,7 @@ export function ManualPriceEditor({
             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900">
               <tr className="border-b border-gray-200 dark:border-gray-800">
                 <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
-                  MPN
+                  MPN / CPC
                 </th>
                 <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
                   Description
@@ -122,12 +144,25 @@ export function ManualPriceEditor({
               </tr>
             </thead>
             <tbody>
-              {missingComponents.map((c) => (
+              {missingComponents.map((c) => {
+                const key = stableKey(c);
+                // Show a human-readable identifier: real MPN, CPC, or "No MPN"
+                const displayMpn = isUuid(c.mpn)
+                  ? (c.cpc || "No MPN")
+                  : c.mpn;
+                const isFallback = isUuid(c.mpn) && !c.cpc;
+                return (
                 <tr
-                  key={c.mpn}
+                  key={key}
                   className="border-b border-gray-100 last:border-b-0 dark:border-gray-800"
                 >
-                  <td className="px-3 py-2 font-mono text-xs">{c.mpn}</td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {isFallback ? (
+                      <span className="italic text-gray-400">No MPN</span>
+                    ) : (
+                      displayMpn
+                    )}
+                  </td>
                   <td
                     className="max-w-xs truncate px-3 py-2 text-gray-700 dark:text-gray-300"
                     title={c.description}
@@ -143,14 +178,15 @@ export function ManualPriceEditor({
                       step="0.01"
                       min="0"
                       placeholder="0.00"
-                      value={prices[c.mpn] ?? ""}
-                      onChange={(e) => handleChange(c.mpn, e.target.value)}
+                      value={prices[key] ?? ""}
+                      onChange={(e) => handleChange(key, e.target.value)}
                       disabled={saving}
                       className="ml-auto h-8 w-28 text-right font-mono text-xs"
                     />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

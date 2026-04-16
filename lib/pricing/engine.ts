@@ -51,7 +51,12 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
   // Collect components with missing prices (once, same across all tiers)
   const missingPriceComponents: MissingPriceComponent[] = lines
     .filter((l) => l.unit_price === null)
-    .map((l) => ({ mpn: l.mpn, description: l.description, qty_per_board: l.qty_per_board }));
+    .map((l) => ({
+      bom_line_id: l.bom_line_id,
+      mpn: l.mpn || l.bom_line_id,  // fallback so mpn is never empty
+      description: l.description,
+      qty_per_board: l.qty_per_board,
+    }));
 
   // ---- Pre-compute M-code stats (independent of quantity tier) ----
   let totalUniqueLines = 0;

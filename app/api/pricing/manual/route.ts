@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 // ---------------------------------------------------------------------------
 
 interface ManualPriceBody {
-  mpn: string;
+  mpn?: string;
+  bom_line_id?: string;
   unit_price: number;
   currency?: string;
 }
@@ -31,11 +32,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { mpn, unit_price, currency } = body;
+  const { mpn: rawMpn, bom_line_id, unit_price, currency } = body;
 
-  if (!mpn || typeof mpn !== "string" || !mpn.trim()) {
+  // Accept either a real MPN or a bom_line_id as identifier
+  if ((!rawMpn || !rawMpn.trim()) && !bom_line_id) {
     return NextResponse.json(
-      { error: "Missing required field: mpn" },
+      { error: "Missing required field: mpn or bom_line_id" },
       { status: 400 }
     );
   }
@@ -43,6 +45,39 @@ export async function POST(req: NextRequest) {
   if (typeof unit_price !== "number" || !Number.isFinite(unit_price) || unit_price < 0) {
     return NextResponse.json(
       { error: "unit_price must be a non-negative number" },
+      { status: 400 }
+    );
+  }
+
+  // Resolve the cache key: prefer real MPN, else look up CPC from bom_line, else use bom_line_id
+  let cacheKey: string;
+  let mpnForRecord: string;
+
+  if (rawMpn && rawMpn.trim()) {
+    cacheKey = rawMpn.trim().toUpperCase();
+    mpnForRecord = rawMpn.trim();
+  } else if (bom_line_id) {
+    // Look up the bom_line to find its CPC or MPN
+    const { data: bomLine } = await supabase
+      .from("bom_lines")
+      .select("mpn, cpc")
+      .eq("id", bom_line_id)
+      .single();
+
+    if (bomLine?.mpn && bomLine.mpn.trim()) {
+      cacheKey = bomLine.mpn.trim().toUpperCase();
+      mpnForRecord = bomLine.mpn.trim();
+    } else if (bomLine?.cpc && bomLine.cpc.trim()) {
+      cacheKey = bomLine.cpc.trim().toUpperCase();
+      mpnForRecord = bomLine.cpc.trim();
+    } else {
+      // Last resort: use bom_line_id itself as the cache key
+      cacheKey = bom_line_id.toUpperCase();
+      mpnForRecord = bom_line_id;
+    }
+  } else {
+    return NextResponse.json(
+      { error: "Missing required field: mpn or bom_line_id" },
       { status: 400 }
     );
   }
@@ -55,12 +90,13 @@ export async function POST(req: NextRequest) {
     .upsert(
       {
         source: "manual",
-        mpn,
-        search_key: mpn.toUpperCase(),
+        mpn: mpnForRecord,
+        search_key: cacheKey,
         response: {
           manual: true,
           entered_by: user.id,
           entered_at: new Date().toISOString(),
+          bom_line_id: bom_line_id ?? null,
         },
         unit_price,
         stock_qty: null,
@@ -78,5 +114,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, mpn, unit_price });
+  return NextResponse.json({ ok: true, mpn: mpnForRecord, unit_price });
 }

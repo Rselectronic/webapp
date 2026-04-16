@@ -147,9 +147,11 @@ export interface QuoteInput {
 }
 
 export interface MissingPriceComponent {
-  mpn: string;
+  mpn: string;           // may be CPC or bom_line_id if real MPN is missing
   description: string;
   qty_per_board: number;
+  bom_line_id?: string;  // for lookup when MPN is empty
+  cpc?: string;          // customer part code (fallback identifier)
 }
 
 export interface QuotePricing {
