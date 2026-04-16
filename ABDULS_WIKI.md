@@ -4748,4 +4748,65 @@ Existing settings unchanged: `labour_rate_per_hour` ($130), `smt_rate_per_hour` 
 
 *Part 28 written: April 16, 2026, Session 13*
 
+---
+
+## PART 29: END-TO-END TEST FINDINGS + 4 BUG FIXES (Session 13b)
+
+Full Piyush-style walkthrough of the quoting pipeline using a test Cevians BOM (CVN-CTL-001, 15 components, CSV format).
+
+### What the test covered
+
+Upload CSV → Parse (auto-detect columns) → Classify (rules engine) → Manual assign 3 remainders → Create quote (4 tiers) → Calculate pricing → Review breakdown → Save draft → Generate PDF → Inspect PDF in browser.
+
+### 4 bugs found and fixed
+
+**Bug 1: Pricing results invisible after calculation (CRITICAL)**
+- Symptom: Click "Calculate Pricing" → button spins → button resets → nothing visible changes
+- Root cause: Results render inside `{preview && <Card>}` below the viewport. `<main>` is scrollable (`overflow-y: auto`) but page doesn't auto-scroll.
+- Fix: `useRef` on the preview Card + `scrollIntoView({ behavior: 'smooth' })` 100ms after `setPreview()`. The timeout waits for React to commit the render.
+- File: `components/quotes/new-quote-form.tsx`
+- Lesson: Always scroll to dynamically rendered content if it might be below the fold.
+
+**Bug 2: M-Code donut chart stale after manual assigns**
+- Symptom: Manually assign STM32→IP via dropdown. Stats bar updates ("15 classified"). Donut chart still shows "Unclassified 3 (20%)".
+- Root cause: Chart was in the server component (`bom/[id]/page.tsx`), rendered once from initial data. `BomTable` client component updates its own `lines` state on assign, but the server component doesn't re-render.
+- Fix: Moved chart into `BomTable` as a `useMemo` derived from `lines`. Now recomputes on every M-code change.
+- Files: `components/bom/bom-table.tsx`, `app/(dashboard)/bom/[id]/page.tsx`
+- Lesson: Don't put reactive data visualizations in server components if the data changes client-side.
+
+**Bug 3: "No parsed BOMs" flash on first navigation**
+- Symptom: Click "Create Quote" from BOM page → quote form shows "No parsed BOMs found for this customer" → refresh → works fine.
+- Root cause: URL has `?bom_id=xxx`. Prefill effect sets customer, triggers BOM fetch. But React renders the "no BOMs" message before the fetch returns.
+- Fix: Added `prefilling` state (true when `initialBomId` present). Shows "Loading BOMs..." spinner instead of error message during prefill. Cleared in `finally` block.
+- File: `components/quotes/new-quote-form.tsx`
+- Lesson: Loading states must cover the initial prefill path, not just user-triggered fetches.
+
+**Bug 4: NRE card shows $800 instead of $950**
+- Symptom: Quote detail NRE card: Programming $400 + Stencil $400 + PCB Fab $0 = $800. But pricing table shows NRE $950.
+- Root cause: Card only read 3 NRE fields from `tier_inputs`. Setup ($100) and misc ($50) live in `labour` breakdown, not `tier_inputs`.
+- Fix: Now reads all 5 NRE components. Shows non-zero lines only.
+- File: `app/(dashboard)/quotes/[id]/page.tsx`
+
+### Test results summary
+
+| Metric | Value |
+|--------|-------|
+| BOM | Cevians CVN-CTL-001, 15 components, CSV |
+| Auto-classified | 12/15 (80%) from rules alone |
+| Manual assigns | STM32F401→IP, USB4110→MANSMT, ABLS-16MHz→TH |
+| Components priced | 15/15 ($0 missing) |
+| Time model | Active (CPH-based) |
+| PDF pages | 5 (1 summary + 4 tier details) |
+| Per-unit prices | $204.72 / $184.92 / $170.59 / $164.13 |
+| NRE | $950 (prog $400 + stencil $400 + setup $100 + misc $50) |
+| Lead times | 4-6 / 4-6 / 3-5 / 3-4 weeks |
+
+### Remaining known issues (not fixed, low priority)
+
+- Column mapper preview doesn't show for CSV files (only XLSX) — not blocking, CSV auto-detect works fine
+- GST/QST tax numbers not in PDF header (needed for invoices, optional for quotes)
+- PCB unit price only shows tier 1 value ($18.50) on quote detail card, not all 4 tiers
+
+*Part 29 written: April 16, 2026, Session 13b*
+
 *Part 27 last updated: April 16, 2026, Session 12*

@@ -10,7 +10,6 @@ import { ArrowLeft, Calculator } from "lucide-react";
 import { BomTable } from "@/components/bom/bom-table";
 import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
-import { MCodeChart } from "@/components/bom/mcode-chart";
 import { ExportBomButton } from "@/components/bom/export-bom-button";
 import { DeleteBomButton } from "@/components/bom/delete-bom-button";
 import { formatDateTime } from "@/lib/utils/format";
@@ -159,32 +158,8 @@ export default async function BomDetailPage({
         );
       })()}
 
-      {/* M-Code Distribution Chart */}
-      {lines && lines.length > 0 && (() => {
-        const mcodeDistribution: Record<string, number> = {};
-        for (const line of lines) {
-          if (line.is_pcb || line.is_dni) continue;
-          const code = line.m_code ?? "Unclassified";
-          mcodeDistribution[code] = (mcodeDistribution[code] ?? 0) + 1;
-        }
-        const hasClassified = Object.keys(mcodeDistribution).some(
-          (k) => k !== "Unclassified"
-        );
-        if (!hasClassified) return null;
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">M-Code Distribution</CardTitle>
-              <CardDescription>
-                Classification breakdown of {lines.filter((l) => !l.is_pcb && !l.is_dni).length} components
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <MCodeChart distribution={mcodeDistribution} />
-            </CardContent>
-          </Card>
-        );
-      })()}
+      {/* M-Code Distribution chart is rendered inside BomTable below
+          so it recomputes live after manual M-Code assignments. */}
 
       {/* AI Classify Button */}
       {lines && lines.length > 0 && (

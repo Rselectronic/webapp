@@ -11,6 +11,10 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { McodeSelect } from "./mcode-select";
+import { MCodeChart } from "./mcode-chart";
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { Search, X, Trash2, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
@@ -241,6 +245,22 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
     );
   }
 
+  // Live M-Code distribution — recomputes whenever lines change (manual assign, delete, etc.)
+  const mcodeDistribution = useMemo(() => {
+    const dist: Record<string, number> = {};
+    for (const line of lines) {
+      if (line.is_pcb) continue;
+      const code = line.m_code ?? "Unclassified";
+      dist[code] = (dist[code] ?? 0) + 1;
+    }
+    return dist;
+  }, [lines]);
+
+  const hasClassifiedForChart = useMemo(
+    () => Object.keys(mcodeDistribution).some((k) => k !== "Unclassified"),
+    [mcodeDistribution]
+  );
+
   return (
     <TooltipProvider delay={200}>
       <div className="space-y-4">
@@ -252,6 +272,21 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
             <Badge variant="destructive">{unclassified} need review</Badge>
           )}
         </div>
+
+        {/* Live M-Code Distribution Chart */}
+        {hasClassifiedForChart && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">M-Code Distribution</CardTitle>
+              <CardDescription>
+                Classification breakdown of {totalComponentCount} components
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MCodeChart distribution={mcodeDistribution} />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filter + search bar — always visible above the table */}
         <div className="rounded-lg border-2 border-blue-100 bg-blue-50/40 p-3 space-y-3 dark:border-blue-900/40 dark:bg-blue-950/20">

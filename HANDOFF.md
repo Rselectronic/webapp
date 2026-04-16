@@ -1784,6 +1784,36 @@ Pricing flow is now 4 steps: cache → historical → component PNs → APIs. If
 - GST/QST tax numbers not shown in PDF header (required for invoices, optional for quotes)
 
 *Entry 51 written: April 16, 2026, Session 13*
+
+## Entry 52 — 4 UX Bugs Fixed from Piyush Test Walkthrough (April 16, 2026, Session 13b)
+
+Full end-to-end test of quoting flow (Upload CSV → Parse → Classify → Quote → Pricing → PDF) for Cevians CVN-CTL-001 revealed 4 bugs. All fixed.
+
+### 1. Auto-scroll to pricing results (critical UX)
+
+User clicks "Calculate Pricing" → results render below the fold → page doesn't scroll → user thinks it's broken. Fixed: `useRef` + `scrollIntoView({ behavior: 'smooth' })` after `setPreview()`. File: `components/quotes/new-quote-form.tsx`.
+
+### 2. M-Code chart stale after manual assigns
+
+Donut chart was server-rendered (stale snapshot). Moved into `BomTable` client component as `useMemo` from live `lines` state. Files: `components/bom/bom-table.tsx`, `app/(dashboard)/bom/[id]/page.tsx`.
+
+### 3. "No parsed BOMs" race condition
+
+First nav from BOM page showed error before prefill fetch completed. Added `prefilling` state → shows spinner instead of error during load. File: `components/quotes/new-quote-form.tsx`.
+
+### 4. NRE card missing setup + misc fees
+
+Card showed $800 (prog + stencil) but NRE is $950 (+ setup $100 + misc $50). Now reads all 5 NRE line items from labour breakdown. File: `app/(dashboard)/quotes/[id]/page.tsx`.
+
+### Test Results: Cevians CVN-CTL-001 (15 components)
+
+- 12/15 auto-classified from rules (80%), 3 manual (STM32→IP, USB-C→MANSMT, Crystal→TH)
+- All 15 priced, $0 missing. Time-based assembly model active.
+- 5-page PDF: summary + 4 tier details. Addresses, lead times, NRE itemization all present.
+- Per-unit: $204.72 (50) / $184.92 (100) / $170.59 (250) / $164.13 (500)
+
+*Entry 52 written: April 16, 2026, Session 13b*
+
 - 12 distributors (DigiKey, Mouser, LCSC, Avnet, Arrow, TTI, Newark, Samtec, TI, TME, Future, e-Sonic) now have credentials stored AES-256-GCM encrypted in `supplier_credentials` table (migration 031). Master key in `SUPPLIER_CREDENTIALS_KEY` env var, never in DB or repo.
 - `lib/supplier-credentials.ts` exposes `getCredential`, `setCredential`, `deleteCredential`, `getPreferredCurrency`, `setPreferredCurrency`, `listCredentialStatus`, plus the `SUPPLIER_METADATA` registry (per-supplier field schemas, supported currencies, default currency, docs URL).
 - `/settings/api-config` page (CEO-only): compact row-based layout matching the reference screenshot Anas sent. One row per distributor → click to expand inline → credential fields with "leave blank to keep current" UX → Save / Test Connection.

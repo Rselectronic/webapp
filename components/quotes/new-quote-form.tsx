@@ -87,6 +87,12 @@ export function NewQuoteForm({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True while the initial prefill effect (from ?bom_id=xxx URL param) is
+  // fetching the customer's BOM list. Suppresses the "No parsed BOMs" message
+  // that would otherwise flash before the fetch completes.
+  const [prefilling, setPrefilling] = useState(
+    !!(initialCustomerId && initialBomId)
+  );
 
   const handleCustomerChange = useCallback(async (id: string | null) => {
     if (!id) return;
@@ -132,6 +138,7 @@ export function NewQuoteForm({
   // mirror the user click sequence: load the customer's BOMs, then select the
   // target BOM so the pricing-tier step becomes visible without any clicks.
   const prefillRan = useRef(false);
+  const previewRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (prefillRan.current) return;
     if (!initialCustomerId || !initialBomId) return;
@@ -151,6 +158,8 @@ export function NewQuoteForm({
         }
       } catch {
         // Fall through to the manual picker
+      } finally {
+        if (!cancelled) setPrefilling(false);
       }
     })();
 
@@ -222,6 +231,7 @@ export function NewQuoteForm({
 
       const data = await res.json();
       setPreview(data.pricing ?? data);
+      setTimeout(() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pricing calculation failed");
     } finally {
@@ -295,7 +305,12 @@ export function NewQuoteForm({
             <CardTitle className="text-base">2. Select Parsed BOM</CardTitle>
           </CardHeader>
           <CardContent>
-            {boms.length === 0 ? (
+            {boms.length === 0 && prefilling ? (
+              <p className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading BOMs...
+              </p>
+            ) : boms.length === 0 ? (
               <p className="text-sm text-gray-500">
                 No parsed BOMs found for this customer. Upload and parse a BOM
                 first.
@@ -522,7 +537,7 @@ export function NewQuoteForm({
 
       {/* Step 4: Preview */}
       {preview && (
-        <Card>
+        <Card ref={previewRef}>
           <CardHeader>
             <CardTitle className="text-base">4. Pricing Preview</CardTitle>
           </CardHeader>

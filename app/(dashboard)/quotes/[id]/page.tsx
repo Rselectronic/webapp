@@ -128,14 +128,19 @@ export default async function QuoteDetailPage({
 
   const qtyValues = quantities ? Object.values(quantities) : [];
 
-  // NRE breakdown — read from tier_inputs[0] (all tiers carry identical
-  // NRE values now that NRE is a quote-level one-time charge). Fall back
-  // to the flat nre_charge column for legacy quotes.
+  // NRE breakdown — read from tier_inputs[0] for programming/stencil/pcb_fab
+  // (all tiers carry identical NRE values now that NRE is a quote-level
+  // one-time charge), and from the first tier's labour breakdown for
+  // nre_setup and nre_misc which are computed by the pricing engine.
+  // Fall back to the flat nre_charge column for legacy quotes.
   const firstTierInput = pricing?.tier_inputs?.[0] ?? {};
+  const firstTierLabour = tiers[0]?.labour;
   const nreProgramming = Number(firstTierInput.nre_programming ?? 0);
   const nreStencil = Number(firstTierInput.nre_stencil ?? 0);
   const nrePcbFab = Number(firstTierInput.nre_pcb_fab ?? 0);
-  const nreBreakdownTotal = nreProgramming + nreStencil + nrePcbFab;
+  const nreSetup = Number(firstTierLabour?.nre_setup ?? 0);
+  const nreMisc = Number(firstTierLabour?.nre_misc ?? 0);
+  const nreBreakdownTotal = nreProgramming + nreStencil + nrePcbFab + nreSetup + nreMisc;
   const nreTotal =
     nreBreakdownTotal > 0
       ? nreBreakdownTotal
@@ -273,18 +278,36 @@ export default async function QuoteDetailPage({
             </p>
             {hasNreBreakdown && (
               <div className="space-y-0.5 pt-1 text-xs text-gray-500">
-                <div className="flex justify-between">
-                  <span>Programming</span>
-                  <span className="font-mono">{formatCurrency(nreProgramming)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Stencil</span>
-                  <span className="font-mono">{formatCurrency(nreStencil)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>PCB Fab</span>
-                  <span className="font-mono">{formatCurrency(nrePcbFab)}</span>
-                </div>
+                {nreProgramming > 0 && (
+                  <div className="flex justify-between">
+                    <span>Programming</span>
+                    <span className="font-mono">{formatCurrency(nreProgramming)}</span>
+                  </div>
+                )}
+                {nreStencil > 0 && (
+                  <div className="flex justify-between">
+                    <span>Stencil</span>
+                    <span className="font-mono">{formatCurrency(nreStencil)}</span>
+                  </div>
+                )}
+                {nrePcbFab > 0 && (
+                  <div className="flex justify-between">
+                    <span>PCB Fab</span>
+                    <span className="font-mono">{formatCurrency(nrePcbFab)}</span>
+                  </div>
+                )}
+                {nreSetup > 0 && (
+                  <div className="flex justify-between">
+                    <span>Setup</span>
+                    <span className="font-mono">{formatCurrency(nreSetup)}</span>
+                  </div>
+                )}
+                {nreMisc > 0 && (
+                  <div className="flex justify-between">
+                    <span>Misc</span>
+                    <span className="font-mono">{formatCurrency(nreMisc)}</span>
+                  </div>
+                )}
               </div>
             )}
             <p className="pt-1 text-xs text-gray-400">
