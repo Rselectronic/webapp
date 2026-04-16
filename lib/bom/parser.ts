@@ -158,20 +158,14 @@ export function parseBom(
       continue;
     }
 
-    // CPC: preserve what was in the source BOM. Rules:
-    //   - Empty / "N/A" / "NA" → null
-    //   - CPC byte-identical to MPN → null (Lanka and other customers sometimes
-    //     duplicate the MPN into the CPC column; showing the same value twice
-    //     is noise. Piyush/Anas want null in that case so a missing CPC is
-    //     visually distinct.)
+    // CPC: show whatever the source BOM has in the CPC column.
+    // Only null out empty strings and "N/A" markers.
+    // If the customer's file has MPN in the CPC column (e.g. Lanka), show it —
+    // that IS their CPC. Don't try to be smart about deduplication.
     const cpcTrimmed = cpc?.trim() ?? "";
     const cpcUpper = cpcTrimmed.toUpperCase();
-    const mpnTrimmed = (mpn ?? "").trim();
     const cpcNormalized =
-      cpcTrimmed &&
-      cpcUpper !== "N/A" &&
-      cpcUpper !== "NA" &&
-      cpcTrimmed !== mpnTrimmed
+      cpcTrimmed && cpcUpper !== "N/A" && cpcUpper !== "NA"
         ? cpcTrimmed
         : null;
 
