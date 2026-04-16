@@ -75,6 +75,8 @@ export async function GET(
           mansmt_placements: 0,
           components_with_price: 0,
           components_missing_price: 0,
+          overage_cost: 0,
+          overage_qty: 0,
           labour: {
             smt_placement_cost: 0, th_placement_cost: 0, mansmt_placement_cost: 0,
             total_placement_cost: 0, setup_cost: 0, programming_cost: 0,

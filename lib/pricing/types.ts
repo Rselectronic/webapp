@@ -53,6 +53,9 @@ export interface PricingTier {
   mansmt_placements: number;
   components_with_price: number;
   components_missing_price: number;
+  // Overage breakdown — how much of component_cost is overage extras
+  overage_cost: number;
+  overage_qty: number;
   // Labour breakdown
   labour: LabourBreakdown;
 }

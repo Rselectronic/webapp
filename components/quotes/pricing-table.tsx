@@ -9,8 +9,9 @@ interface PricingTableProps {
   showLabourDetail?: boolean;
 }
 
-const ROWS: { key: keyof PricingTier; label: string; highlight?: boolean }[] = [
-  { key: "component_cost", label: "Components" },
+const ROWS: { key: keyof PricingTier; label: string; highlight?: boolean; indent?: boolean; muted?: boolean }[] = [
+  { key: "component_cost", label: "Components (incl. overage)" },
+  { key: "overage_cost", label: "↳ Overage extras included above", indent: true, muted: true },
   { key: "pcb_cost", label: "PCB" },
   { key: "assembly_cost", label: "Assembly (Placements)" },
   { key: "nre_charge", label: "NRE" },
@@ -82,26 +83,35 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
             </tr>
           </thead>
           <tbody>
-            {ROWS.map(({ key, label, highlight }) => (
-              <tr
-                key={key}
-                className={
-                  highlight
-                    ? "border-t bg-gray-50 font-semibold dark:border-gray-800 dark:bg-gray-900"
-                    : "border-t dark:border-gray-800"
-                }
-              >
-                <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{label}</td>
-                {tiers.map((t) => (
-                  <td
-                    key={t.board_qty}
-                    className={`px-4 py-2 text-right font-mono ${highlight ? "text-gray-900 dark:text-gray-100" : "text-gray-700 dark:text-gray-300"}`}
-                  >
-                    {formatCurrency(t[key] as number)}
+            {ROWS.map(({ key, label, highlight, indent, muted }) => {
+              const values = tiers.map((t) => (t[key] as number) ?? 0);
+              if (muted && values.every((v) => v === 0)) return null;
+              return (
+                <tr
+                  key={key}
+                  className={
+                    highlight
+                      ? "border-t bg-gray-50 font-semibold dark:border-gray-800 dark:bg-gray-900"
+                      : "border-t dark:border-gray-800"
+                  }
+                >
+                  <td className={`px-4 py-2 ${indent ? "pl-8" : ""} ${muted ? "text-xs text-gray-400 dark:text-gray-500 italic" : "text-gray-600 dark:text-gray-400"}`}>
+                    {label}
+                    {key === "overage_cost" && tiers[0]?.overage_qty > 0 && (
+                      <span className="ml-1 not-italic">({tiers[0].overage_qty} extra parts)</span>
+                    )}
                   </td>
-                ))}
-              </tr>
-            ))}
+                  {tiers.map((t) => (
+                    <td
+                      key={t.board_qty}
+                      className={`px-4 py-2 text-right font-mono ${highlight ? "text-gray-900 dark:text-gray-100" : muted ? "text-xs text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-300"}`}
+                    >
+                      {formatCurrency((t[key] as number) ?? 0)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

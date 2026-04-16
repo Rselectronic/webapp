@@ -101,6 +101,8 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
 
     const pcb_unit_price = tierInput.pcb_unit_price ?? 0;
     let componentCost = 0;
+    let overageCost = 0;
+    let overageQty = 0;
     let smtPlacements = 0;
     let thPlacements = 0;
     let mansmtPlacements = 0;
@@ -114,6 +116,8 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
         line.m_code,
         overages
       );
+      const baseQty = line.qty_per_board * boardQty;
+      const extras = orderQty - baseQty;
 
       const unitPrice = line.unit_price ?? 0;
 
@@ -124,6 +128,11 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       }
 
       componentCost += unitPrice * orderQty * markupMultiplier;
+
+      if (extras > 0) {
+        overageCost += unitPrice * extras * markupMultiplier;
+        overageQty += extras;
+      }
 
       if (line.m_code && SMT_MCODES.has(line.m_code)) {
         smtPlacements += line.qty_per_board;
@@ -191,6 +200,8 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       mansmt_placements: mansmtPlacements,
       components_with_price: componentsWithPrice,
       components_missing_price: componentsMissingPrice,
+      overage_cost: round2(overageCost),
+      overage_qty: overageQty,
       labour,
     });
   }
