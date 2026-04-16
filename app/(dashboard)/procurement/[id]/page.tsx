@@ -19,6 +19,7 @@ import { OrderButton } from "@/components/procurement/order-button";
 import { OrderAllButton } from "@/components/procurement/order-all-button";
 import { CreatePOButton } from "@/components/procurement/create-po-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
+import { DeleteProcurementButton } from "@/components/procurement/delete-procurement-button";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -215,6 +216,10 @@ export default async function ProcurementDetailPage({
               </Button>
             </a>
           )}
+          <DeleteProcurementButton
+            procurementId={id}
+            procCode={proc.proc_code}
+          />
         </div>
       </div>
 
