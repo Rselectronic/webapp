@@ -1662,6 +1662,128 @@ From late Session 11 (April 15): extracted the real DM Common File V11 and TIME 
 - Live DB: customer bom_configs seeded, CPC values restored for TLAN BOMs
 
 *Entry 50 last updated: April 16, 2026, Session 12*
+
+---
+
+## Entry 51 — Quoting Engine Overhaul: 6 SOP Gaps Closed (April 16, 2026, Session 13)
+
+Anas provided the full RS Quotation Process SOP (14-page PDF covering phases A–K single-BOM + L–O batch). Audited the web app against every phase. Found 6 material gaps. Fixed all 6 + 4 cosmetic issues from code review.
+
+### 1. Programming fees wired into pricing engine
+
+`programming_fees` table (migration 036, 28 rows) was seeded but never queried. `lib/pricing/engine.ts` was using `programmingTimeHours × labourRate` ($130 flat).
+
+**Now:** Imports `calculateProgrammingCost()` from `lib/pricing/programming-cost.ts`. Looks up the tiered fee based on BOM line count + single/double-sided assembly type. A 45-line TB BOM now correctly costs $450 (was $130). Double-counting guard: if `nre_programming` is already set from the form, engine sets its own programming cost to $0.
+
+`assembly_type` threaded through: `quotes/route.ts`, `quotes/preview/route.ts`, `recompute.ts`, `labour/route.ts`.
+
+### 2. Time-based assembly cost (replaces flat per-placement)
+
+**Before:** `assembly = SMT × $0.035 + TH × $0.75`. A 500-placement board cost $17.50.
+
+**After:** CPH (Components Per Hour) model from DM/TIME V11:
+- CP/CPEXP: 4,500 CPH | 0402: 3,500 | 0201: 2,500 | IP: 2,000 | TH: 150 | MANSMT: 100
+- `placement_time = total_placements / CPH` (per M-code category)
+- `feeder_setup = (CP_feeders × 2min + IP_feeders × 3min + 2 × printer_setup × 15min) / 60`
+- `labour_cost = total_hours × $130/hr`
+- `machine_cost = SMT_hours × $165/hr` (machine rate only for pick-and-place)
+- `assembly_cost = labour + machine`
+
+All CPH rates + setup params configurable in `/settings/pricing`. Toggle: "Time-Based" vs "Legacy Per-Placement" — old quotes display correctly.
+
+Files: `lib/pricing/engine.ts`, `lib/pricing/types.ts` (10 new PricingSettings fields, 8 new LabourBreakdown fields), `components/settings/pricing-settings-form.tsx`, `components/quotes/pricing-table.tsx` (shows time breakdown when time model active).
+
+### 3. Multi-page quote PDF
+
+**Before:** Single page summary only. No addresses, no per-tier breakdown.
+
+**After:**
+- **Page 1:** RS header + BILL TO (billing address from `billing_addresses` array) + SHIP TO + QUOTE DETAILS (GMP, board, BOM, validity, payment terms) + summary pricing table + lead times + notes + T&Cs
+- **Pages 2–N:** One per quantity tier — Material Cost (before/after markup, overage), PCB Cost, Assembly Cost (SMT/TH/MANSMT placements or time breakdown), NRE Breakdown (programming, stencil, PCB fab, setup, misc), Shipping, bold Tier Total + per-unit
+
+Reads from `billing_addresses` (plural, JSONB array) with fallback to legacy `billing_address` (singular). Handles both `street` and `line1` field names via `extractDefaultAddress()`.
+
+File: `app/api/quotes/[id]/pdf/route.ts` (~900 lines, complete rewrite).
+
+### 4. Lead time field
+
+**Migration 037:** `ALTER TABLE quotes ADD COLUMN lead_times JSONB DEFAULT '{}'`
+
+- Quote form: per-tier lead time input with defaults ("4-6 weeks" small qty, "3-4 weeks" large qty)
+- Saved to DB via `quotes/route.ts`
+- Displayed on quote detail page (Clock icon card)
+- Rendered in PDF: summary table row + per-tier detail page header
+
+### 5. Historical procurement price lookup
+
+**Before:** Only checked 7-day API cache. No "what did we pay last time?" equivalent.
+
+**After:** New file `lib/pricing/historical.ts` with 4 functions:
+- `lookupHistoricalPrice(mpn)` — queries `procurement_lines` for last 5 records
+- `lookupHistoricalPricesBulk(mpns)` — batch version for quote batches
+- `lookupComponentSupplierPNs(mpn)` — gets DigiKey/Mouser/LCSC PNs from `components` table for better API search keys
+- `cacheHistoricalPrice()` — caches historical price with 30-day TTL
+
+Pricing flow is now 4 steps: cache → historical → component PNs → APIs. If all APIs fail but historical exists, returns historical as fallback. Response includes `historical_price`, `historical_date`, `historical_supplier` for reference.
+
+**Migration 038:** Adds `'procurement_history'` to `api_pricing_cache.source` CHECK constraint + index on `procurement_lines(upper(mpn))`.
+
+### 6. Stock-aware supplier fallback
+
+**Before:** Picked cheapest price regardless of stock. DigiKey `stock_qty` was always `null`.
+
+**After:**
+- `lib/pricing/digikey.ts` now extracts `QuantityAvailable` from DigiKey V4 response
+- `selectBestSupplier()` prefers cheapest **with stock** over cheapest overall
+- Zero-stock suppliers only used if everything is out of stock (flagged as `out_of_stock`)
+- DigiKey PN preserved in 404 response for manual lookup
+- Batch pricing tracks `in_stock_count`, `out_of_stock_count`, `historical_hits`
+- Backward compatible: old cache entries with `stock_qty: null` treated as "unknown" (not penalized)
+
+### Code review fixes (4 additional)
+
+1. `smt_rate` column now stores hourly rate ($165) when time model active, per-placement ($0.035) when legacy
+2. NRE breakdown in pricing-table.tsx labeled "(per quote, not per tier)"
+3. `calculateLabourCost` standalone function now includes feeder setup in SMT placement cost
+4. Removed duplicate `fmtDate` — imports from `lib/pdf/helpers.ts`
+
+### Critical bugs caught during review
+
+1. `lead_times` was never saved to DB — form sent it, API ignored it → fixed
+2. PDF read old `billing_address` (singular) instead of `billing_addresses` (plural array) → fixed
+3. Case-sensitive `.in()` in bulk historical lookup missed MPNs with different casing → fixed
+4. Non-null `best!` assertion could crash → added null guard
+
+### Files touched
+
+- `lib/pricing/engine.ts` — time-based assembly cost + programming fee wiring
+- `lib/pricing/types.ts` — 10 new PricingSettings, 8 new LabourBreakdown fields, price_source expansion
+- `lib/pricing/historical.ts` — NEW: historical procurement lookup
+- `lib/pricing/digikey.ts` — stock_qty extraction
+- `lib/pricing/recompute.ts` — assembly_type passthrough
+- `app/api/quotes/route.ts` — assembly_type, lead_times, smt_rate fix
+- `app/api/quotes/preview/route.ts` — assembly_type
+- `app/api/quotes/[id]/pdf/route.ts` — multi-page rewrite
+- `app/api/pricing/[mpn]/route.ts` — historical lookup + stock-aware selection
+- `app/api/quote-batches/[id]/run-pricing/route.ts` — bulk historical + stock tracking
+- `app/api/quote-batches/[id]/send-back/route.ts` — new LabourBreakdown fields
+- `app/api/procurements/route.ts` — historical fallback
+- `app/api/labour/route.ts` — time model support
+- `app/(dashboard)/quotes/[id]/page.tsx` — lead times card
+- `app/(dashboard)/settings/pricing/page.tsx` — CPH defaults
+- `components/quotes/new-quote-form.tsx` — lead time inputs
+- `components/quotes/pricing-table.tsx` — time breakdown display + NRE label
+- `components/settings/pricing-settings-form.tsx` — CPH fields + model toggle
+- `supabase/migrations/037_add_lead_time_to_quotes.sql`
+- `supabase/migrations/038_historical_procurement_pricing.sql`
+
+### What's still pending
+
+- Per-M-code time lookup from TIME V11 "Settings" named ranges (current CPH rates are good defaults but could be refined)
+- PDF page overflow protection on per-tier detail pages (works for typical BOMs, could overflow on extreme cases)
+- GST/QST tax numbers not shown in PDF header (required for invoices, optional for quotes)
+
+*Entry 51 written: April 16, 2026, Session 13*
 - 12 distributors (DigiKey, Mouser, LCSC, Avnet, Arrow, TTI, Newark, Samtec, TI, TME, Future, e-Sonic) now have credentials stored AES-256-GCM encrypted in `supplier_credentials` table (migration 031). Master key in `SUPPLIER_CREDENTIALS_KEY` env var, never in DB or repo.
 - `lib/supplier-credentials.ts` exposes `getCredential`, `setCredential`, `deleteCredential`, `getPreferredCurrency`, `setPreferredCurrency`, `listCredentialStatus`, plus the `SUPPLIER_METADATA` registry (per-supplier field schemas, supported currencies, default currency, docs URL).
 - `/settings/api-config` page (CEO-only): compact row-based layout matching the reference screenshot Anas sent. One row per distributor → click to expand inline → credential fields with "leave blank to keep current" UX → Save / Test Connection.

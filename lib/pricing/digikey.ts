@@ -94,6 +94,7 @@ export interface DigiKeyPartResult {
   unit_price: number;
   currency: string;
   in_stock: boolean;
+  stock_qty: number;
   digikey_pn: string;
   // Component details extracted from Parameters
   mounting_type?: string;
@@ -213,6 +214,7 @@ export async function searchPartPrice(
     unit_price: product.UnitPrice,
     currency,
     in_stock: product.QuantityAvailable > 0,
+    stock_qty: product.QuantityAvailable ?? 0,
     digikey_pn: digikeyPn,
     mounting_type: mountingType,
     package_case: packageCase,

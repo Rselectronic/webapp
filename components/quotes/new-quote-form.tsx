@@ -42,12 +42,16 @@ interface PreviewResult {
 interface TierRow {
   qty: string;
   pcb_unit_price: string;
+  lead_time: string;
 }
 
-function defaultTierRow(qty = ""): TierRow {
+const DEFAULT_LEAD_TIMES = ["4-6 weeks", "4-6 weeks", "3-5 weeks", "3-4 weeks"];
+
+function defaultTierRow(qty = "", index = 0): TierRow {
   return {
     qty,
     pcb_unit_price: "",
+    lead_time: DEFAULT_LEAD_TIMES[index] ?? "4-6 weeks",
   };
 }
 
@@ -68,10 +72,10 @@ export function NewQuoteForm({
   const [boms, setBoms] = useState<Bom[]>([]);
   const [bomId, setBomId] = useState("");
   const [tierRows, setTierRows] = useState<TierRow[]>([
-    defaultTierRow("50"),
-    defaultTierRow("100"),
-    defaultTierRow("250"),
-    defaultTierRow("500"),
+    defaultTierRow("50", 0),
+    defaultTierRow("100", 1),
+    defaultTierRow("250", 2),
+    defaultTierRow("500", 3),
   ]);
   // NRE charges are quote-level (one-time), not per-tier. Same values
   // get broadcast to every tier when building the request body.
@@ -165,7 +169,7 @@ export function NewQuoteForm({
   };
 
   const addTierRow = () => {
-    setTierRows((prev) => [...prev, defaultTierRow()]);
+    setTierRows((prev) => [...prev, defaultTierRow("", prev.length)]);
     setPreview(null);
   };
 
@@ -240,6 +244,9 @@ export function NewQuoteForm({
           customer_id: customerId,
           tiers: parsedTiers,
           shipping_flat: parseFloat(shipping) || 0,
+          lead_times: Object.fromEntries(
+            tierRows.map((row, i) => [`tier_${i + 1}`, row.lead_time || ""])
+          ),
         }),
       });
 
@@ -331,6 +338,7 @@ export function NewQuoteForm({
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-12">Tier</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Board Qty</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">PCB Unit Price ($)</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Lead Time</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-12"></th>
                   </tr>
                 </thead>
@@ -358,6 +366,15 @@ export function NewQuoteForm({
                           value={row.pcb_unit_price}
                           onChange={(e) => updateTierField(i, "pcb_unit_price", e.target.value)}
                           placeholder="0.00"
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="text"
+                          value={row.lead_time}
+                          onChange={(e) => updateTierField(i, "lead_time", e.target.value)}
+                          placeholder="4-6 weeks"
                           className="h-8 text-sm"
                         />
                       </td>

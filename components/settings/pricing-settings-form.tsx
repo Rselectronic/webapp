@@ -71,10 +71,25 @@ export function PricingSettingsForm({ settings: initial }: Props) {
     { key: "pcb_markup_pct", label: "PCB markup", suffix: "%" },
   ];
 
+  const cphFields: FieldDef[] = [
+    { key: "cp_cph", label: "CP/CPEXP (standard SMT)", suffix: "CPH", step: "100" },
+    { key: "small_cph", label: "0402 (small passives)", suffix: "CPH", step: "100" },
+    { key: "ultra_small_cph", label: "0201 (ultra-tiny)", suffix: "CPH", step: "100" },
+    { key: "ip_cph", label: "IP (large ICs)", suffix: "CPH", step: "100" },
+    { key: "th_cph", label: "TH (through-hole)", suffix: "CPH", step: "10" },
+    { key: "mansmt_cph", label: "MANSMT (hand solder)", suffix: "CPH", step: "10" },
+  ];
+
+  const setupParamFields: FieldDef[] = [
+    { key: "cp_load_time_min", label: "CP feeder load time", suffix: "min/feeder", step: "0.5" },
+    { key: "ip_load_time_min", label: "IP feeder load time", suffix: "min/feeder", step: "0.5" },
+    { key: "printer_setup_min", label: "Printer setup per side", suffix: "min", step: "1" },
+  ];
+
   const placementFields: FieldDef[] = [
-    { key: "smt_cost_per_placement", label: "SMT cost / placement", suffix: "CAD", step: "0.001" },
-    { key: "th_cost_per_placement", label: "TH cost / placement", suffix: "CAD", step: "0.01" },
-    { key: "mansmt_cost_per_placement", label: "Manual SMT cost / placement", suffix: "CAD", step: "0.01" },
+    { key: "smt_cost_per_placement", label: "SMT cost / placement (legacy)", suffix: "CAD", step: "0.001" },
+    { key: "th_cost_per_placement", label: "TH cost / placement (legacy)", suffix: "CAD", step: "0.01" },
+    { key: "mansmt_cost_per_placement", label: "Manual SMT cost / placement (legacy)", suffix: "CAD", step: "0.01" },
   ];
 
   const labourFields: FieldDef[] = [
@@ -131,13 +146,90 @@ export function PricingSettingsForm({ settings: initial }: Props) {
         </CardContent>
       </Card>
 
-      {/* Placement Costs */}
+      {/* Assembly Time Model Toggle */}
       <Card>
         <CardHeader>
-          <CardTitle>Placement Costs</CardTitle>
+          <CardTitle>Assembly Cost Model</CardTitle>
           <CardDescription>
-            Cost per placement by component type. SMT includes CP, CPEXP, 0402, 0201, and IP.
-            TH is through-hole. Manual SMT is hand-soldered surface mount.
+            Choose between the new time-based model (matches DM/TIME V11) or the legacy
+            flat per-placement model. The time model computes assembly hours from CPH rates
+            and charges labour + machine time. Recommended: Time-Based.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Label className="w-56 shrink-0 text-sm">Active model</Label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => { setSettings((prev) => ({ ...prev, use_time_model: true })); setSaved(false); }}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  settings.use_time_model !== false
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                }`}
+              >
+                Time-Based (DM/TIME V11)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSettings((prev) => ({ ...prev, use_time_model: false })); setSaved(false); }}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  settings.use_time_model === false
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                }`}
+              >
+                Legacy Per-Placement
+              </button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* CPH Rates — Time-Based Model */}
+      {settings.use_time_model !== false && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Components Per Hour (CPH)</CardTitle>
+              <CardDescription>
+                Pick-and-place speed rates by M-code category. Assembly time = total placements / CPH.
+                From DM/TIME V11: CP/CPEXP at 4,500 CPH, 0402 at 3,500 CPH, IP at 2,000 CPH.
+                TH and MANSMT are manual insertion rates.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {renderFieldGroup(cphFields)}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Feeder Setup Parameters</CardTitle>
+              <CardDescription>
+                Time to load feeders and set up the solder paste printer. These contribute to
+                setup time per run (one-time, not per board). Printer setup is applied twice
+                (top + bottom sides).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {renderFieldGroup(setupParamFields)}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Legacy Placement Costs — shown when legacy model active, or collapsed as reference */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {settings.use_time_model !== false ? "Legacy Placement Costs (reference)" : "Placement Costs"}
+          </CardTitle>
+          <CardDescription>
+            {settings.use_time_model !== false
+              ? "These flat per-placement rates are NOT used when the time-based model is active. Kept for backward compatibility with old quotes."
+              : "Cost per placement by component type. SMT includes CP, CPEXP, 0402, 0201, and IP. TH is through-hole. Manual SMT is hand-soldered surface mount."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -151,7 +243,8 @@ export function PricingSettingsForm({ settings: initial }: Props) {
           <CardTitle>Labour Rates &amp; Time</CardTitle>
           <CardDescription>
             Hourly rates and default time estimates. From VBA TIME File V11:
-            labour defaults to $130/hr and SMT defaults to $165/hr.
+            labour defaults to $130/hr (applied to ALL assembly time) and SMT defaults to
+            $165/hr (machine rate, applied to SMT portion only).
             Setup and programming time are per-job charges.
           </CardDescription>
         </CardHeader>

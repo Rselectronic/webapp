@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Calendar,
+  Clock,
   Download,
   FileText,
   Hash,
@@ -96,6 +97,8 @@ export default async function QuoteDetailPage({
   const pricing = quote.pricing as unknown as QuotePricingJson | null;
   const tiers = pricing?.tiers ?? [];
   const warnings = pricing?.warnings ?? [];
+  const leadTimes = (quote.lead_times ?? {}) as Record<string, string>;
+  const hasLeadTimes = Object.values(leadTimes).some((v) => v && v.trim());
   let missingPriceComponents = pricing?.missing_price_components ?? [];
 
   // Fallback for old quotes: compute missing-price components live from BOM lines + pricing cache
@@ -323,6 +326,33 @@ export default async function QuoteDetailPage({
             </p>
           </CardContent>
         </Card>
+
+        {/* Lead Times */}
+        {hasLeadTimes && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm text-gray-500">
+                <Clock className="h-4 w-4" />
+                Lead Times
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1">
+                {qtyValues.map((qty, i) => {
+                  const key = `tier_${i + 1}`;
+                  const lt = leadTimes[key];
+                  if (!lt || !lt.trim()) return null;
+                  return (
+                    <div key={key} className="flex justify-between text-sm">
+                      <span className="text-gray-500">{qty} units</span>
+                      <span className="font-mono font-medium">{lt}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Pricing Table */}

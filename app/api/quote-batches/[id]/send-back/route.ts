@@ -200,6 +200,14 @@ export async function POST(
           ip_placement_sum: ipPlacementSum,
           mansmt_count: mansmtPlacements,
           th_placement_sum: thPlacements,
+          time_model_used: false,
+          assembly_time_hours: 0,
+          smt_time_hours: 0,
+          th_time_hours: 0,
+          mansmt_time_hours: 0,
+          setup_time_hours_computed: 0,
+          labour_cost: totalPlacementCost,
+          machine_cost: 0,
         },
       });
     }

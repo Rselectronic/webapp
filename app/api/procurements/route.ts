@@ -254,11 +254,36 @@ export async function POST(req: NextRequest) {
         cached.source === "digikey" ? "DigiKey" :
         cached.source === "mouser" ? "Mouser" :
         cached.source === "lcsc" ? "LCSC" :
+        cached.source === "procurement_history" ? "Historical" :
         cached.source;
       bestPriceMap.set(cached.mpn, {
         supplier: supplierName,
         unit_price: Number(cached.unit_price),
       });
+    }
+  }
+
+  // --- Historical Procurement Prices (fallback for MPNs not in cache) ---
+  // Check what was previously paid for MPNs that have no cached price
+  const uncachedMpns = uniqueMpns.filter((mpn) => !bestPriceMap.has(mpn));
+  if (uncachedMpns.length > 0) {
+    const { data: histRows } = await supabase
+      .from("procurement_lines")
+      .select("mpn, unit_price, supplier")
+      .in("mpn", uncachedMpns)
+      .not("unit_price", "is", null)
+      .gt("unit_price", 0)
+      .order("created_at", { ascending: false });
+
+    if (histRows) {
+      for (const row of histRows) {
+        if (!bestPriceMap.has(row.mpn) && row.unit_price != null) {
+          bestPriceMap.set(row.mpn, {
+            supplier: row.supplier ?? "Historical",
+            unit_price: Number(row.unit_price),
+          });
+        }
+      }
     }
   }
 

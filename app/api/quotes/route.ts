@@ -65,6 +65,10 @@ interface CreateQuoteBody {
   nre_charge?: number;
   shipping_flat: number;
   notes?: string;
+  /** Assembly type (TB, TS, etc.) for programming fee lookup */
+  assembly_type?: string;
+  /** Per-tier lead times, e.g. {"tier_1": "4-6 weeks", "tier_2": "3-4 weeks"} */
+  lead_times?: Record<string, string>;
 }
 
 export async function POST(req: NextRequest) {
@@ -126,7 +130,8 @@ export async function POST(req: NextRequest) {
       supabase,
       bom_id,
       resolvedTiers,
-      shipping_flat
+      shipping_flat,
+      body.assembly_type
     );
     pricing = result.pricing;
     settings = result.settings;
@@ -174,9 +179,12 @@ export async function POST(req: NextRequest) {
       assembly_cost: pricing.tiers[0]?.assembly_cost ?? 0,
       nre_charge: pricing.tiers[0]?.nre_charge ?? 0,
       labour_rate: settings.labour_rate_per_hour ?? null,
-      smt_rate: settings.smt_cost_per_placement ?? null,
+      smt_rate: (settings.use_time_model !== false)
+        ? (settings.smt_rate_per_hour ?? null)
+        : (settings.smt_cost_per_placement ?? null),
       validity_days: settings.quote_validity_days ?? 30,
       notes: notes ?? null,
+      lead_times: body.lead_times ?? {},
       created_by: user.id,
     })
     .select("id, quote_number")

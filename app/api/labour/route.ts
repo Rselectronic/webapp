@@ -28,6 +28,10 @@ const SMT_MCODES = new Set(["CP", "CPEXP", "0402", "0201", "IP"]);
 const TH_MCODES = new Set(["TH"]);
 const MANSMT_MCODES = new Set(["MANSMT"]);
 const CP_FEEDER_MCODES = new Set(["CP", "CPEXP", "0402", "0201"]);
+const CP_CPEXP_MCODES = new Set(["CP", "CPEXP"]);
+const SMALL_MCODES = new Set(["0402"]);
+const ULTRA_SMALL_MCODES = new Set(["0201"]);
+const IP_MCODES = new Set(["IP"]);
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -91,6 +95,10 @@ export async function POST(req: NextRequest) {
   let ipPlacementSum = 0;
   let thPlacementSum = 0;
   let mansmtCountSum = 0;
+  // Finer granularity for CPH time model
+  let cpCpexpPlacementSum = 0;
+  let smallPlacementSum = 0;
+  let ultraSmallPlacementSum = 0;
 
   for (const line of bomLines) {
     const qty = line.quantity ?? 0;
@@ -102,6 +110,9 @@ export async function POST(req: NextRequest) {
       if (CP_FEEDER_MCODES.has(mc)) {
         cpFeederCount++;
         cpPlacementSum += qty;
+        if (CP_CPEXP_MCODES.has(mc)) cpCpexpPlacementSum += qty;
+        else if (SMALL_MCODES.has(mc)) smallPlacementSum += qty;
+        else if (ULTRA_SMALL_MCODES.has(mc)) ultraSmallPlacementSum += qty;
       } else {
         // IP
         ipFeederCount++;
@@ -118,23 +129,42 @@ export async function POST(req: NextRequest) {
 
   // Use overrides or defaults
   const labourRate = body.labour_rate_per_hour ?? settings.labour_rate_per_hour ?? 130;
+  const smtRatePerHour = body.smt_rate_per_hour ?? settings.smt_rate_per_hour ?? 165;
   const smtCostPerPlacement = body.smt_cost_per_placement ?? settings.smt_cost_per_placement ?? 0.035;
   const thCostPerPlacement = body.th_cost_per_placement ?? settings.th_cost_per_placement ?? 0.75;
   const mansmtCostPerPlacement = body.mansmt_cost_per_placement ?? settings.mansmt_cost_per_placement ?? 1.25;
   const setupTimeHours = body.setup_time_hours ?? settings.setup_time_hours ?? 0;
   const programmingTimeHours = body.programming_time_hours ?? settings.programming_time_hours ?? 0;
+  const useTimeModel = settings.use_time_model !== false;
 
   const labourCost = calculateLabourCost({
     smtPlacements,
     thPlacements,
     mansmtPlacements,
     boardQty: board_qty,
-    smtCostPerPlacement: smtCostPerPlacement,
-    thCostPerPlacement: thCostPerPlacement,
-    mansmtCostPerPlacement: mansmtCostPerPlacement,
+    smtCostPerPlacement,
+    thCostPerPlacement,
+    mansmtCostPerPlacement,
     labourRatePerHour: labourRate,
+    smtRatePerHour,
     setupTimeHours,
     programmingTimeHours,
+    useTimeModel,
+    cpCph: settings.cp_cph,
+    smallCph: settings.small_cph,
+    ultraSmallCph: settings.ultra_small_cph,
+    ipCph: settings.ip_cph,
+    thCph: settings.th_cph,
+    mansmtCph: settings.mansmt_cph,
+    cpCpexpPlacements: cpCpexpPlacementSum,
+    smallPlacements: smallPlacementSum,
+    ultraSmallPlacements: ultraSmallPlacementSum,
+    ipPlacements: ipPlacementSum,
+    cpFeederCount,
+    ipFeederCount,
+    cpLoadTimeMin: settings.cp_load_time_min,
+    ipLoadTimeMin: settings.ip_load_time_min,
+    printerSetupMin: settings.printer_setup_min,
   });
 
   // NRE breakdown

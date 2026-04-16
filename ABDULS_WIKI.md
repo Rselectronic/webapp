@@ -4592,4 +4592,160 @@ Pricing table now shows an indented sub-row under Components: `↳ Overage extra
 
 BOM table columns (M-Code, CPC, Qty, MPN, Manufacturer) are clickable to sort asc/desc. BOM detail page allows creating multiple quotes from the same BOM — "New Quote" button shows alongside "View Quote".
 
+---
+
+## PART 28 — Quoting Engine Overhaul: Matching the Real DM/TIME V11 (April 16, 2026)
+
+This session was triggered by Anas sharing the full 14-page RS Quotation Process SOP. We audited every phase (A–K single BOM, L–O batch) against the web app and found 6 gaps where the app diverged from how RS actually quotes in Excel. All 6 were fixed.
+
+### 28.1 How Assembly Cost Actually Works (TIME V11)
+
+The biggest misconception in the original codebase: assembly cost is NOT "placements × flat rate." The real Excel TIME V11 file calculates **time**, then multiplies by hourly rates.
+
+**The real formula:**
+
+```
+For each M-code category, calculate placement TIME:
+  CP/CPEXP placements ÷ 4,500 CPH = hours
+  0402 placements     ÷ 3,500 CPH = hours
+  0201 placements     ÷ 2,500 CPH = hours
+  IP placements       ÷ 2,000 CPH = hours
+  TH placements       ÷   150 CPH = hours  (manual insertion)
+  MANSMT placements   ÷   100 CPH = hours  (hand soldering)
+
+Add feeder setup time:
+  (CP feeders × 2 min + IP feeders × 3 min + 2 printer setups × 15 min) ÷ 60
+
+Total assembly hours = placement time + setup time
+
+Labour cost  = total_hours × $130/hr  (applies to ALL assembly types)
+Machine cost = SMT_hours × $165/hr    (only for pick-and-place machine time)
+Assembly cost = Labour + Machine
+```
+
+**CPH** = Components Per Hour. Higher CPH = faster placement = lower cost. CP parts at 4,500 CPH are the fastest (standard high-speed pick-and-place). MANSMT at 100 CPH is the slowest (hand soldering). The numbers come from the "Settings" sheet in the TIME V11 workbook.
+
+**Why this matters:** The old flat model charged $0.035/placement for SMT. A 500-placement board cost $17.50 in assembly. With the time model, 500 CP placements on 100 boards = 100×500/4500 = 11.1 hours of SMT time. Labour = 11.1×$130 = $1,444. Machine = 11.1×$165 = $1,833. Assembly = $3,277. The old model was underquoting by ~200x.
+
+**Toggle:** Settings → Pricing → "Time-Based" vs "Legacy Per-Placement." All CPH rates and setup params are editable. Old quotes with legacy pricing display correctly.
+
+### 28.2 Programming Fees: The Tiered Lookup
+
+The DM Common File has a "Programming" sheet with a 28-row lookup table. Fee depends on how many BOM lines the board has, and whether it's single-sided (TS) or double-sided (TB).
+
+| BOM Lines | Single-Sided | Double-Sided (TB) |
+|-----------|-------------|-------------------|
+| 1-39      | $300        | $400              |
+| 40-49     | $350        | $450              |
+| 50-59     | $350        | $450              |
+| 60-69     | $475        | $575              |
+| 70-79     | $525        | $625              |
+| ...       | +$75/tier   | +$75/tier         |
+
+The `programming_fees` table was seeded in migration 036 but never connected. Now `lib/pricing/engine.ts` imports `calculateProgrammingCost()` and uses the real tiered lookup. The flat `programmingTimeHours × labourRate` is fallback only.
+
+**Double-counting guard:** The quote form auto-fills `nre_programming` from the BOM line count endpoint. If that's already set, the engine sets its own programming cost to $0 so the fee isn't counted twice.
+
+### 28.3 The Multi-Page Quote PDF
+
+**Before:** One page with a summary table. No customer addresses. No cost breakdown.
+
+**After (matches SOP Phase K):**
+
+**Page 1 — Summary:**
+- RS header (company name, address, phone, email, website)
+- BILL TO: customer company, contact name, billing address
+- SHIP TO: shipping address
+- QUOTE DETAILS: GMP number, board name, BOM file, validity period, payment terms
+- Summary table: all quantity tiers side by side (Components, PCB, Assembly, NRE, Shipping, Total, Per Unit)
+- Lead time row per tier
+- Notes section
+- Terms & conditions (7 standard items)
+
+**Pages 2–N — Per-Tier Detailed Breakdown (one page per quantity tier):**
+- Material Cost: component cost before markup → markup % → after markup → overage cost
+- PCB Cost: unit price × quantity → markup
+- Assembly Cost: SMT/TH/MANSMT placement counts and costs (or full time breakdown when time model active)
+- NRE Breakdown: programming, stencil, PCB fab, setup, misc — each as a line item
+- Shipping
+- Bold total box with per-unit price
+- Assembly statistics (feeder counts, placement totals)
+
+**Address handling:** The app has two address systems — old singular `billing_address` JSONB and new plural `billing_addresses` JSONB array (migration 018). The PDF reads the plural array first (`extractDefaultAddress()` finds the default or takes index 0), falls back to the singular column. Handles both `street` and `line1` field names.
+
+### 28.4 Lead Times
+
+Customers need to know delivery timelines per quantity tier. This didn't exist anywhere in the app.
+
+**Migration 037:** `quotes.lead_times JSONB DEFAULT '{}'` — stores `{"tier_1": "4-6 weeks", "tier_2": "3-5 weeks", ...}`
+
+- Quote form: text input per tier with defaults ("4-6 weeks" for small qty, "3-4 weeks" for large)
+- Quote detail page: Lead Times card with Clock icon
+- PDF: lead time row in summary table + per-tier detail page header
+
+### 28.5 Historical Procurement Lookup
+
+**SOP Phase G1** says: "Click 'Load Saved Procurement Data' — checks 4,500+ historical records." Before hitting DigiKey/Mouser APIs (rate-limited, slow), check what RS previously paid.
+
+**New file: `lib/pricing/historical.ts`**
+
+The pricing flow is now 4 steps:
+1. **API cache** (7-day TTL) — existing, unchanged
+2. **Historical procurement** — queries `procurement_lines` for the last 5 times this MPN was ordered. Returns price, supplier, date, age in days
+3. **Component supplier PNs** — checks `components` table for stored DigiKey/Mouser/LCSC part numbers. Uses these as search keys for APIs (better match than raw MPN keyword search)
+4. **Live API calls** — DigiKey + Mouser + LCSC in parallel
+
+If all 3 APIs fail but historical data exists, returns the historical price as fallback with `price_source: "historical"`. The response always includes historical reference data so the UI could show "DigiKey: $2.35 | Last ordered: $2.10 (3 months ago)."
+
+Bulk versions (`lookupHistoricalPricesBulk`, `lookupComponentSupplierPNsBulk`) run a single query for batch pricing efficiency.
+
+**Migration 038:** Adds `'procurement_history'` as a valid cache source + index on `procurement_lines(upper(mpn))`.
+
+### 28.6 Stock-Aware Supplier Selection
+
+**SOP Phase G2** says: DigiKey first → if zero stock, try Mouser → if both zero, keep DigiKey PN.
+
+**Before:** All 3 suppliers queried in parallel (good), cheapest price picked (bad — ignores stock). DigiKey didn't even return stock quantity.
+
+**After:**
+1. `lib/pricing/digikey.ts` now extracts `QuantityAvailable` from the DigiKey V4 response
+2. `selectBestSupplier()` separates suppliers into "has stock or unknown" vs "confirmed zero stock"
+3. Picks cheapest **with stock** first. Only falls back to zero-stock if everything is out of stock (flagged as `out_of_stock`)
+4. When no suppliers found at all, preserves the DigiKey part number in the response for manual lookup
+5. Old cache entries without `stock_qty` are treated as "unknown" (not penalized)
+
+Batch pricing now reports `in_stock_count`, `out_of_stock_count`, `historical_hits` so Piyush can see at a glance how many components need attention.
+
+### 28.7 Things Caught During Code Review
+
+After all 6 fixes were applied, we ran 3 parallel code review agents. They found 4 critical bugs:
+
+1. **`lead_times` never saved to DB** — form sent it, `quotes/route.ts` didn't include it in INSERT. Silent data loss.
+2. **PDF read old `billing_address`** instead of new `billing_addresses` array. Plus `street` vs `line1` field mismatch. Addresses would always render empty.
+3. **Case-sensitive bulk lookup** — `lookupHistoricalPricesBulk` used `.in("mpn", mpns)` which is case-sensitive. If DB has "LM358" and input has "lm358", no match. Fixed by querying both original and uppercased MPNs.
+4. **Non-null assertion `best!`** — could crash if `selectBestSupplier()` returned null. Added proper null guard.
+
+**Lesson:** Always run a review agent after multi-agent parallel work. The agents that implement don't catch each other's integration bugs.
+
+### 28.8 Settings Reference (New Fields)
+
+All configurable in `/settings/pricing` (CEO only):
+
+| Setting | Default | What It Controls |
+|---------|---------|-----------------|
+| `use_time_model` | `true` | Toggle between time-based and legacy assembly cost |
+| `cp_cph` | 4,500 | CP/CPEXP components per hour |
+| `small_cph` | 3,500 | 0402 components per hour |
+| `ultra_small_cph` | 2,500 | 0201 components per hour |
+| `ip_cph` | 2,000 | IP (large IC) components per hour |
+| `th_cph` | 150 | Through-hole components per hour |
+| `mansmt_cph` | 100 | Manual SMT components per hour |
+| `cp_load_time_min` | 2 | Minutes to load one CP/CPEXP feeder |
+| `ip_load_time_min` | 3 | Minutes to load one IP feeder |
+| `printer_setup_min` | 15 | Solder paste printer setup per side (minutes) |
+
+Existing settings unchanged: `labour_rate_per_hour` ($130), `smt_rate_per_hour` ($165), `component_markup_pct` (25%), `pcb_markup_pct` (30%).
+
+*Part 28 written: April 16, 2026, Session 13*
+
 *Part 27 last updated: April 16, 2026, Session 12*

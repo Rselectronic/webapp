@@ -27,6 +27,8 @@ interface PreviewBody {
   pcb_unit_price?: number;
   nre_charge?: number;
   shipping_flat: number;
+  /** Assembly type (TB, TS, etc.) for programming fee lookup */
+  assembly_type?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -251,6 +253,7 @@ export async function POST(req: NextRequest) {
     overages: overageTiers,
     settings,
     tier_inputs: resolvedTiers,
+    assembly_type: body.assembly_type,
   });
 
   return NextResponse.json({

@@ -22,7 +22,8 @@ export async function recomputeQuotePricing(
   supabase: SupabaseClient,
   bom_id: string,
   resolvedTiers: TierInput[],
-  shipping_flat: number
+  shipping_flat: number,
+  assembly_type?: string
 ): Promise<{
   pricing: QuotePricing;
   settings: PricingSettings;
@@ -109,6 +110,7 @@ export async function recomputeQuotePricing(
     overages: overageTiers,
     settings,
     tier_inputs: resolvedTiers,
+    assembly_type,
   });
 
   return { pricing, settings, pricingLines };

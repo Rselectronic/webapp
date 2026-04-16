@@ -1,17 +1,221 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { loadRsLogo } from "@/lib/pdf/helpers";
+import { PDFDocument, rgb } from "pdf-lib";
+import {
+  createPdfDoc,
+  drawHeader,
+  drawFooter,
+  sanitizeForPdf,
+  fmtDate,
+  A4_WIDTH,
+  A4_HEIGHT,
+  MARGIN,
+  CONTENT_WIDTH,
+  COLOR_DARK,
+  COLOR_TEXT,
+  COLOR_MUTED,
+  COLOR_WHITE,
+  COLOR_BG_STRIP,
+  COLOR_BORDER,
+  PdfFonts,
+} from "@/lib/pdf/helpers";
+import type { PDFImage, PDFPage, PDFFont } from "pdf-lib";
 import type { PricingTier } from "@/lib/pricing/types";
+
+/* ------------------------------------------------------------------ */
+/*  Formatting helpers                                                 */
+/* ------------------------------------------------------------------ */
 
 function fmt(n: number | null | undefined): string {
   return "$" + (n ?? 0).toFixed(2);
 }
 
-function fmtDate(iso?: string | null): string {
-  if (!iso) return new Date().toLocaleDateString("en-CA");
-  return new Date(iso).toLocaleDateString("en-CA");
+function fmtPct(n: number | null | undefined): string {
+  return (n ?? 0).toFixed(1) + "%";
 }
+
+function fmtInt(n: number | null | undefined): string {
+  return String(Math.round(n ?? 0));
+}
+
+/* ------------------------------------------------------------------ */
+/*  Address formatter                                                  */
+/* ------------------------------------------------------------------ */
+
+interface AddressJson {
+  line1?: string;
+  line2?: string;
+  street?: string;
+  city?: string;
+  province?: string;
+  state?: string;
+  postal_code?: string;
+  zip?: string;
+  country?: string;
+  is_default?: boolean;
+  label?: string;
+  [key: string]: unknown;
+}
+
+function extractDefaultAddress(addresses: unknown): AddressJson | null {
+  if (!addresses) return null;
+  if (Array.isArray(addresses)) {
+    const def = addresses.find((a: AddressJson) => a.is_default);
+    return def ?? addresses[0] ?? null;
+  }
+  if (typeof addresses === "object") return addresses as AddressJson;
+  return null;
+}
+
+function formatAddress(addr: AddressJson | null | undefined): string[] {
+  if (!addr || typeof addr !== "object") return [];
+  const lines: string[] = [];
+  const streetLine = addr.line1 || addr.street;
+  if (streetLine) lines.push(String(streetLine));
+  if (addr.line2) lines.push(String(addr.line2));
+  const cityParts: string[] = [];
+  if (addr.city) cityParts.push(String(addr.city));
+  if (addr.province || addr.state)
+    cityParts.push(String(addr.province ?? addr.state));
+  if (addr.postal_code || addr.zip)
+    cityParts.push(String(addr.postal_code ?? addr.zip));
+  if (cityParts.length > 0) lines.push(cityParts.join(", "));
+  if (addr.country) lines.push(String(addr.country));
+  return lines;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared page-level drawing helpers                                  */
+/* ------------------------------------------------------------------ */
+
+const RIGHT_EDGE = A4_WIDTH - MARGIN;
+const FOOTER_SAFE_Y = 50; // don't draw below this
+
+function drawSectionTitle(
+  page: PDFPage,
+  fonts: PdfFonts,
+  y: number,
+  title: string
+): number {
+  page.drawText(title, {
+    x: MARGIN,
+    y,
+    size: 10,
+    font: fonts.bold,
+    color: COLOR_DARK,
+  });
+  y -= 4;
+  page.drawLine({
+    start: { x: MARGIN, y },
+    end: { x: RIGHT_EDGE, y },
+    thickness: 0.5,
+    color: COLOR_BORDER,
+  });
+  return y - 14;
+}
+
+/** Draw a key-value row.  Returns new y. */
+function drawKVRow(
+  page: PDFPage,
+  fonts: PdfFonts,
+  y: number,
+  label: string,
+  value: string,
+  options?: { bold?: boolean; indent?: number; labelWidth?: number }
+): number {
+  const indent = options?.indent ?? 0;
+  const lw = options?.labelWidth ?? 220;
+  const font = options?.bold ? fonts.bold : fonts.regular;
+  const color = options?.bold ? COLOR_DARK : COLOR_TEXT;
+  page.drawText(sanitizeForPdf(label), {
+    x: MARGIN + indent,
+    y,
+    size: 8.5,
+    font: fonts.regular,
+    color: COLOR_MUTED,
+  });
+  const vText = sanitizeForPdf(value);
+  const vw = font.widthOfTextAtSize(vText, 8.5);
+  page.drawText(vText, {
+    x: MARGIN + lw - vw + indent,
+    y,
+    size: 8.5,
+    font,
+    color,
+  });
+  return y - 13;
+}
+
+/** Draw a full-width table row with alternating background. */
+function drawTableRow(
+  page: PDFPage,
+  fonts: PdfFonts,
+  y: number,
+  label: string,
+  values: string[],
+  tierCount: number,
+  options?: { bold?: boolean; rowIndex?: number }
+): number {
+  const rowH = 18;
+  const labelColW = 150;
+  const tierColW = (CONTENT_WIDTH - labelColW) / tierCount;
+  const rowFont = options?.bold ? fonts.bold : fonts.regular;
+  const rowColor = options?.bold ? COLOR_DARK : COLOR_TEXT;
+
+  // Alternating or bold background
+  if (options?.bold) {
+    page.drawRectangle({
+      x: MARGIN,
+      y: y - rowH,
+      width: CONTENT_WIDTH,
+      height: rowH,
+      color: rgb(0.94, 0.96, 0.98),
+    });
+  } else if ((options?.rowIndex ?? 0) % 2 === 1) {
+    page.drawRectangle({
+      x: MARGIN,
+      y: y - rowH,
+      width: CONTENT_WIDTH,
+      height: rowH,
+      color: COLOR_BG_STRIP,
+    });
+  }
+
+  // Separator
+  page.drawLine({
+    start: { x: MARGIN, y: y - rowH },
+    end: { x: RIGHT_EDGE, y: y - rowH },
+    thickness: 0.5,
+    color: COLOR_BORDER,
+  });
+
+  // Label
+  page.drawText(sanitizeForPdf(label), {
+    x: MARGIN + 4,
+    y: y - 13,
+    size: 8.5,
+    font: rowFont,
+    color: rowColor,
+  });
+
+  // Values
+  for (let i = 0; i < values.length; i++) {
+    const val = sanitizeForPdf(values[i]);
+    const vw = rowFont.widthOfTextAtSize(val, 8.5);
+    page.drawText(val, {
+      x: MARGIN + labelColW + (i + 1) * tierColW - vw - 4,
+      y: y - 13,
+      size: 8.5,
+      font: rowFont,
+      color: rowColor,
+    });
+  }
+  return y - rowH;
+}
+
+/* ------------------------------------------------------------------ */
+/*  ROUTE HANDLER                                                      */
+/* ------------------------------------------------------------------ */
 
 export async function GET(
   _req: NextRequest,
@@ -23,7 +227,7 @@ export async function GET(
   const { data: quote, error } = await supabase
     .from("quotes")
     .select(
-      "*, customers(code, company_name, contact_name), gmps(gmp_number, board_name), boms(file_name, revision)"
+      "*, customers(code, company_name, contact_name, contact_email, billing_address, shipping_address, billing_addresses, shipping_addresses, payment_terms), gmps(gmp_number, board_name), boms(file_name, revision)"
     )
     .eq("id", id)
     .single();
@@ -36,6 +240,12 @@ export async function GET(
     code: string;
     company_name: string;
     contact_name: string | null;
+    contact_email: string | null;
+    billing_address: AddressJson | null;
+    shipping_address: AddressJson | null;
+    billing_addresses: unknown;
+    shipping_addresses: unknown;
+    payment_terms: string | null;
   } | null;
   const gmp = quote.gmps as unknown as {
     gmp_number: string;
@@ -46,10 +256,9 @@ export async function GET(
     revision: string;
   } | null;
   const rawPricing = quote.pricing as unknown as Record<string, unknown> | null;
+  const leadTimes = (quote.lead_times ?? {}) as Record<string, string>;
 
-  // Normalize pricing — supports two formats:
-  //   1. Standard: { tiers: PricingTier[], warnings: string[] }
-  //   2. Batch: { tier_1: {...}, tier_2: {...}, ... }
+  // ---- Normalize pricing tiers ----
   let tiers: PricingTier[] = [];
   let warnings: string[] = [];
 
@@ -78,221 +287,570 @@ export async function GET(
           overage_cost: 0,
           overage_qty: 0,
           labour: {
-            smt_placement_cost: 0, th_placement_cost: 0, mansmt_placement_cost: 0,
-            total_placement_cost: 0, setup_cost: 0, programming_cost: 0,
-            total_labour_cost: 0, nre_programming: 0, nre_stencil: 0,
-            nre_setup: 0, nre_pcb_fab: 0, nre_misc: 0, nre_total: t.nre ?? 0,
-            total_unique_lines: 0, total_smt_placements: 0, cp_feeder_count: 0,
-            ip_feeder_count: 0, cp_placement_sum: 0, ip_placement_sum: 0,
-            mansmt_count: 0, th_placement_sum: 0,
+            smt_placement_cost: 0,
+            th_placement_cost: 0,
+            mansmt_placement_cost: 0,
+            total_placement_cost: 0,
+            setup_cost: 0,
+            programming_cost: 0,
+            total_labour_cost: 0,
+            nre_programming: 0,
+            nre_stencil: 0,
+            nre_setup: 0,
+            nre_pcb_fab: 0,
+            nre_misc: 0,
+            nre_total: t.nre ?? 0,
+            total_unique_lines: 0,
+            total_smt_placements: 0,
+            cp_feeder_count: 0,
+            ip_feeder_count: 0,
+            cp_placement_sum: 0,
+            ip_placement_sum: 0,
+            mansmt_count: 0,
+            th_placement_sum: 0,
+            time_model_used: false,
+            assembly_time_hours: 0,
+            smt_time_hours: 0,
+            th_time_hours: 0,
+            mansmt_time_hours: 0,
+            setup_time_hours_computed: 0,
+            labour_cost: 0,
+            machine_cost: 0,
           },
         });
       }
     }
   }
 
-  // --- Build PDF with pdf-lib (pure JS, works on Vercel serverless) ---
-  const pdfDoc = await PDFDocument.create();
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const logoImg = await loadRsLogo(pdfDoc);
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4
-  const { width, height } = page.getSize();
+  // Total page count: 1 (summary) + 1 per tier
+  const totalPages = 1 + tiers.length;
 
-  const black = rgb(0.1, 0.1, 0.1);
-  const gray = rgb(0.4, 0.4, 0.4);
-  const lightGray = rgb(0.85, 0.85, 0.85);
-  const headerBg = rgb(0.06, 0.09, 0.16); // #0f172a
-  const white = rgb(1, 1, 1);
-  const blue = rgb(0.1, 0.3, 0.7);
+  // ---- Create PDF ----
+  const { doc: pdfDoc, fonts, logo } = await createPdfDoc();
 
-  let y = height - 40;
-  const leftMargin = 40;
-  const rightEdge = width - 40;
+  /* ================================================================ */
+  /*  PAGE 1 — SUMMARY                                                */
+  /* ================================================================ */
+  const page1 = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+  let y = drawHeader(
+    page1,
+    fonts,
+    "QUOTATION",
+    [quote.quote_number, fmtDate(quote.issued_at)],
+    logo
+  );
 
-  // --- Header: logo + company block on left, QUOTATION on right ---
-  let headerTextX = leftMargin;
-  if (logoImg) {
-    const logoH = 56;
-    const scale = logoH / logoImg.height;
-    const logoW = logoImg.width * scale;
-    page.drawImage(logoImg, { x: leftMargin, y: y - logoH + 12, width: logoW, height: logoH });
-    headerTextX = leftMargin + logoW + 8;
-  }
-  page.drawText("R.S. ÉLECTRONIQUE INC.", { x: headerTextX, y, font: helveticaBold, size: 14, color: black });
-  y -= 14;
-  page.drawText("5580 Vanden Abeele, Saint-Laurent, QC H4S 1P9", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
-  y -= 11;
-  page.drawText("+1 (438) 833-8477 · info@rspcbassembly.com", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
-  y -= 11;
-  page.drawText("www.rspcbassembly.com", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
-  y -= 11;
-  page.drawText("GST/TPS: 840134829 · QST/TVQ: 1214617001", { x: headerTextX, y, font: helvetica, size: 8, color: gray });
+  // ---- Bill To / Ship To / Quote Details ----
+  const colWidth = CONTENT_WIDTH / 3;
 
-  // Right side — QUOTATION title
-  page.drawText("QUOTATION", { x: rightEdge - helveticaBold.widthOfTextAtSize("QUOTATION", 18), y: height - 40, font: helveticaBold, size: 18, color: black });
-  page.drawText(quote.quote_number, { x: rightEdge - helvetica.widthOfTextAtSize(quote.quote_number, 10), y: height - 56, font: helvetica, size: 10, color: black });
-  const dateStr = fmtDate(quote.issued_at);
-  page.drawText(dateStr, { x: rightEdge - helvetica.widthOfTextAtSize(dateStr, 9), y: height - 69, font: helvetica, size: 9, color: gray });
-
-  // Separator line
-  y -= 8;
-  page.drawLine({ start: { x: leftMargin, y }, end: { x: rightEdge, y }, thickness: 2, color: black });
-  y -= 24;
-
-  // --- Bill To + Quote Details ---
-  page.drawText("BILL TO", { x: leftMargin, y, font: helveticaBold, size: 9, color: black });
-  page.drawText("QUOTE DETAILS", { x: 320, y, font: helveticaBold, size: 9, color: black });
-  y -= 16;
-
-  page.drawText(customer?.company_name ?? "Unknown", { x: leftMargin, y, font: helvetica, size: 9, color: black });
-  page.drawText(`GMP: ${gmp?.gmp_number ?? "—"}`, { x: 320, y, font: helvetica, size: 9, color: black });
-  y -= 14;
-
+  // BILL TO
+  page1.drawText("BILL TO", {
+    x: MARGIN,
+    y,
+    size: 9,
+    font: fonts.bold,
+    color: COLOR_DARK,
+  });
+  let billY = y - 14;
+  page1.drawText(sanitizeForPdf(customer?.company_name ?? "Unknown"), {
+    x: MARGIN,
+    y: billY,
+    size: 9,
+    font: fonts.regular,
+    color: COLOR_TEXT,
+  });
+  billY -= 12;
   if (customer?.contact_name) {
-    page.drawText(`Attn: ${customer.contact_name}`, { x: leftMargin, y, font: helvetica, size: 9, color: gray });
+    page1.drawText(sanitizeForPdf(`Attn: ${customer.contact_name}`), {
+      x: MARGIN,
+      y: billY,
+      size: 8,
+      font: fonts.regular,
+      color: COLOR_MUTED,
+    });
+    billY -= 11;
   }
-  if (gmp?.board_name) {
-    page.drawText(`Board: ${gmp.board_name}`, { x: 320, y, font: helvetica, size: 9, color: black });
+  if (customer?.contact_email) {
+    page1.drawText(sanitizeForPdf(customer.contact_email), {
+      x: MARGIN,
+      y: billY,
+      size: 8,
+      font: fonts.regular,
+      color: COLOR_MUTED,
+    });
+    billY -= 11;
   }
-  y -= 14;
-
-  const bomText = bom ? `${bom.file_name} Rev ${bom.revision}` : "—";
-  page.drawText(`BOM: ${bomText}`, { x: 320, y, font: helvetica, size: 9, color: black });
-  y -= 14;
-  page.drawText(`Validity: ${quote.validity_days ?? 30} days`, { x: 320, y, font: helvetica, size: 9, color: black });
-  if (quote.nre_charge && Number(quote.nre_charge) > 0) {
-    y -= 14;
-    page.drawText(`NRE: ${fmt(Number(quote.nre_charge))}`, { x: 320, y, font: helvetica, size: 9, color: black });
+  const billingAddr = extractDefaultAddress(customer?.billing_addresses) ?? customer?.billing_address ?? null;
+  const billingLines = formatAddress(billingAddr);
+  for (const line of billingLines) {
+    page1.drawText(sanitizeForPdf(line), {
+      x: MARGIN,
+      y: billY,
+      size: 8,
+      font: fonts.regular,
+      color: COLOR_MUTED,
+    });
+    billY -= 11;
   }
 
-  y -= 24;
+  // SHIP TO
+  const shipX = MARGIN + colWidth;
+  page1.drawText("SHIP TO", {
+    x: shipX,
+    y,
+    size: 9,
+    font: fonts.bold,
+    color: COLOR_DARK,
+  });
+  let shipY = y - 14;
+  const shippingAddr = extractDefaultAddress(customer?.shipping_addresses) ?? customer?.shipping_address ?? null;
+  const shippingLines = formatAddress(shippingAddr);
+  if (shippingLines.length > 0) {
+    page1.drawText(sanitizeForPdf(customer?.company_name ?? ""), {
+      x: shipX,
+      y: shipY,
+      size: 9,
+      font: fonts.regular,
+      color: COLOR_TEXT,
+    });
+    shipY -= 12;
+    for (const line of shippingLines) {
+      page1.drawText(sanitizeForPdf(line), {
+        x: shipX,
+        y: shipY,
+        size: 8,
+        font: fonts.regular,
+        color: COLOR_MUTED,
+      });
+      shipY -= 11;
+    }
+  } else {
+    page1.drawText("Same as billing", {
+      x: shipX,
+      y: shipY,
+      size: 8,
+      font: fonts.regular,
+      color: COLOR_MUTED,
+    });
+    shipY -= 12;
+  }
 
-  // --- Warnings ---
+  // QUOTE DETAILS
+  const detailX = MARGIN + 2 * colWidth;
+  page1.drawText("QUOTE DETAILS", {
+    x: detailX,
+    y,
+    size: 9,
+    font: fonts.bold,
+    color: COLOR_DARK,
+  });
+  let detY = y - 14;
+  const details: [string, string][] = [
+    ["GMP:", gmp?.gmp_number ?? "-"],
+    ["Board:", gmp?.board_name ?? "-"],
+    ["BOM:", bom ? `${bom.file_name} Rev ${bom.revision}` : "-"],
+    ["Validity:", `${quote.validity_days ?? 30} days`],
+    ["Terms:", customer?.payment_terms ?? "Net 30"],
+  ];
+  for (const [label, value] of details) {
+    page1.drawText(sanitizeForPdf(label), {
+      x: detailX,
+      y: detY,
+      size: 8,
+      font: fonts.bold,
+      color: COLOR_MUTED,
+    });
+    page1.drawText(sanitizeForPdf(value), {
+      x: detailX + 50,
+      y: detY,
+      size: 8,
+      font: fonts.regular,
+      color: COLOR_TEXT,
+    });
+    detY -= 12;
+  }
+
+  // Move y below all three columns
+  y = Math.min(billY, shipY, detY) - 12;
+
+  // ---- Warnings ----
   if (warnings.length > 0) {
-    page.drawRectangle({ x: leftMargin, y: y - 12 * warnings.length - 8, width: rightEdge - leftMargin, height: 12 * warnings.length + 16, color: rgb(1, 0.97, 0.76), borderColor: rgb(0.98, 0.8, 0.08), borderWidth: 1 });
+    const warnBg = rgb(1, 0.97, 0.76);
+    const warnBorder = rgb(0.98, 0.8, 0.08);
+    const warnText = rgb(0.52, 0.3, 0.03);
+    const warnH = 12 * warnings.length + 16;
+    page1.drawRectangle({
+      x: MARGIN,
+      y: y - warnH,
+      width: CONTENT_WIDTH,
+      height: warnH,
+      color: warnBg,
+      borderColor: warnBorder,
+      borderWidth: 1,
+    });
     for (const w of warnings) {
-      page.drawText(`• ${w}`, { x: leftMargin + 8, y: y - 4, font: helvetica, size: 8, color: rgb(0.52, 0.3, 0.03) });
+      page1.drawText(sanitizeForPdf(`* ${w}`), {
+        x: MARGIN + 8,
+        y: y - 4,
+        size: 8,
+        font: fonts.regular,
+        color: warnText,
+      });
       y -= 12;
     }
     y -= 16;
   }
 
-  // --- Pricing Table ---
+  // ---- Summary Pricing Table ----
   if (tiers.length > 0) {
     const labelColW = 150;
-    const tierColW = (rightEdge - leftMargin - labelColW) / tiers.length;
-    const rowH = 20;
+    const tierColW = (CONTENT_WIDTH - labelColW) / tiers.length;
+    const rowH = 18;
 
     // Table header
-    page.drawRectangle({ x: leftMargin, y: y - rowH, width: rightEdge - leftMargin, height: rowH, color: headerBg });
-
+    page1.drawRectangle({
+      x: MARGIN,
+      y: y - rowH,
+      width: CONTENT_WIDTH,
+      height: rowH,
+      color: COLOR_DARK,
+    });
     for (let i = 0; i < tiers.length; i++) {
       const tierLabel = `${tiers[i].board_qty} Units`;
-      const tx = leftMargin + labelColW + i * tierColW + tierColW / 2 - helveticaBold.widthOfTextAtSize(tierLabel, 8) / 2;
-      page.drawText(tierLabel, { x: tx, y: y - 14, font: helveticaBold, size: 8, color: white });
+      const tw = fonts.bold.widthOfTextAtSize(tierLabel, 8);
+      const tx = MARGIN + labelColW + i * tierColW + tierColW / 2 - tw / 2;
+      page1.drawText(tierLabel, {
+        x: tx,
+        y: y - 13,
+        size: 8,
+        font: fonts.bold,
+        color: COLOR_WHITE,
+      });
     }
     y -= rowH;
 
-    // Data rows
-    const rows: { label: string; values: string[]; bold?: boolean }[] = [
+    // Rows
+    const summaryRows: { label: string; values: string[]; bold?: boolean }[] = [
       { label: "Components", values: tiers.map((t) => fmt(t.component_cost)) },
       { label: "PCB", values: tiers.map((t) => fmt(t.pcb_cost)) },
       { label: "Assembly", values: tiers.map((t) => fmt(t.assembly_cost)) },
       { label: "NRE", values: tiers.map((t) => fmt(t.nre_charge)) },
       { label: "Shipping", values: tiers.map((t) => fmt(t.shipping)) },
-      { label: "Total", values: tiers.map((t) => fmt(t.subtotal)), bold: true },
-      { label: "Per Unit", values: tiers.map((t) => fmt(t.per_unit)), bold: true },
+      {
+        label: "Total",
+        values: tiers.map((t) => fmt(t.subtotal)),
+        bold: true,
+      },
+      {
+        label: "Per Unit",
+        values: tiers.map((t) => fmt(t.per_unit)),
+        bold: true,
+      },
     ];
 
-    for (let ri = 0; ri < rows.length; ri++) {
-      const row = rows[ri];
-      const rowFont = row.bold ? helveticaBold : helvetica;
-      const rowColor = row.bold ? black : gray;
+    for (let ri = 0; ri < summaryRows.length; ri++) {
+      y = drawTableRow(page1, fonts, y, summaryRows[ri].label, summaryRows[ri].values, tiers.length, {
+        bold: summaryRows[ri].bold,
+        rowIndex: ri,
+      });
+    }
 
-      // Alternating row background
-      if (ri % 2 === 1) {
-        page.drawRectangle({ x: leftMargin, y: y - rowH, width: rightEdge - leftMargin, height: rowH, color: rgb(0.97, 0.98, 0.99) });
-      }
-      if (row.bold) {
-        page.drawRectangle({ x: leftMargin, y: y - rowH, width: rightEdge - leftMargin, height: rowH, color: rgb(0.94, 0.96, 0.98) });
-      }
-
-      // Row separator
-      page.drawLine({ start: { x: leftMargin, y: y - rowH }, end: { x: rightEdge, y: y - rowH }, thickness: 0.5, color: lightGray });
-
-      // Label
-      page.drawText(row.label, { x: leftMargin + 4, y: y - 14, font: rowFont, size: 9, color: rowColor });
-
-      // Values
-      for (let i = 0; i < row.values.length; i++) {
-        const val = row.values[i];
-        const vx = leftMargin + labelColW + (i + 1) * tierColW - helvetica.widthOfTextAtSize(val, 9) - 4;
-        page.drawText(val, { x: vx, y: y - 14, font: rowFont, size: 9, color: rowColor });
-      }
-      y -= rowH;
+    // Lead time row (if any lead times set)
+    const hasLeadTimes = Object.values(leadTimes).some((v) => v && v.trim());
+    if (hasLeadTimes) {
+      y -= 4;
+      const ltValues = tiers.map((_, i) => {
+        const key = `tier_${i + 1}`;
+        return leadTimes[key] ?? "-";
+      });
+      y = drawTableRow(page1, fonts, y, "Lead Time", ltValues, tiers.length, {
+        bold: false,
+        rowIndex: 0,
+      });
     }
   }
 
   y -= 16;
 
-  // --- Notes ---
+  // ---- Notes ----
   if (quote.notes) {
-    page.drawText("NOTES", { x: leftMargin, y, font: helveticaBold, size: 9, color: black });
+    page1.drawText("NOTES", {
+      x: MARGIN,
+      y,
+      size: 9,
+      font: fonts.bold,
+      color: COLOR_DARK,
+    });
     y -= 14;
-    page.drawText(quote.notes, { x: leftMargin, y, font: helvetica, size: 9, color: gray });
-    y -= 20;
+    // Wrap notes text manually (simple word wrap)
+    const noteLines = wrapText(
+      sanitizeForPdf(quote.notes),
+      CONTENT_WIDTH,
+      fonts.regular,
+      8.5
+    );
+    for (const line of noteLines) {
+      if (y < FOOTER_SAFE_Y) break;
+      page1.drawText(line, {
+        x: MARGIN,
+        y,
+        size: 8.5,
+        font: fonts.regular,
+        color: COLOR_MUTED,
+      });
+      y -= 12;
+    }
+    y -= 8;
   }
 
-  // --- Terms & Conditions ---
-  page.drawLine({ start: { x: leftMargin, y }, end: { x: rightEdge, y }, thickness: 1, color: lightGray });
-  y -= 16;
-  page.drawText("TERMS & CONDITIONS", { x: leftMargin, y, font: helveticaBold, size: 9, color: black });
-  y -= 14;
+  // ---- Terms & Conditions ----
+  if (y > FOOTER_SAFE_Y + 100) {
+    page1.drawLine({
+      start: { x: MARGIN, y },
+      end: { x: RIGHT_EDGE, y },
+      thickness: 1,
+      color: COLOR_BORDER,
+    });
+    y -= 16;
+    page1.drawText("TERMS & CONDITIONS", {
+      x: MARGIN,
+      y,
+      size: 9,
+      font: fonts.bold,
+      color: COLOR_DARK,
+    });
+    y -= 14;
 
-  const terms = [
-    `1. This quotation is valid for ${quote.validity_days ?? 30} days from the date of issue.`,
-    "2. All prices are in CAD and exclude TPS/GST (5%) and TVQ/QST (9.975%).",
-    "3. Lead times are subject to component availability at the time of order confirmation.",
-    "4. Payment terms: Net 30 from date of invoice unless otherwise agreed.",
-    "5. NRE charges apply to first-time boards only and cover stencil, programming, and setup.",
-    "6. Customer-supplied components are subject to incoming inspection.",
-    "7. Quantities delivered may vary by +/-5% per IPC standards unless exact quantity is specified.",
-  ];
+    const terms = [
+      `1. This quotation is valid for ${quote.validity_days ?? 30} days from the date of issue.`,
+      "2. All prices are in CAD and exclude TPS/GST (5%) and TVQ/QST (9.975%).",
+      "3. Lead times are subject to component availability at the time of order confirmation.",
+      "4. Payment terms: Net 30 from date of invoice unless otherwise agreed.",
+      "5. NRE charges apply to first-time boards only and cover stencil, programming, and setup.",
+      "6. Customer-supplied components are subject to incoming inspection.",
+      "7. Quantities delivered may vary by +/-5% per IPC standards unless exact quantity is specified.",
+    ];
 
-  for (const term of terms) {
-    page.drawText(term, { x: leftMargin, y, font: helvetica, size: 7.5, color: gray });
-    y -= 11;
+    for (const term of terms) {
+      if (y < FOOTER_SAFE_Y) break;
+      page1.drawText(sanitizeForPdf(term), {
+        x: MARGIN,
+        y,
+        size: 7.5,
+        font: fonts.regular,
+        color: COLOR_MUTED,
+      });
+      y -= 11;
+    }
   }
 
-  // --- Footer ---
-  const footerY = 24;
-  page.drawLine({ start: { x: leftMargin, y: footerY + 8 }, end: { x: rightEdge, y: footerY + 8 }, thickness: 0.5, color: lightGray });
-  page.drawText("R.S. Électronique Inc.", { x: leftMargin, y: footerY, font: helvetica, size: 7, color: gray });
-  page.drawText(quote.quote_number, { x: width / 2 - helvetica.widthOfTextAtSize(quote.quote_number, 7) / 2, y: footerY, font: helvetica, size: 7, color: gray });
-  page.drawText("Page 1 of 1", { x: rightEdge - helvetica.widthOfTextAtSize("Page 1 of 1", 7), y: footerY, font: helvetica, size: 7, color: gray });
+  // Footer page 1
+  drawFooter(
+    page1,
+    fonts,
+    "R.S. Electronique Inc.",
+    quote.quote_number,
+    1,
+    totalPages
+  );
 
-  // --- Serialize ---
+  /* ================================================================ */
+  /*  PAGES 2-N — Per-Tier Detailed Breakdown                         */
+  /* ================================================================ */
+  for (let ti = 0; ti < tiers.length; ti++) {
+    const tier = tiers[ti];
+    const labour = tier.labour;
+    const pageNum = ti + 2;
+    const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+
+    let py = drawHeader(
+      page,
+      fonts,
+      "COST BREAKDOWN",
+      [
+        quote.quote_number,
+        `Tier ${ti + 1}: ${tier.board_qty} Units`,
+      ],
+      logo
+    );
+
+    // ---- Tier title ----
+    page.drawText(`Quantity: ${tier.board_qty} units`, {
+      x: MARGIN,
+      y: py,
+      size: 12,
+      font: fonts.bold,
+      color: COLOR_DARK,
+    });
+    // Lead time on same line, right-aligned
+    const ltKey = `tier_${ti + 1}`;
+    const ltVal = leadTimes[ltKey];
+    if (ltVal && ltVal.trim()) {
+      const ltText = `Lead Time: ${ltVal}`;
+      const ltW = fonts.regular.widthOfTextAtSize(ltText, 10);
+      page.drawText(sanitizeForPdf(ltText), {
+        x: RIGHT_EDGE - ltW,
+        y: py,
+        size: 10,
+        font: fonts.regular,
+        color: COLOR_MUTED,
+      });
+    }
+    py -= 22;
+
+    // ---- Material Cost ----
+    py = drawSectionTitle(page, fonts, py, "MATERIAL COST");
+    const componentCostBeforeMarkup =
+      tier.component_cost / (1 + (Number(quote.component_markup ?? 20) / 100));
+    const markupPct = Number(quote.component_markup ?? 20);
+
+    py = drawKVRow(page, fonts, py, "Total component cost (before markup)", fmt(componentCostBeforeMarkup));
+    py = drawKVRow(page, fonts, py, "Component markup", fmtPct(markupPct));
+    py = drawKVRow(page, fonts, py, "Total component cost (after markup)", fmt(tier.component_cost), { bold: true });
+    py = drawKVRow(page, fonts, py, "Overage cost (extra parts)", fmt(tier.overage_cost));
+    py = drawKVRow(page, fonts, py, "Overage quantity (extra parts)", fmtInt(tier.overage_qty));
+    py -= 8;
+
+    // ---- PCB Cost ----
+    py = drawSectionTitle(page, fonts, py, "PCB COST");
+    const pcbUnitPrice = quote.pcb_cost_per_unit != null ? Number(quote.pcb_cost_per_unit) : 0;
+    // Try to get per-tier PCB price from tier_inputs
+    const tierInputs = rawPricing?.tier_inputs as Array<{ pcb_unit_price?: number }> | undefined;
+    const tierPcbUnit = tierInputs?.[ti]?.pcb_unit_price ?? pcbUnitPrice;
+    const pcbMarkupPct = 30; // default PCB markup
+    const pcbBeforeMarkup = tier.pcb_cost / (1 + pcbMarkupPct / 100);
+
+    py = drawKVRow(page, fonts, py, "PCB unit price", fmt(tierPcbUnit));
+    py = drawKVRow(page, fonts, py, `PCB unit price x ${tier.board_qty} boards`, fmt(tierPcbUnit * tier.board_qty));
+    py = drawKVRow(page, fonts, py, "PCB markup", fmtPct(pcbMarkupPct));
+    py = drawKVRow(page, fonts, py, "Total PCB cost", fmt(tier.pcb_cost), { bold: true });
+    py -= 8;
+
+    // ---- Assembly Cost ----
+    py = drawSectionTitle(page, fonts, py, "ASSEMBLY COST");
+    py = drawKVRow(page, fonts, py, `SMT placements (${fmtInt(tier.smt_placements)} per board)`, fmt(labour.smt_placement_cost));
+    py = drawKVRow(page, fonts, py, `TH placements (${fmtInt(tier.th_placements)} per board)`, fmt(labour.th_placement_cost));
+    if (tier.mansmt_placements > 0) {
+      py = drawKVRow(page, fonts, py, `Manual SMT (${fmtInt(tier.mansmt_placements)} per board)`, fmt(labour.mansmt_placement_cost));
+    }
+    py = drawKVRow(page, fonts, py, "Total placement cost", fmt(labour.total_placement_cost));
+    if (labour.setup_cost > 0) {
+      py = drawKVRow(page, fonts, py, "Setup cost", fmt(labour.setup_cost));
+    }
+    if (labour.programming_cost > 0) {
+      py = drawKVRow(page, fonts, py, "Programming cost", fmt(labour.programming_cost));
+    }
+    py = drawKVRow(page, fonts, py, "Total assembly cost", fmt(tier.assembly_cost), { bold: true });
+    py -= 8;
+
+    // ---- NRE Breakdown ----
+    py = drawSectionTitle(page, fonts, py, "NRE (NON-RECURRING ENGINEERING)");
+    if (labour.nre_programming > 0) {
+      py = drawKVRow(page, fonts, py, "Programming fee", fmt(labour.nre_programming));
+    }
+    if (labour.nre_stencil > 0) {
+      py = drawKVRow(page, fonts, py, "Stencil cost", fmt(labour.nre_stencil));
+    }
+    if (labour.nre_pcb_fab > 0) {
+      py = drawKVRow(page, fonts, py, "PCB fab NRE", fmt(labour.nre_pcb_fab));
+    }
+    if (labour.nre_setup > 0) {
+      py = drawKVRow(page, fonts, py, "Setup cost", fmt(labour.nre_setup));
+    }
+    if (labour.nre_misc > 0) {
+      py = drawKVRow(page, fonts, py, "Miscellaneous", fmt(labour.nre_misc));
+    }
+    py = drawKVRow(page, fonts, py, "Total NRE", fmt(tier.nre_charge), { bold: true });
+    py -= 8;
+
+    // ---- Shipping ----
+    py = drawSectionTitle(page, fonts, py, "SHIPPING");
+    py = drawKVRow(page, fonts, py, "Shipping", fmt(tier.shipping));
+    py -= 8;
+
+    // ---- Tier Total ----
+    py -= 4;
+    page.drawRectangle({
+      x: MARGIN,
+      y: py - 36,
+      width: CONTENT_WIDTH,
+      height: 36,
+      color: rgb(0.94, 0.96, 0.98),
+      borderColor: COLOR_DARK,
+      borderWidth: 1,
+    });
+    page.drawText("TIER TOTAL", {
+      x: MARGIN + 8,
+      y: py - 14,
+      size: 10,
+      font: fonts.bold,
+      color: COLOR_DARK,
+    });
+    const totalText = fmt(tier.subtotal);
+    const totalW = fonts.bold.widthOfTextAtSize(totalText, 12);
+    page.drawText(totalText, {
+      x: RIGHT_EDGE - totalW - 8,
+      y: py - 14,
+      size: 12,
+      font: fonts.bold,
+      color: COLOR_DARK,
+    });
+
+    page.drawText("PER UNIT", {
+      x: MARGIN + 8,
+      y: py - 28,
+      size: 9,
+      font: fonts.regular,
+      color: COLOR_MUTED,
+    });
+    const puText = fmt(tier.per_unit);
+    const puW = fonts.bold.widthOfTextAtSize(puText, 10);
+    page.drawText(puText, {
+      x: RIGHT_EDGE - puW - 8,
+      y: py - 28,
+      size: 10,
+      font: fonts.bold,
+      color: COLOR_DARK,
+    });
+    py -= 52;
+
+    // ---- Assembly Stats (if available) ----
+    if (labour.total_unique_lines > 0) {
+      py = drawSectionTitle(page, fonts, py, "ASSEMBLY STATISTICS");
+      py = drawKVRow(page, fonts, py, "Unique component lines", fmtInt(labour.total_unique_lines));
+      py = drawKVRow(page, fonts, py, "Total SMT placements per board", fmtInt(labour.total_smt_placements));
+      py = drawKVRow(page, fonts, py, "CP feeders", fmtInt(labour.cp_feeder_count));
+      py = drawKVRow(page, fonts, py, "IP feeders", fmtInt(labour.ip_feeder_count));
+      py = drawKVRow(page, fonts, py, "Components with price", fmtInt(tier.components_with_price));
+      py = drawKVRow(page, fonts, py, "Components missing price", fmtInt(tier.components_missing_price));
+    }
+
+    // Footer
+    drawFooter(
+      page,
+      fonts,
+      "R.S. Electronique Inc.",
+      quote.quote_number,
+      pageNum,
+      totalPages
+    );
+  }
+
+  // ---- Serialize ----
   const pdfBytes = await pdfDoc.save();
 
   // Upload PDF to Supabase Storage
   const customerCode = customer?.code ?? "unknown";
   const gmpNumber = gmp?.gmp_number ?? "unknown";
   const storagePath = `${customerCode}/${gmpNumber}/${quote.quote_number}.pdf`;
-
   const pdfBuffer = Buffer.from(pdfBytes);
 
-  await supabase.storage
-    .from("quotes")
-    .upload(storagePath, pdfBuffer, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
+  await supabase.storage.from("quotes").upload(storagePath, pdfBuffer, {
+    contentType: "application/pdf",
+    upsert: true,
+  });
 
-  await supabase
-    .from("quotes")
-    .update({ pdf_path: storagePath })
-    .eq("id", id);
+  await supabase.from("quotes").update({ pdf_path: storagePath }).eq("id", id);
 
   return new NextResponse(pdfBuffer, {
     headers: {
@@ -300,4 +858,30 @@ export async function GET(
       "Content-Disposition": `inline; filename="${quote.quote_number}.pdf"`,
     },
   });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Text wrapping helper                                               */
+/* ------------------------------------------------------------------ */
+
+function wrapText(
+  text: string,
+  maxWidth: number,
+  font: PDFFont,
+  size: number
+): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(test, size) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
 }

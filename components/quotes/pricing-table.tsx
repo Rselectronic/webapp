@@ -9,16 +9,18 @@ interface PricingTableProps {
   showLabourDetail?: boolean;
 }
 
-const ROWS: { key: keyof PricingTier; label: string; highlight?: boolean; indent?: boolean; muted?: boolean }[] = [
-  { key: "component_cost", label: "Components (incl. overage)" },
-  { key: "overage_cost", label: "↳ Overage extras included above", indent: true, muted: true },
-  { key: "pcb_cost", label: "PCB" },
-  { key: "assembly_cost", label: "Assembly (Placements)" },
-  { key: "nre_charge", label: "NRE" },
-  { key: "shipping", label: "Shipping" },
-  { key: "subtotal", label: "Total", highlight: true },
-  { key: "per_unit", label: "Per Unit", highlight: true },
-];
+function getRows(timeModelUsed: boolean): { key: keyof PricingTier; label: string; highlight?: boolean; indent?: boolean; muted?: boolean }[] {
+  return [
+    { key: "component_cost", label: "Components (incl. overage)" },
+    { key: "overage_cost", label: "↳ Overage extras included above", indent: true, muted: true },
+    { key: "pcb_cost", label: "PCB" },
+    { key: "assembly_cost", label: timeModelUsed ? "Assembly (Time-Based)" : "Assembly (Placements)" },
+    { key: "nre_charge", label: "NRE" },
+    { key: "shipping", label: "Shipping" },
+    { key: "subtotal", label: "Total", highlight: true },
+    { key: "per_unit", label: "Per Unit", highlight: true },
+  ];
+}
 
 export function PricingTable({ tiers, warnings, missingPriceComponents, showLabourDetail = true }: PricingTableProps) {
   // Backward compatibility: old quotes may not have labour breakdown
@@ -83,7 +85,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
             </tr>
           </thead>
           <tbody>
-            {ROWS.map(({ key, label, highlight, indent, muted }) => {
+            {getRows(tiers[0]?.labour?.time_model_used ?? false).map(({ key, label, highlight, indent, muted }) => {
               const values = tiers.map((t) => (t[key] as number) ?? 0);
               if (muted && values.every((v) => v === 0)) return null;
               return (
@@ -166,6 +168,11 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
 
             {/* Labour cost breakdown table */}
             <div className="overflow-x-auto rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
+              {tiers[0].labour.time_model_used && (
+                <div className="border-b bg-blue-50 px-4 py-1.5 text-xs text-blue-700 dark:border-gray-800 dark:bg-blue-950/30 dark:text-blue-300">
+                  Time-Based Model (DM/TIME V11) — Assembly cost = (assembly hours x labour rate) + (SMT hours x machine rate)
+                </div>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-blue-50 dark:border-gray-800 dark:bg-blue-950/30">
@@ -183,6 +190,17 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                   </tr>
                 </thead>
                 <tbody>
+                  {tiers[0].labour.time_model_used && (
+                    <>
+                      <TimeRow label="SMT time" tiers={tiers} field="smt_time_hours" />
+                      <TimeRow label="TH time" tiers={tiers} field="th_time_hours" />
+                      <TimeRow label="MANSMT time" tiers={tiers} field="mansmt_time_hours" />
+                      <TimeRow label="Setup time (feeders + printer)" tiers={tiers} field="setup_time_hours_computed" />
+                      <TimeRow label="Total assembly time" tiers={tiers} field="assembly_time_hours" bold />
+                      <LabourRow label="Labour cost (all hours x rate)" tiers={tiers} field="labour_cost" />
+                      <LabourRow label="Machine cost (SMT hours x rate)" tiers={tiers} field="machine_cost" />
+                    </>
+                  )}
                   <LabourRow label={`SMT placements (${tiers[0].smt_placements}/brd)`} tiers={tiers} field="smt_placement_cost" />
                   <LabourRow label={`TH placements (${tiers[0].th_placements}/brd)`} tiers={tiers} field="th_placement_cost" />
                   <LabourRow label={`Manual SMT (${tiers[0].mansmt_placements}/brd)`} tiers={tiers} field="mansmt_placement_cost" />
@@ -201,7 +219,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                   <thead>
                     <tr className="border-b bg-purple-50 dark:border-gray-800 dark:bg-purple-950/30">
                       <th className="px-4 py-2 text-left text-xs font-medium text-purple-700 dark:text-purple-300">
-                        NRE Breakdown
+                        NRE Breakdown <span className="font-normal text-purple-500 dark:text-purple-400">(per quote, not per tier)</span>
                       </th>
                       <th className="px-4 py-2 text-right text-xs font-medium text-purple-700 dark:text-purple-300">
                         Amount
@@ -272,6 +290,36 @@ function LabourRow({
           {formatCurrency((t.labour?.[field] as number) ?? 0)}
         </td>
       ))}
+    </tr>
+  );
+}
+
+function TimeRow({
+  label,
+  tiers,
+  field,
+  bold,
+}: {
+  label: string;
+  tiers: PricingTier[];
+  field: keyof PricingTier["labour"];
+  bold?: boolean;
+}) {
+  return (
+    <tr className={bold ? "border-t bg-green-50/50 font-semibold dark:border-gray-800 dark:bg-green-950/20" : "border-t dark:border-gray-800"}>
+      <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{label}</td>
+      {tiers.map((t) => {
+        const hours = (t.labour?.[field] as number) ?? 0;
+        const mins = hours * 60;
+        return (
+          <td
+            key={t.board_qty}
+            className={`px-4 py-2 text-right font-mono ${bold ? "text-gray-900 dark:text-gray-100" : "text-gray-700 dark:text-gray-300"}`}
+          >
+            {hours < 1 ? `${mins.toFixed(1)} min` : `${hours.toFixed(2)} hr`}
+          </td>
+        );
+      })}
     </tr>
   );
 }

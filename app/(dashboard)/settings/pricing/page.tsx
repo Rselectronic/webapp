@@ -22,6 +22,17 @@ const DEFAULTS: PricingSettings = {
   nre_misc: 50,
   setup_time_hours: 1,
   programming_time_hours: 1,
+  // Time-based assembly model (CPH rates from DM/TIME V11)
+  cp_cph: 4500,
+  small_cph: 3500,
+  ultra_small_cph: 2500,
+  ip_cph: 2000,
+  th_cph: 150,
+  mansmt_cph: 100,
+  cp_load_time_min: 2,
+  ip_load_time_min: 3,
+  printer_setup_min: 15,
+  use_time_model: true,
 };
 
 export default async function PricingSettingsPage() {
