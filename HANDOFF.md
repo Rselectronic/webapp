@@ -1549,6 +1549,50 @@ TypeScript clean (`tsc --noEmit` exit 0).
 - **Settings → AI Usage page** — once `ai_call_log` has a few days of data.
 
 *Entry 48 last updated: April 15, 2026, Session 11 (real pricing extraction + markup correction)*
+
+---
+
+## Entry 49 — April 16, 2026 (Session 11 cont.) — PCB + CPC bug fix (for real this time)
+
+Two bugs from entry 44 that I thought I'd fixed but hadn't.
+
+### 1. Auto-PCB was a bug, not a feature request
+
+Entry 44 re-enabled Rule 8 (auto-PCB creation) because I misread Piyush's WhatsApp: *"PCB line should be created automatically if there is no PCB line in the BOM"*. I interpreted this as a request to synthesize PCB rows. It was actually **describing the bug behavior** — the parser was creating ghost PCB rows and Piyush was reporting it as wrong.
+
+Anas confirmed on April 16: auto-PCB is a bug. The GMP itself represents the board. No ghost rows.
+
+**Fix:** [lib/bom/parser.ts](lib/bom/parser.ts) Rule 8 block re-disabled — logs `AUTO-PCB-FAIL` and moves on. The one auto-generated row (`TL000-5001-000-T`, designator `PCB1`) was deleted from `bom_lines` via SQL.
+
+**Memory updated** to NEVER re-enable auto-PCB without explicit written confirmation. This has flip-flopped 3 times (Apr 14 disabled → Apr 15 enabled → Apr 16 disabled). No more.
+
+### 2. CPC=MPN dedup only affected new uploads
+
+Entry 44 fixed the parser so new BOMs wouldn't store CPC when it's identical to MPN. But **existing `bom_lines` rows** still had the old duplicated values from their original parse. The user re-opened the same BOM and still saw CPC = MPN in every row.
+
+**Fix:** `UPDATE bom_lines SET cpc = NULL WHERE TRIM(cpc) = TRIM(mpn) AND NOT is_pcb` — cleaned all existing rows. 0 remaining after fix.
+
+**Lesson:** parser fixes only affect future uploads. For data bugs, always run a SQL backfill on existing rows too.
+
+### 3. .gitignore for MCP config files
+
+Added `claude_desktop_config.json`, `mcp_config.json`, `.mcp.json` to `.gitignore` so filled configs with live `rs_live_*` API keys can't accidentally be committed.
+
+### Also in this session
+
+- Validated Anas's `rs_live_*` API key against the live MCP endpoint — handshake succeeds, all 20 tools visible, key `"test claude dev bot"` with CEO role.
+- Wrote filled `claude_desktop_config.json` to `~/` (outside repo) for Anas's bot integration.
+
+### Files touched
+
+- `lib/bom/parser.ts` — Rule 8 re-disabled
+- `.gitignore` — MCP config exclusions
+- `HANDOFF.md` — this entry
+- Live DB: 1 auto-PCB row deleted, CPC=MPN rows nulled
+
+Commit `956e280`, pushed to main.
+
+*Entry 49 last updated: April 16, 2026, Session 11*
 - 12 distributors (DigiKey, Mouser, LCSC, Avnet, Arrow, TTI, Newark, Samtec, TI, TME, Future, e-Sonic) now have credentials stored AES-256-GCM encrypted in `supplier_credentials` table (migration 031). Master key in `SUPPLIER_CREDENTIALS_KEY` env var, never in DB or repo.
 - `lib/supplier-credentials.ts` exposes `getCredential`, `setCredential`, `deleteCredential`, `getPreferredCurrency`, `setPreferredCurrency`, `listCredentialStatus`, plus the `SUPPLIER_METADATA` registry (per-supplier field schemas, supported currencies, default currency, docs URL).
 - `/settings/api-config` page (CEO-only): compact row-based layout matching the reference screenshot Anas sent. One row per distributor → click to expand inline → credential fields with "leave blank to keep current" UX → Save / Test Connection.
