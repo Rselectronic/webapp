@@ -4384,7 +4384,7 @@ From that moment on, every conversation he has with Claude Desktop has access to
 
 This uses `WebStandardStreamableHTTPServerTransport` (stateless — a new McpServer instance is built per request by `buildMcpServerForRole()` in [lib/mcp/server.ts](lib/mcp/server.ts)). 20 tools grouped by domain: overview, customers, boms, quotes, jobs, procurement, production, invoices, inventory, search. Role-gated via `allowedToolsForRole()` in [lib/mcp/auth.ts](lib/mcp/auth.ts).
 
-**Why this matters for BLANQ:** the MCP server is the product. Any EMS shop that installs RS's webapp gets an AI-pluggable business layer for free. No other ERP does this. When Abdul packages the webapp for BLANQ clients, `/api/mcp` is the thing that makes it instantly useful with whatever AI tool the client already has.
+**Why this matters strategically:** the MCP server is what makes RS AI-native instead of AI-bolted-on. Any AI tool Anas adopts — today's Claude Desktop, tomorrow's whatever — plugs into the same business context automatically. No re-integration. No duplicate schemas. RS's operational knowledge becomes a structural advantage that compounds every time a new AI capability ships.
 
 ### 25.3 What Got Deleted Today
 
@@ -4558,3 +4558,38 @@ Even after entry 48, the web app quote engine is NOT a drop-in replacement for D
 - **Stencil + PCB fab NRE defaults** — still per-BOM manual entries in DM, no workbook default.
 
 *Part 26 last updated: April 15, 2026, Session 11 (real pricing extraction + markup correction)*
+
+---
+
+## PART 27 — The CPC Saga, Column Mapper, and Overage Visibility (April 16, 2026)
+
+### 27.1 Why CPC Was Never Working
+
+The CPC column went through four rounds of "fixing" before landing correctly. Root cause: **all 11 customers had empty `bom_config: {}` in the live DB**. The seed migration never stuck. Parser was auto-detecting columns for every customer and never finding a CPC column because Lanka doesn't label theirs with a recognizable keyword.
+
+**The fix (3 things at once):**
+1. Seeded `bom_config` for all 11 customers — Lanka gets `columns_fixed` with CPC at position 2, others get `auto_detect` with `cpc_fallback: mpn`
+2. Reverted the CPC=MPN dedup — show whatever the file has, only null out empty/N/A
+3. Backfilled existing TLAN rows: `SET cpc = mpn WHERE cpc IS NULL`
+
+**Lesson:** when a BOM column shows wrong data, check `bom_config` FIRST. If it's `{}`, the parser is guessing.
+
+### 27.2 The Column Mapper
+
+When you drop a file on the upload page, the client now reads it with SheetJS and shows a preview: all detected headers + 5 sample rows + 6 dropdown selectors (Qty, Designator, CPC, MPN, Manufacturer, Description) auto-filled from keyword detection. Mapped columns highlighted blue. User can override any mapping before uploading. The confirmed mapping is sent to the server and takes priority over bom_config and auto-detect.
+
+Component: [components/bom/column-mapper.tsx](components/bom/column-mapper.tsx)
+
+### 27.3 Invoice Payment Terms
+
+`due_date` now reads `customers.payment_terms` ("Net 30", "Net 60", etc.) instead of hardcoded +30 days. Fixed in both the REST endpoint and the chat agent's `createInvoice` tool.
+
+### 27.4 Overage in Quote Pricing Table
+
+Pricing table now shows an indented sub-row under Components: `↳ Overage extras (340 parts) $850`. Shows how much of the component cost is overage attrition. Hidden when $0.
+
+### 27.5 Sortable BOM Table + Multiple Quotes per BOM
+
+BOM table columns (M-Code, CPC, Qty, MPN, Manufacturer) are clickable to sort asc/desc. BOM detail page allows creating multiple quotes from the same BOM — "New Quote" button shows alongside "View Quote".
+
+*Part 27 last updated: April 16, 2026, Session 12*

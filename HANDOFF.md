@@ -1593,6 +1593,75 @@ Added `claude_desktop_config.json`, `mcp_config.json`, `.mcp.json` to `.gitignor
 Commit `956e280`, pushed to main.
 
 *Entry 49 last updated: April 16, 2026, Session 11*
+
+---
+
+## Entry 50 — April 16, 2026 (Session 12) — CPC root cause, column mapper, overage display, sortable BOM, invoice terms, multi-quote
+
+Seven changes shipped across 5 commits (`08fc866`..`e8fac15`). All pushed to main.
+
+### 1. CPC root cause found and fixed (`41ed94e`)
+
+The CPC "bug" had THREE stacked causes:
+- **All 11 customers had empty `bom_config: {}`** — the configs from CLAUDE.md were never seeded into the live DB. Parser was auto-detecting columns for every customer and never finding a CPC column.
+- **The CPC=MPN dedup from entry 44 was wrong** — Lanka uses MPN as their CPC (column position 2 in their fixed-layout files). Nulling CPC when it matched MPN was removing real data. Reverted: parser now shows whatever the file has, only nulls empty/N/A.
+- **Existing rows needed backfill** — ran `UPDATE bom_lines SET cpc = mpn` for all TLAN BOMs.
+
+**Fix:** seeded `bom_config` for all 11 customers via SQL. Lanka gets `columns_fixed: ["qty", "designator", "cpc", "description", "mpn", "manufacturer"]`. Other 10 get `auto_detect` with `cpc_fallback: mpn`. New uploads will read CPC correctly.
+
+### 2. Invoice due_date respects payment terms (`08fc866`)
+
+Was hardcoded to `issued_date + 30 days` in both `app/api/invoices/route.ts` and the chat agent's `createInvoice` tool. Now reads `customers.payment_terms`, parses the number from "Net 30" / "Net 60" / etc., and adds that many days. Falls back to 30 if no terms set.
+
+### 3. Overage cost displayed in quote pricing table (`6161ec8`)
+
+The engine already charged for overage extras (attrition parts per M-code) in the component cost, but the pricing table didn't break it out. Now shows:
+```
+Components (incl. overage)       $12,500
+  ↳ Overage extras (340 parts)      $850
+```
+Added `overage_cost` + `overage_qty` to `PricingTier` type, tracked in `engine.ts`, displayed as an indented sub-row in `pricing-table.tsx`. Hidden when $0.
+
+### 4. Sortable BOM table columns (`507fb37`)
+
+Click column headers to sort asc/desc: M-Code, CPC, Qty, MPN, Manufacturer. Active sort shows arrow indicator. PCB rows always pin to top. Works alongside search + M-code filter + unclassified toggle.
+
+### 5. BOM column mapper on upload (`e8fac15`)
+
+When a file is dropped on the upload page:
+- Client reads it with SheetJS and shows a preview (headers + 5 sample rows)
+- 6 dropdown selectors (Qty*, Designator*, CPC, Description, MPN*, Manufacturer) auto-filled from keyword detection
+- User can override any mapping before uploading
+- Mapped columns highlighted blue in the preview table
+- Server accepts the user's mapping as highest priority (before bom_config, auto-detect, AI fallback)
+
+New component: [components/bom/column-mapper.tsx](components/bom/column-mapper.tsx)
+
+### 6. Multiple quotes from same BOM (`e8fac15`)
+
+BOM detail page no longer hides "Create Quote" when a quote already exists. Shows "New Quote" button alongside "View Quote" so you can create fresh quotes when the customer changes quantities.
+
+### 7. Programming fees + correct markups (`dddd269`)
+
+From late Session 11 (April 15): extracted the real DM Common File V11 and TIME V11 workbooks from Anas's disk, found markups are 25% (not 30% from stale VBA comments). Created `programming_fees` table with the 28-row BOM-line-count lookup. See entries 46-48 for full details.
+
+### Files touched in entry 50
+
+- `lib/bom/parser.ts` — reverted CPC=MPN dedup, kept empty/N/A normalization
+- `app/api/invoices/route.ts` — due_date from customer payment_terms
+- `app/api/chat/route.ts` — same fix for createInvoice tool
+- `lib/pricing/types.ts` — added overage_cost, overage_qty to PricingTier
+- `lib/pricing/engine.ts` — track overage cost per line
+- `components/quotes/pricing-table.tsx` — overage sub-row display
+- `app/api/quotes/[id]/pdf/route.ts` — backwards compat for old quotes
+- `components/bom/bom-table.tsx` — sortable column headers
+- `components/bom/column-mapper.tsx` — new mapper UI component
+- `components/bom/upload-form.tsx` — client-side file preview + mapper integration
+- `app/api/bom/parse/route.ts` — accept user-provided column_mapping
+- `app/(dashboard)/bom/[id]/page.tsx` — allow multiple quotes per BOM
+- Live DB: customer bom_configs seeded, CPC values restored for TLAN BOMs
+
+*Entry 50 last updated: April 16, 2026, Session 12*
 - 12 distributors (DigiKey, Mouser, LCSC, Avnet, Arrow, TTI, Newark, Samtec, TI, TME, Future, e-Sonic) now have credentials stored AES-256-GCM encrypted in `supplier_credentials` table (migration 031). Master key in `SUPPLIER_CREDENTIALS_KEY` env var, never in DB or repo.
 - `lib/supplier-credentials.ts` exposes `getCredential`, `setCredential`, `deleteCredential`, `getPreferredCurrency`, `setPreferredCurrency`, `listCredentialStatus`, plus the `SUPPLIER_METADATA` registry (per-supplier field schemas, supported currencies, default currency, docs URL).
 - `/settings/api-config` page (CEO-only): compact row-based layout matching the reference screenshot Anas sent. One row per distributor → click to expand inline → credential fields with "leave blank to keep current" UX → Save / Test Connection.
