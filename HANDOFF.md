@@ -1814,6 +1814,40 @@ Card showed $800 (prog + stencil) but NRE is $950 (+ setup $100 + misc $50). Now
 
 *Entry 52 written: April 16, 2026, Session 13b*
 
+## Entry 53 — Delete UX Overhaul + Cancel Invoice (April 16, 2026, Session 13c)
+
+Three commits addressing delete workflow across the entire app.
+
+### 1. Clickable links to blocking records in delete dialogs
+
+When you try to delete something that has dependencies (e.g., a BOM with quotes), the error dialog now shows clickable links to each blocking record instead of just a count.
+
+| Entity | Blocking records shown as links |
+|--------|-------------------------------|
+| BOM | Quotes (→ /quotes/{id}), Jobs (→ /jobs/{id}) |
+| Quote | Jobs (→ /jobs/{id}) |
+| Job | Invoices (→ /invoices/{id}), Procurements (→ /procurement/{id}) |
+| Customer | Quotes, Jobs, BOMs — all linked |
+| Procurement | Supplier POs (→ /procurement/{id}) |
+
+APIs return up to 5 blocking record identifiers in 409 responses.
+
+Files changed: 5 API routes (`bom/[id]`, `quotes/[id]`, `jobs/[id]`, `customers/[id]`, `procurements/[id]`) + 5 delete button components.
+
+### 2. Missing procurement delete button
+
+`DeleteProcurementButton` component existed but was never imported on the procurement detail page. Now shows next to Order All / Create PO / Generate Reception File buttons.
+
+File: `app/(dashboard)/procurement/[id]/page.tsx`
+
+### 3. Cancel Invoice button
+
+Delete handler blocks paid invoices with "Cancel it first" — but there was no cancel button. Added a red "Cancel Invoice" button to `InvoiceActions`. Shows on all non-cancelled invoices. For paid invoices, confirms with a warning that cancelling won't reverse recorded payments. Once cancelled, the invoice becomes deletable.
+
+File: `components/invoices/invoice-actions.tsx`
+
+*Entry 53 written: April 16, 2026, Session 13c*
+
 - 12 distributors (DigiKey, Mouser, LCSC, Avnet, Arrow, TTI, Newark, Samtec, TI, TME, Future, e-Sonic) now have credentials stored AES-256-GCM encrypted in `supplier_credentials` table (migration 031). Master key in `SUPPLIER_CREDENTIALS_KEY` env var, never in DB or repo.
 - `lib/supplier-credentials.ts` exposes `getCredential`, `setCredential`, `deleteCredential`, `getPreferredCurrency`, `setPreferredCurrency`, `listCredentialStatus`, plus the `SUPPLIER_METADATA` registry (per-supplier field schemas, supported currencies, default currency, docs URL).
 - `/settings/api-config` page (CEO-only): compact row-based layout matching the reference screenshot Anas sent. One row per distributor → click to expand inline → credential fields with "leave blank to keep current" UX → Save / Test Connection.

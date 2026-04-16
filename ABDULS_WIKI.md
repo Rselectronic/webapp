@@ -4809,4 +4809,66 @@ Upload CSV → Parse (auto-detect columns) → Classify (rules engine) → Manua
 
 *Part 29 written: April 16, 2026, Session 13b*
 
+---
+
+## PART 30: DELETE UX — BLOCKING LINKS + CANCEL INVOICE (Session 13c)
+
+### The problem
+
+When you try to delete something in the app (a BOM, a quote, a job, a customer, a procurement), and it has dependent records, you get an error like: *"Cannot delete — 2 quote(s) reference this BOM. Delete the quotes first."* But that's it — no link to those quotes, no way to navigate there. You have to manually go find them.
+
+Separately: paid invoices say *"Cannot delete a paid invoice. Cancel it first if needed"* — but there was no cancel button.
+
+### What was fixed
+
+**1. Delete dialogs now show clickable links to blocking records**
+
+Every entity's delete button component was updated. When a 409 comes back from the API, the dialog parses a `blocking` field containing the actual record IDs and identifiers (up to 5), and renders them as blue clickable links.
+
+Example: trying to delete BOM CVN-CTL-001 that has 2 quotes:
+- Before: "Cannot delete — 2 quote(s) reference this BOM. Delete the quotes first."
+- After: "This BOM is referenced by:" → QT-2604-007 (clickable link) → QT-2604-008 (clickable link) → "Delete these first, then try again."
+
+The API routes were also updated to return record identifiers instead of just counts.
+
+**Entities covered:**
+| Delete target | Shows links to |
+|--------------|---------------|
+| BOM | Blocking quotes + jobs |
+| Quote | Blocking jobs |
+| Job | Blocking invoices + procurements |
+| Customer | Blocking quotes + jobs + BOMs |
+| Procurement | Blocking supplier POs |
+
+**2. Procurement delete button was missing from the page**
+
+The `DeleteProcurementButton` component existed in `components/procurement/` but nobody imported it on `app/(dashboard)/procurement/[id]/page.tsx`. Added it next to the other action buttons.
+
+**3. Cancel Invoice button added**
+
+Added a red "Cancel Invoice" button to the `InvoiceActions` component. It:
+- Shows on every invoice that isn't already cancelled
+- For paid invoices: confirms with *"This invoice is marked as paid. Cancelling it will NOT reverse any recorded payment. Continue?"*
+- Sends `PATCH /api/invoices/{id}` with `{ status: "cancelled" }`
+- Once cancelled, the Delete Invoice button works (the delete handler only blocks `status === "paid"`)
+
+### How to delete a paid invoice
+
+1. Open the invoice detail page
+2. Click **Cancel Invoice** (red outline button) → confirm the warning
+3. Invoice status changes to "Cancelled"
+4. Click **Delete Invoice** (red solid button) → confirm → deleted
+
+### Files changed
+
+API routes (5): `app/api/bom/[id]/route.ts`, `app/api/quotes/[id]/route.ts`, `app/api/jobs/[id]/route.ts`, `app/api/customers/[id]/route.ts`, `app/api/procurements/[id]/route.ts`
+
+Delete buttons (5): `components/bom/delete-bom-button.tsx`, `components/quotes/delete-quote-button.tsx`, `components/jobs/delete-job-button.tsx`, `components/customers/delete-customer-button.tsx`, `components/procurement/delete-procurement-button.tsx`
+
+Pages (1): `app/(dashboard)/procurement/[id]/page.tsx` — added delete button import
+
+Invoice actions (1): `components/invoices/invoice-actions.tsx` — added cancel button
+
+*Part 30 written: April 16, 2026, Session 13c*
+
 *Part 27 last updated: April 16, 2026, Session 12*
