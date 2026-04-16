@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/auth/api-auth";
 
 // ---------------------------------------------------------------------------
 // GET /api/invoices — List invoices with optional filters
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, supabase } = await getAuthUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -141,6 +138,18 @@ export async function POST(req: NextRequest) {
   }
   const customerId = body.customer_id ?? customerIds[0];
 
+  // Fetch customer's payment terms for due_date calculation
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("payment_terms")
+    .eq("id", customerId)
+    .single();
+
+  // Parse "Net 30", "Net 60", "Net 45", "Net 15", etc. → number of days
+  const paymentTerms = customer?.payment_terms ?? "Net 30";
+  const netDaysMatch = paymentTerms.match(/\d+/);
+  const netDays = netDaysMatch ? parseInt(netDaysMatch[0], 10) : 30;
+
   // Verify all jobs have quote pricing
   const jobsWithoutPricing = typedJobs.filter(
     (j) => !j.quotes?.pricing?.tiers?.length
@@ -188,7 +197,7 @@ export async function POST(req: NextRequest) {
 
   const issuedDate = now.toISOString().split("T")[0];
   const dueDateObj = new Date(now);
-  dueDateObj.setDate(dueDateObj.getDate() + 30);
+  dueDateObj.setDate(dueDateObj.getDate() + netDays);
   const dueDate = dueDateObj.toISOString().split("T")[0];
 
   // Use the first job as the primary job_id (DB column is NOT NULL)

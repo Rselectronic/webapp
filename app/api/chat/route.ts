@@ -976,6 +976,9 @@ export async function POST(req: Request) {
           if (!jobs || jobs.length === 0) return { error: "No jobs found" };
           const customerIds = [...new Set(jobs.map((j: any) => j.customer_id))];
           if (customerIds.length > 1) return { error: "All jobs must be from the same customer" };
+          const { data: custRow } = await supabase.from("customers").select("payment_terms").eq("id", customerIds[0]).single();
+          const netMatch = (custRow?.payment_terms ?? "Net 30").match(/\d+/);
+          const netDays = netMatch ? parseInt(netMatch[0], 10) : 30;
           let subtotal = 0;
           for (const job of jobs) {
             const pricing = (job.quotes as any)?.pricing;
@@ -995,7 +998,7 @@ export async function POST(req: Request) {
             invoice_number: invoiceNumber, job_id: jobs[0].id, customer_id: customerIds[0],
             subtotal, discount: discount ?? 0, tps_gst: gst, tvq_qst: qst, freight: freight ?? 0,
             total, status: "draft", issued_date: now.toISOString().split("T")[0],
-            due_date: new Date(now.getTime() + 30 * 86400000).toISOString().split("T")[0], notes,
+            due_date: new Date(now.getTime() + netDays * 86400000).toISOString().split("T")[0], notes,
           }).select("id, invoice_number").single();
           if (error) return { error: error.message };
           return { success: true, invoice_number: inv!.invoice_number, total: `$${total.toFixed(2)}`, link: `/invoices/${inv!.id}` };
