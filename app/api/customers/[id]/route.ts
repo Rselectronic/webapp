@@ -1,5 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/auth/api-auth";
+
+// ---------------------------------------------------------------------------
+// GET /api/customers/[id] — Fetch full customer detail
+// ---------------------------------------------------------------------------
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const { user, supabase } = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data, error } = await supabase
+    .from("customers")
+    .select(
+      `id, code, company_name, contact_name, contact_email, contact_phone,
+       contacts, billing_addresses, shipping_addresses,
+       payment_terms, bom_config, notes, is_active, created_at, updated_at`
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+  }
+  return NextResponse.json(data);
+}
 
 // ---------------------------------------------------------------------------
 // DELETE /api/customers/[id] — Deactivate (soft delete) or hard-delete a customer
@@ -49,29 +82,42 @@ export async function DELETE(
   const [quotesRes, jobsRes, bomsRes] = await Promise.all([
     admin
       .from("quotes")
-      .select("id", { count: "exact", head: true })
-      .eq("customer_id", id),
+      .select("id, quote_number")
+      .eq("customer_id", id)
+      .limit(5),
     admin
       .from("jobs")
-      .select("id", { count: "exact", head: true })
-      .eq("customer_id", id),
+      .select("id, job_number")
+      .eq("customer_id", id)
+      .limit(5),
     admin
       .from("boms")
-      .select("id", { count: "exact", head: true })
-      .eq("customer_id", id),
+      .select("id, file_name")
+      .eq("customer_id", id)
+      .limit(5),
   ]);
 
-  const quoteCount = quotesRes.count ?? 0;
-  const jobCount = jobsRes.count ?? 0;
-  const bomCount = bomsRes.count ?? 0;
-  const hasReferences = quoteCount > 0 || jobCount > 0 || bomCount > 0;
+  const blockingQuotes = quotesRes.data ?? [];
+  const blockingJobs = jobsRes.data ?? [];
+  const blockingBoms = bomsRes.data ?? [];
+  const hasReferences = blockingQuotes.length > 0 || blockingJobs.length > 0 || blockingBoms.length > 0;
 
   // Hard delete path
   if (force) {
     if (hasReferences) {
+      const parts: string[] = [];
+      if (blockingQuotes.length > 0) parts.push(`${blockingQuotes.length} quote(s)`);
+      if (blockingJobs.length > 0) parts.push(`${blockingJobs.length} job(s)`);
+      if (blockingBoms.length > 0) parts.push(`${blockingBoms.length} BOM(s)`);
+
       return NextResponse.json(
         {
-          error: `Cannot hard-delete — customer has ${quoteCount} quote(s), ${jobCount} job(s), and ${bomCount} BOM(s). Remove those first or use soft delete.`,
+          error: `Cannot hard-delete — customer has ${parts.join(", ")}. Remove those first or use soft delete.`,
+          blocking: {
+            quotes: blockingQuotes,
+            jobs: blockingJobs,
+            boms: blockingBoms,
+          },
         },
         { status: 409 }
       );

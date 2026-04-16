@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 import {
@@ -16,6 +17,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+interface BlockingRecord {
+  id: string;
+  quote_number?: string;
+  job_number?: string;
+}
+
+interface BlockingInfo {
+  quotes?: BlockingRecord[];
+  jobs?: BlockingRecord[];
+}
+
 interface DeleteBomButtonProps {
   bomId: string;
   bomName: string;
@@ -27,15 +39,20 @@ export function DeleteBomButton({ bomId, bomName, redirectTo = "/bom" }: DeleteB
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocking, setBlocking] = useState<BlockingInfo | null>(null);
 
   const handleDelete = async () => {
     setDeleting(true);
     setError(null);
+    setBlocking(null);
 
     try {
       const res = await fetch(`/api/bom/${bomId}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.blocking) {
+          setBlocking(data.blocking);
+        }
         setError(data.error ?? `Delete failed (${res.status})`);
         return;
       }
@@ -60,10 +77,38 @@ export function DeleteBomButton({ bomId, bomName, redirectTo = "/bom" }: DeleteB
           <AlertDialogDescription>
             This will permanently delete <strong>{bomName}</strong> and all its parsed component lines.
             This cannot be undone.
-            {error && (
+            {error && !blocking && (
               <span className="mt-2 block text-sm font-medium text-red-600">{error}</span>
             )}
           </AlertDialogDescription>
+          {blocking && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <p className="font-medium">Cannot delete — this BOM is referenced by:</p>
+              <ul className="mt-1.5 list-disc pl-5 space-y-0.5">
+                {blocking.quotes?.map((q) => (
+                  <li key={q.id}>
+                    <Link
+                      href={`/quotes/${q.id}`}
+                      className="font-medium text-blue-600 underline hover:text-blue-800"
+                    >
+                      {q.quote_number}
+                    </Link>
+                  </li>
+                ))}
+                {blocking.jobs?.map((j) => (
+                  <li key={j.id}>
+                    <Link
+                      href={`/jobs/${j.id}`}
+                      className="font-medium text-blue-600 underline hover:text-blue-800"
+                    >
+                      {j.job_number}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs">Delete these first, then try again.</p>
+            </div>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>

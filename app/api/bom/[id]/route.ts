@@ -23,27 +23,34 @@ export async function DELETE(
   if (!bom) return NextResponse.json({ error: "BOM not found" }, { status: 404 });
 
   // Check if any quotes reference this BOM
-  const { count: quoteCount } = await admin
+  const { data: blockingQuotes } = await admin
     .from("quotes")
-    .select("id", { count: "exact", head: true })
-    .eq("bom_id", bomId);
-
-  if ((quoteCount ?? 0) > 0) {
-    return NextResponse.json(
-      { error: `Cannot delete — ${quoteCount} quote(s) reference this BOM. Delete the quotes first.` },
-      { status: 409 }
-    );
-  }
+    .select("id, quote_number")
+    .eq("bom_id", bomId)
+    .limit(5);
 
   // Check if any jobs reference this BOM
-  const { count: jobCount } = await admin
+  const { data: blockingJobs } = await admin
     .from("jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("bom_id", bomId);
+    .select("id, job_number")
+    .eq("bom_id", bomId)
+    .limit(5);
 
-  if ((jobCount ?? 0) > 0) {
+  const hasQuotes = (blockingQuotes?.length ?? 0) > 0;
+  const hasJobs = (blockingJobs?.length ?? 0) > 0;
+
+  if (hasQuotes || hasJobs) {
+    const parts: string[] = [];
+    if (hasQuotes) parts.push(`${blockingQuotes!.length} quote(s)`);
+    if (hasJobs) parts.push(`${blockingJobs!.length} job(s)`);
     return NextResponse.json(
-      { error: `Cannot delete — ${jobCount} job(s) reference this BOM. Delete the jobs first.` },
+      {
+        error: `Cannot delete — ${parts.join(" and ")} reference this BOM. Delete them first.`,
+        blocking: {
+          quotes: blockingQuotes ?? [],
+          jobs: blockingJobs ?? [],
+        },
+      },
       { status: 409 }
     );
   }

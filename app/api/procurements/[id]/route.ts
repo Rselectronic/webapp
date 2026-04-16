@@ -281,14 +281,20 @@ export async function DELETE(
   if (!proc) return NextResponse.json({ error: "Procurement not found" }, { status: 404 });
 
   // Check if any supplier POs reference this procurement
-  const { count: poCount } = await admin
+  const { data: blockingPOs } = await admin
     .from("supplier_pos")
-    .select("id", { count: "exact", head: true })
-    .eq("procurement_id", procId);
+    .select("id, po_number")
+    .eq("procurement_id", procId)
+    .limit(5);
 
-  if ((poCount ?? 0) > 0) {
+  if ((blockingPOs ?? []).length > 0) {
     return NextResponse.json(
-      { error: `Cannot delete — ${poCount} supplier PO(s) reference this procurement. Delete the POs first.` },
+      {
+        error: `Cannot delete — ${blockingPOs!.length} supplier PO(s) reference this procurement. Delete the POs first.`,
+        blocking: {
+          supplier_pos: blockingPOs,
+        },
+      },
       { status: 409 }
     );
   }

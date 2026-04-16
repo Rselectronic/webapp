@@ -160,28 +160,36 @@ export async function DELETE(
   const { data: job } = await admin.from("jobs").select("id, job_number").eq("id", jobId).single();
   if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
-  // Block delete if invoices reference this job
-  const { count: invoiceCount } = await admin
-    .from("invoices")
-    .select("id", { count: "exact", head: true })
-    .eq("job_id", jobId);
+  // Block delete if invoices or procurements reference this job
+  const [invoicesRes, procsRes] = await Promise.all([
+    admin
+      .from("invoices")
+      .select("id, invoice_number")
+      .eq("job_id", jobId)
+      .limit(5),
+    admin
+      .from("procurements")
+      .select("id, proc_code")
+      .eq("job_id", jobId)
+      .limit(5),
+  ]);
 
-  if ((invoiceCount ?? 0) > 0) {
+  const blockingInvoices = invoicesRes.data ?? [];
+  const blockingProcs = procsRes.data ?? [];
+
+  if (blockingInvoices.length > 0 || blockingProcs.length > 0) {
+    const parts: string[] = [];
+    if (blockingInvoices.length > 0) parts.push(`${blockingInvoices.length} invoice(s)`);
+    if (blockingProcs.length > 0) parts.push(`${blockingProcs.length} procurement(s)`);
+
     return NextResponse.json(
-      { error: `Cannot delete — ${invoiceCount} invoice(s) reference this job. Delete the invoices first.` },
-      { status: 409 }
-    );
-  }
-
-  // Block delete if procurements reference this job
-  const { count: procCount } = await admin
-    .from("procurements")
-    .select("id", { count: "exact", head: true })
-    .eq("job_id", jobId);
-
-  if ((procCount ?? 0) > 0) {
-    return NextResponse.json(
-      { error: `Cannot delete — ${procCount} procurement(s) reference this job. Delete the procurements first.` },
+      {
+        error: `Cannot delete — ${parts.join(" and ")} reference this job. Delete them first.`,
+        blocking: {
+          invoices: blockingInvoices,
+          procurements: blockingProcs,
+        },
+      },
       { status: 409 }
     );
   }

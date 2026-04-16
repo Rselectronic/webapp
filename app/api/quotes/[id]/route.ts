@@ -155,14 +155,20 @@ export async function DELETE(
   if (!quote) return NextResponse.json({ error: "Quote not found" }, { status: 404 });
 
   // Check if any jobs reference this quote
-  const { count: jobCount } = await admin
+  const { data: blockingJobs } = await admin
     .from("jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("quote_id", quoteId);
+    .select("id, job_number")
+    .eq("quote_id", quoteId)
+    .limit(5);
 
-  if ((jobCount ?? 0) > 0) {
+  if ((blockingJobs?.length ?? 0) > 0) {
     return NextResponse.json(
-      { error: `Cannot delete — ${jobCount} job(s) reference this quote. Delete the jobs first.` },
+      {
+        error: `Cannot delete — ${blockingJobs!.length} job(s) reference this quote. Delete them first.`,
+        blocking: {
+          jobs: blockingJobs ?? [],
+        },
+      },
       { status: 409 }
     );
   }

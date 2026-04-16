@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { Trash2, Loader2 } from "lucide-react";
 import {
   AlertDialog,
@@ -16,6 +16,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+interface BlockingRecords {
+  quotes?: { id: string; quote_number: string }[];
+  jobs?: { id: string; job_number: string }[];
+  boms?: { id: string; file_name: string }[];
+}
+
 interface DeleteCustomerButtonProps {
   customerId: string;
   customerName: string;
@@ -28,10 +34,12 @@ export function DeleteCustomerButton({
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocking, setBlocking] = useState<BlockingRecords | null>(null);
 
   const handleDelete = async () => {
     setDeleting(true);
     setError(null);
+    setBlocking(null);
 
     try {
       const res = await fetch(`/api/customers/${customerId}`, {
@@ -40,6 +48,7 @@ export function DeleteCustomerButton({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? `Delete failed (${res.status})`);
+        if (data.blocking) setBlocking(data.blocking);
         return;
       }
       router.push("/customers");
@@ -63,14 +72,57 @@ export function DeleteCustomerButton({
         <AlertDialogHeader>
           <AlertDialogTitle>Deactivate Customer?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will deactivate <strong>{customerName}</strong>. Their data will
-            be preserved but they won&apos;t appear in active lists.
-            {error && (
-              <span className="mt-2 block text-sm font-medium text-red-600">
-                {error}
-              </span>
-            )}
+              This will deactivate <strong>{customerName}</strong>. Their data will
+              be preserved but they won&apos;t appear in active lists.
+              {error && (
+                <span className="mt-2 block text-sm font-medium text-red-600">
+                  {error}
+                </span>
+              )}
           </AlertDialogDescription>
+          {blocking && (
+            <div className="mt-2 text-sm">
+              {(blocking.quotes?.length ?? 0) > 0 && (
+                <p>
+                  <strong>Quotes:</strong>{" "}
+                  {blocking.quotes!.map((q, i) => (
+                    <span key={q.id}>
+                      {i > 0 && ", "}
+                      <Link href={`/quotes/${q.id}`} className="text-blue-600 underline hover:text-blue-800">
+                        {q.quote_number}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {(blocking.jobs?.length ?? 0) > 0 && (
+                <p>
+                  <strong>Jobs:</strong>{" "}
+                  {blocking.jobs!.map((j, i) => (
+                    <span key={j.id}>
+                      {i > 0 && ", "}
+                      <Link href={`/jobs/${j.id}`} className="text-blue-600 underline hover:text-blue-800">
+                        {j.job_number}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {(blocking.boms?.length ?? 0) > 0 && (
+                <p>
+                  <strong>BOMs:</strong>{" "}
+                  {blocking.boms!.map((b, i) => (
+                    <span key={b.id}>
+                      {i > 0 && ", "}
+                      <Link href={`/bom/${b.id}`} className="text-blue-600 underline hover:text-blue-800">
+                        {b.file_name}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
+              )}
+            </div>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>

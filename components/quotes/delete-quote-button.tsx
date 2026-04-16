@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Trash2, Loader2 } from "lucide-react";
 import {
   AlertDialog,
@@ -15,6 +16,15 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+interface BlockingJob {
+  id: string;
+  job_number: string;
+}
+
+interface BlockingInfo {
+  jobs?: BlockingJob[];
+}
+
 interface DeleteQuoteButtonProps {
   quoteId: string;
   quoteName: string;
@@ -26,15 +36,20 @@ export function DeleteQuoteButton({ quoteId, quoteName, redirectTo = "/quotes" }
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocking, setBlocking] = useState<BlockingInfo | null>(null);
 
   const handleDelete = async () => {
     setDeleting(true);
     setError(null);
+    setBlocking(null);
 
     try {
       const res = await fetch(`/api/quotes/${quoteId}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.blocking) {
+          setBlocking(data.blocking);
+        }
         setError(data.error ?? `Delete failed (${res.status})`);
         return;
       }
@@ -59,10 +74,28 @@ export function DeleteQuoteButton({ quoteId, quoteName, redirectTo = "/quotes" }
           <AlertDialogDescription>
             This will permanently delete <strong>{quoteName}</strong> and its generated PDF.
             This cannot be undone.
-            {error && (
+            {error && !blocking && (
               <span className="mt-2 block text-sm font-medium text-red-600">{error}</span>
             )}
           </AlertDialogDescription>
+          {blocking && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <p className="font-medium">Cannot delete — this quote is referenced by:</p>
+              <ul className="mt-1.5 list-disc pl-5 space-y-0.5">
+                {blocking.jobs?.map((j) => (
+                  <li key={j.id}>
+                    <Link
+                      href={`/jobs/${j.id}`}
+                      className="font-medium text-blue-600 underline hover:text-blue-800"
+                    >
+                      {j.job_number}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs">Delete these first, then try again.</p>
+            </div>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
