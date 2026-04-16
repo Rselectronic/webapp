@@ -91,6 +91,42 @@ export function InvoiceActions({
             Record Payment
           </Button>
         )}
+
+        {currentStatus !== "cancelled" && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+            onClick={async () => {
+              const confirmed = window.confirm(
+                currentStatus === "paid"
+                  ? "This invoice is marked as paid. Cancelling it will NOT reverse any recorded payment. Continue?"
+                  : "Cancel this invoice? It can be re-opened later by changing the status."
+              );
+              if (!confirmed) return;
+              setLoading(true);
+              try {
+                const res = await fetch(`/api/invoices/${invoiceId}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ status: "cancelled" }),
+                });
+                if (!res.ok) {
+                  const body = await res.json().catch(() => ({}));
+                  throw new Error(body.error ?? "Failed to cancel invoice");
+                }
+                router.refresh();
+              } catch (err) {
+                alert(err instanceof Error ? err.message : "Failed to cancel invoice");
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            {loading ? "Cancelling..." : "Cancel Invoice"}
+          </Button>
+        )}
       </div>
 
       {showPaymentForm && (
