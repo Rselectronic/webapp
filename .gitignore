@@ -50,3 +50,10 @@ erp-rs-mcp/node_modules/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# MCP / AI bot config — filled versions contain live rs_live_ API keys,
+# NEVER commit. The *.example.json files are safe (placeholders only).
+claude_desktop_config.json
+mcp_config.json
+.mcp.json
+

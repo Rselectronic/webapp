@@ -193,40 +193,16 @@ export function parseBom(
   // Rule 7: MPN Merge — same MPN → combine rows
   const merged = mergeSameMpn(included, log, stats);
 
-  // Rule 8: Auto-PCB — if the BOM has no PCB row, synthesize one using the
-  // GMP number (preferred), then BOM filename. Re-enabled per Anas 2026-04-15:
-  // operators want a PCB line always present so procurement and the quote
-  // engine have a row to attach the board cost to, even when the customer's
-  // BOM omits it.
+  // Rule 8: Auto-PCB — DISABLED.
+  // If the BOM has a real PCB row (detected by designator ^PCB[A-Z0-9\-]*$),
+  // it's kept. If there's no PCB row, we do NOT fabricate one.
+  // The GMP record itself represents the board — no ghost row needed.
   if (!pcbRow) {
-    const pcbName =
-      gmpInfo?.gmp_number?.trim() ||
-      (bomFileName ? extractPcbNameFromFile(bomFileName) : null);
-    if (pcbName) {
-      pcbRow = {
-        line_number: 0,
-        quantity: 1,
-        reference_designator: "PCB1",
-        cpc: null,
-        description: gmpInfo?.board_name || pcbName,
-        mpn: pcbName,
-        manufacturer: "",
-        is_pcb: true,
-        is_dni: false,
-      };
-      stats.auto_pcb = true;
-      log.push({
-        raw_row_index: -1,
-        action: "AUTO-PCB",
-        detail: `Synthesized PCB row "${pcbName}" — BOM had no PCB line`,
-      });
-    } else {
-      log.push({
-        raw_row_index: -1,
-        action: "AUTO-PCB-FAIL",
-        detail: "BOM has no PCB row and no GMP / filename to synthesize one from",
-      });
-    }
+    log.push({
+      raw_row_index: -1,
+      action: "AUTO-PCB-FAIL",
+      detail: "BOM has no PCB row. Auto-creation disabled per Anas.",
+    });
   }
 
   // Rule 9: Sort — quantity DESC, then first designator ASC (natural sort)
