@@ -13,7 +13,7 @@ import {
 import { McodeSelect } from "./mcode-select";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { Search, X, Trash2, Loader2 } from "lucide-react";
+import { Search, X, Trash2, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 
 interface BomLine {
@@ -64,12 +64,26 @@ function CellWithTooltip({
   );
 }
 
+type SortField = "m_code" | "cpc" | "qty" | "mpn" | "manufacturer" | null;
+type SortDir = "asc" | "desc";
+
 export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) {
   const [lines, setLines] = useState(initialLines);
   const [search, setSearch] = useState("");
   const [activeMcodes, setActiveMcodes] = useState<Set<string>>(new Set());
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
   const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
 
   async function handleDeleteLine(lineId: string, mpn: string | null) {
     const label = mpn ?? "this row";
@@ -120,11 +134,10 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
   }, [nonPcb]);
 
-  // Apply search + filters to compute what actually renders.
+  // Apply search + filters + sorting to compute what actually renders.
   const filteredLines = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return lines.filter((line) => {
-      // PCB rows: hidden when any filter is active (they aren't classifiable).
+    const filtered = lines.filter((line) => {
       if (line.is_pcb) {
         if (q || activeMcodes.size > 0 || unclassifiedOnly) return false;
         return true;
@@ -153,7 +166,28 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
 
       return true;
     });
-  }, [lines, search, activeMcodes, unclassifiedOnly]);
+
+    if (sortField) {
+      filtered.sort((a, b) => {
+        if (a.is_pcb) return -1;
+        if (b.is_pcb) return 1;
+        let aVal: string | number = "";
+        let bVal: string | number = "";
+        if (sortField === "qty") {
+          aVal = a.quantity;
+          bVal = b.quantity;
+        } else {
+          aVal = (a[sortField] ?? "").toLowerCase();
+          bVal = (b[sortField] ?? "").toLowerCase();
+        }
+        if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [lines, search, activeMcodes, unclassifiedOnly, sortField, sortDir]);
 
   const totalComponentCount = nonPcb.length;
   const shownComponentCount = filteredLines.filter((l) => !l.is_pcb).length;
@@ -318,13 +352,13 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12 px-3 py-2.5">#</TableHead>
-                <TableHead className="w-16 px-3 py-2.5">Qty</TableHead>
+                <SortableHead field="qty" label="Qty" width="w-16" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} />
                 <TableHead className="w-40 px-3 py-2.5">Designator</TableHead>
-                <TableHead className="w-32 px-3 py-2.5">CPC</TableHead>
+                <SortableHead field="cpc" label="CPC" width="w-32" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} />
                 <TableHead className="w-96 px-3 py-2.5">Description</TableHead>
-                <TableHead className="w-44 px-3 py-2.5">MPN</TableHead>
-                <TableHead className="w-32 px-3 py-2.5">Manufacturer</TableHead>
-                <TableHead className="w-32 px-3 py-2.5">M-Code</TableHead>
+                <SortableHead field="mpn" label="MPN" width="w-44" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} />
+                <SortableHead field="manufacturer" label="Manufacturer" width="w-32" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} />
+                <SortableHead field="m_code" label="M-Code" width="w-32" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} />
                 <TableHead className="w-64 px-3 py-2.5">Reasoning</TableHead>
                 <TableHead className="w-20 px-3 py-2.5">Confidence</TableHead>
                 <TableHead className="w-12 px-3 py-2.5 text-right">
@@ -468,5 +502,43 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
         </div>
       </div>
     </TooltipProvider>
+  );
+}
+
+function SortableHead({
+  field,
+  label,
+  width,
+  sortField,
+  sortDir,
+  onToggle,
+}: {
+  field: SortField;
+  label: string;
+  width: string;
+  sortField: SortField;
+  sortDir: SortDir;
+  onToggle: (f: SortField) => void;
+}) {
+  const active = sortField === field;
+  return (
+    <TableHead className={`${width} px-3 py-2.5`}>
+      <button
+        type="button"
+        onClick={() => onToggle(field)}
+        className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+      >
+        {label}
+        {active ? (
+          sortDir === "asc" ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
+      </button>
+    </TableHead>
   );
 }
