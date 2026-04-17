@@ -8,6 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const STANDARD_FIELDS = [
   { key: "qty", label: "Qty", required: true },
@@ -29,6 +31,14 @@ interface ColumnMapperProps {
   sampleRows: string[][];
   mapping: ColumnMapping;
   onMappingChange: (mapping: ColumnMapping) => void;
+  /** 1-indexed header row number as displayed to the user */
+  headerRow: number;
+  /** 1-indexed last row to process (inclusive) */
+  lastRow: number;
+  /** Total number of rows in the file */
+  totalRows: number;
+  onHeaderRowChange: (row: number) => void;
+  onLastRowChange: (row: number) => void;
 }
 
 export function ColumnMapper({
@@ -36,6 +46,11 @@ export function ColumnMapper({
   sampleRows,
   mapping,
   onMappingChange,
+  headerRow,
+  lastRow,
+  totalRows,
+  onHeaderRowChange,
+  onLastRowChange,
 }: ColumnMapperProps) {
   const usedHeaders = useMemo(
     () => new Set(Object.values(mapping).filter(Boolean)),
@@ -73,6 +88,47 @@ export function ColumnMapper({
           {mappedCount}/{STANDARD_FIELDS.length} mapped
           {!requiredMet && " — Qty, Designator, MPN required"}
         </span>
+      </div>
+
+      {/* Row range controls */}
+      <div className="flex flex-wrap items-end gap-4 rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950">
+        <div className="space-y-1">
+          <Label htmlFor="header-row" className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            Header Row
+          </Label>
+          <Input
+            id="header-row"
+            type="number"
+            min={1}
+            max={totalRows}
+            value={headerRow}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10);
+              if (!isNaN(v) && v >= 1 && v <= totalRows) onHeaderRowChange(v);
+            }}
+            className="h-8 w-20 text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="last-row" className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            Last Row to Process
+          </Label>
+          <Input
+            id="last-row"
+            type="number"
+            min={headerRow + 1}
+            max={totalRows}
+            value={lastRow}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10);
+              if (!isNaN(v) && v >= headerRow + 1 && v <= totalRows) onLastRowChange(v);
+            }}
+            className="h-8 w-24 text-xs"
+          />
+        </div>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+          {totalRows} rows in file — data rows {headerRow + 1}–{lastRow}
+        </p>
       </div>
 
       {/* Mapping dropdowns */}
@@ -152,7 +208,7 @@ export function ColumnMapper({
                 key={ri}
                 className="border-b last:border-0 dark:border-gray-800"
               >
-                <td className="px-2 py-1 text-gray-400">{ri + 1}</td>
+                <td className="px-2 py-1 text-gray-400">{headerRow + 1 + ri}</td>
                 {headers.map((h, ci) => {
                   const mappedTo = Object.entries(mapping).find(
                     ([, v]) => v === h

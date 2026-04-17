@@ -1856,3 +1856,133 @@ File: `components/invoices/invoice-actions.tsx`
 - 12 credentials seeded directly via mcp execute_sql with encrypted ciphertext. No raw values in repo (verified via grep for unique key fragments → zero matches).
 - **Required env var (must be added to both `.env.local` and Vercel):** `SUPPLIER_CREDENTIALS_KEY=KW5HRsscO1DmhafcTJmPWg9Z8+pjsd2q8ExGmOLW4K0=`. Without it the page renders a red error card instead of the manager. Adding the env var to Vercel does NOT auto-redeploy — must trigger a fresh build (push a commit or click Redeploy in the dashboard).
 
+## Entry 54 — Session 14 (April 17, 2026) — BOM UX, Quote Form Overhaul, Loading Skeletons, Sortable Tables
+
+Broad session covering BOM upload polish, quote form enhancements, pricing engine improvements, table UX across the app, and loading skeletons on every route. Two committed fixes (`eeddb31`, `5a90c83`) plus extensive uncommitted work.
+
+### 1. Header Row + Last Row controls in BOM column mapper
+
+Some customer BOMs have banner/title rows at the top and summary/notes rows at the bottom. Auto-detection usually picks the right header row, but there was no way to override or exclude trailing junk.
+
+- **Header Row selector** — number input (1-indexed) in the column mapper. Defaults to auto-detected row. Changing it re-auto-detects column mappings and updates the preview.
+- **Last Row to Process** — number input (1-indexed, inclusive). Defaults to total rows. Lets users exclude summary/total/notes rows at the bottom.
+- **Server-side support** — `POST /api/bom/parse` accepts optional `header_row` and `last_row` in formData, overriding bom_config and auto-detection.
+- **Row number display** — preview table shows actual file row numbers for cross-referencing with spreadsheet.
+
+### 2. Header row parsed as data bug fix
+
+Upload form now always sends `header_row` when the column mapper is visible. Previously, TLAN's `columns_fixed` bom_config could override the auto-detected header row, causing the header to be treated as a component data row.
+
+### 3. Manual pricing for components without MPN (commit `eeddb31`)
+
+Components with no MPN (only CPC or description) broke the manual price editor — sent empty mpn to API which rejected it. Fixed the entire chain:
+- Editor uses `bom_line_id` as stable key, shows "No MPN" for UUID fallbacks, column header changed to "MPN / CPC"
+- API accepts `bom_line_id` as alternative to mpn, looks up CPC from bom_lines table for cache key
+- Quote preview and recompute search cache by mpn then cpc then bom_line_id
+- Missing-price components carry `bom_line_id` and `cpc` through the full pipeline
+
+### 4. Source reference on pricing settings (commit `5a90c83`)
+
+New `PricingSourceReference` component on Settings > Pricing page. Shows where every pricing number comes from — links to the actual VBA source files (DM V11, TIME V14) with line-number references. New API route `GET /api/settings/source-files/[filename]` serves the reference data.
+
+### 5. Chart colors fixed
+
+M-Code distribution chart: APCB now fuchsia (`#d946ef`), Unclassified now red (`#ef4444`). Both were previously the same fallback gray, making them indistinguishable.
+
+### 6. NRE Breakdown removed from Settings
+
+Removed the NRE defaults card from Settings > Pricing. NRE values (programming, stencil, PCB fab) are entered per-quote on the quote form — having global defaults was misleading since NRE varies by board complexity and is a first-time-only charge.
+
+### 7. Per-quote markup overrides
+
+Component Markup % and PCB Markup % inputs on the quote form. Empty = use global 25% default. Override flows through:
+- `POST /api/quotes/preview` — accepts `component_markup_pct` and `pcb_markup_pct`
+- `POST /api/quotes` — stores overrides in quote record
+- `lib/pricing/recompute.ts` — passes overrides to engine
+
+### 8. Sortable columns on Customers page
+
+New client component `CustomersTable` with clickable sort headers on Code, Company Name, Contact, Payment Terms, Status. Extracted from the server page into a client component to support interactive sorting. File: `components/customers/customers-table.tsx`.
+
+### 9. Search + sortable columns on BOMs page
+
+New client component `BomListTable` with search bar (filters by filename, customer, GMP across all columns) and sortable column headers. Extracted from server page. File: `components/bom/bom-list-table.tsx`.
+
+### 10. Loading skeletons on 10 new routes
+
+Added `loading.tsx` files for instant navigation feedback. 6 routes already had them; 10 new ones added:
+- `bom/[id]`, `customers/[id]`, `invoices/[id]`, `jobs/[id]`, `procurement/[id]`
+- `procurement/`, `production/`, `quotes/[id]`, `quotes/new/`, `settings/`
+
+### 11. BOM upload: editable BOM Name + Gerber fields
+
+After file selection, the upload form now shows editable fields:
+- **BOM Name** — defaults to filename sans extension, user can override
+- **Gerber Name** — freetext for gerber package name
+- **Gerber Revision** — freetext for revision
+
+Migration `039_bom_name_gerber_fields.sql` adds `bom_name`, `gerber_name`, `gerber_revision` columns to `boms` table.
+
+### 12. Board Details on quote form
+
+New section on the quote creation form:
+- **Assembly Type** — dropdown: TB (Top+Bottom), TS (Top-side), CS (Consignment), AS (Assembly-only)
+- **Boards per Panel** — number input for panelization
+- **IPC Class** — radio: 1, 2, or 3
+- **Solder Type** — radio: Lead-Free or Leaded
+
+Assembly type feeds into programming fee calculation. Migration `040_quote_board_details.sql` adds `assembly_type`, `boards_per_panel`, `ipc_class`, `solder_type` columns to `quotes` table.
+
+### 13. Pricing table: expandable markup breakdown
+
+Replaced the separate overage sub-row. Components and PCB rows now have a clickable chevron that expands to show:
+- "Cost before markup" — raw cost from supplier pricing
+- "Markup (25%)" — the markup amount with green highlight
+
+New fields added to `PricingTier` type and engine output: `component_cost_before_markup`, `component_markup_amount`, `component_markup_pct`, `pcb_cost_before_markup`, `pcb_markup_amount`, `pcb_markup_pct`.
+
+### Files touched
+
+**New files:**
+- `components/bom/bom-list-table.tsx` — search + sortable BOM list
+- `components/customers/customers-table.tsx` — sortable customer table
+- `components/settings/pricing-source-reference.tsx` — source reference display
+- `app/api/settings/source-files/[filename]/route.ts` — source file API
+- `supabase/migrations/039_bom_name_gerber_fields.sql` — bom_name, gerber columns
+- `supabase/migrations/040_quote_board_details.sql` — assembly_type, boards_per_panel, ipc_class, solder_type
+- 10 `loading.tsx` files (see item 10 above)
+
+**Modified files:**
+- `components/bom/column-mapper.tsx` — header row + last row inputs
+- `components/bom/upload-form.tsx` — all file rows state, header/last row management, BOM name + gerber fields
+- `components/bom/mcode-chart.tsx` — APCB + Unclassified colors
+- `components/quotes/new-quote-form.tsx` — markup overrides, board details, assembly type
+- `components/quotes/pricing-table.tsx` — expandable markup sub-rows, removed overage row
+- `components/quotes/manual-price-editor.tsx` — MPN-less component support
+- `components/settings/pricing-settings-form.tsx` — removed NRE Breakdown card
+- `app/(dashboard)/bom/page.tsx` — extracted to BomListTable client component
+- `app/(dashboard)/customers/page.tsx` — extracted to CustomersTable client component
+- `app/(dashboard)/quotes/[id]/page.tsx` — MPN-less manual price support
+- `app/(dashboard)/settings/pricing/page.tsx` — added source reference component
+- `app/api/bom/parse/route.ts` — header_row, last_row, bom_name, gerber fields
+- `app/api/boms/route.ts` — query adjustments
+- `app/api/customers/route.ts` — query adjustments
+- `app/api/jobs/route.ts` — query adjustments
+- `app/api/quotes/preview/route.ts` — markup override support, MPN-less pricing
+- `app/api/quotes/route.ts` — markup overrides, board details stored
+- `app/api/quotes/[id]/pdf/route.ts` — board details in PDF
+- `app/api/pricing/manual/route.ts` — bom_line_id fallback for MPN-less parts
+- `app/api/search/route.ts` — query adjustments
+- `lib/pricing/engine.ts` — markup breakdown fields in PricingTier output
+- `lib/pricing/types.ts` — 6 new markup breakdown fields + bom_line_id/cpc on MissingPrice
+- `lib/pricing/recompute.ts` — markup override passthrough, MPN-less lookup chain
+
+### What's still pending
+
+- Migrations 039 and 040 need to be applied to production Supabase (they exist as files but may not be deployed yet)
+- LCSC API still blocked vendor-side (unchanged from prior sessions)
+- Loading skeletons and new components are untracked — need to be committed
+- All uncommitted changes (22 files modified, 16 new files) need a commit
+
+*Entry 54 written: April 17, 2026, Session 14*
+

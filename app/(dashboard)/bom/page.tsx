@@ -1,14 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, FileSpreadsheet } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDateTime } from "@/lib/utils/format";
+import { BomListTable } from "@/components/bom/bom-list-table";
 
 export default async function BomListPage() {
   const supabase = await createClient();
@@ -56,64 +52,8 @@ export default async function BomListPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Recent BOMs</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>File</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>GMP</TableHead>
-                    <TableHead className="w-16">Rev</TableHead>
-                    <TableHead className="w-24">Components</TableHead>
-                    <TableHead className="w-24">Status</TableHead>
-                    <TableHead className="w-40">Uploaded</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {boms.map((bom) => {
-                    const rawCustomer = bom.customers as unknown;
-                    const customer = (Array.isArray(rawCustomer) ? rawCustomer[0] : rawCustomer) as Record<string, string> | null;
-                    const rawGmp = bom.gmps as unknown;
-                    const gmp = (Array.isArray(rawGmp) ? rawGmp[0] : rawGmp) as Record<string, string> | null;
-                    const statusVariant =
-                      bom.status === "parsed"
-                        ? "default"
-                        : bom.status === "error"
-                          ? "destructive"
-                          : "secondary";
-                    return (
-                      <TableRow key={bom.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <TableCell className="font-medium">
-                          <Link href={`/bom/${bom.id}`} className="text-blue-600 hover:underline">
-                            {bom.file_name}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <span className="font-mono text-xs text-gray-500">{customer?.code}</span>
-                          {" "}
-                          <span className="text-gray-700 dark:text-gray-300">{customer?.company_name}</span>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {gmp?.gmp_number}
-                          {gmp?.board_name && (
-                            <span className="text-gray-400 ml-1 font-sans">— {gmp.board_name}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm text-center">{bom.revision}</TableCell>
-                        <TableCell className="text-sm text-center">{bom.component_count ?? "—"}</TableCell>
-                        <TableCell>
-                          <Badge variant={statusVariant} className="text-xs">{bom.status}</Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-gray-500">
-                          {formatDateTime(bom.created_at)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+          <CardContent className="p-0 pt-2 px-4 pb-4 space-y-3">
+            <BomListTable boms={boms} />
           </CardContent>
         </Card>
       )}

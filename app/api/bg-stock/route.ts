@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
   }
 
   // Compute summary stats
-  const totalItems = items.length;
   const lowStockCount = (data ?? []).filter(
     (item) => item.current_qty > 0 && item.current_qty <= item.min_qty
   ).length;

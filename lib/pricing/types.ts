@@ -70,6 +70,13 @@ export interface PricingTier {
   mansmt_placements: number;
   components_with_price: number;
   components_missing_price: number;
+  // Markup breakdown for cost transparency
+  component_cost_before_markup: number;
+  component_markup_amount: number;
+  component_markup_pct: number;
+  pcb_cost_before_markup: number;
+  pcb_markup_amount: number;
+  pcb_markup_pct: number;
   // Overage breakdown — how much of component_cost is overage extras
   overage_cost: number;
   overage_qty: number;

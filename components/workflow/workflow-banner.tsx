@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type {
-  WorkflowStep,
   WorkflowStepId,
   WorkflowEntities,
 } from "./workflow-types";
@@ -53,7 +52,6 @@ export function WorkflowBanner({
 }: WorkflowBannerProps) {
   const steps = resolveWorkflowSteps(entities);
   const nextStep = getNextStep(steps);
-  const currentStepIndex = steps.findIndex((s) => s.id === currentPageStep);
 
   return (
     <div

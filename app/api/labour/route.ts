@@ -31,7 +31,6 @@ const CP_FEEDER_MCODES = new Set(["CP", "CPEXP", "0402", "0201"]);
 const CP_CPEXP_MCODES = new Set(["CP", "CPEXP"]);
 const SMALL_MCODES = new Set(["0402"]);
 const ULTRA_SMALL_MCODES = new Set(["0201"]);
-const IP_MCODES = new Set(["IP"]);
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();

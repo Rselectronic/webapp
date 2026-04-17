@@ -23,6 +23,8 @@ export const MCODE_COLORS: Record<string, string> = {
   Accs: "#a3a3a3", // neutral
   CABLE: "#eab308", // yellow
   "DEV B": "#84cc16", // lime
+  APCB: "#d946ef", // fuchsia
+  Unclassified: "#ef4444", // red — stands out so you notice what still needs review
 };
 
 const MCODE_LABELS: Record<string, string> = {
@@ -37,6 +39,8 @@ const MCODE_LABELS: Record<string, string> = {
   Accs: "Accessories",
   CABLE: "Cables/Wiring",
   "DEV B": "Dev boards",
+  APCB: "Auto-PCB",
+  Unclassified: "Needs review",
 };
 
 function getColor(mcode: string): string {

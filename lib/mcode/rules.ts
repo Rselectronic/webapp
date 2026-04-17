@@ -1,4 +1,4 @@
-import type { ClassificationInput, ClassificationResult, MCode, ParRule } from "./types";
+import type { ClassificationInput, ClassificationResult, ParRule } from "./types";
 
 // ---------------------------------------------------------------------------
 // Core PAR Rules (PAR-01 through PAR-13: keyword/package, PAR-20 through PAR-24: size)

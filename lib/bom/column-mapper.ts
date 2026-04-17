@@ -159,7 +159,7 @@ export function getField(
   row: RawRow,
   mapping: ColumnMapping,
   field: keyof ColumnMapping,
-  headers: string[]
+  _headers: string[]
 ): string {
   const colRef = mapping[field];
   if (colRef === undefined) return "";

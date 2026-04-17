@@ -2,19 +2,9 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { CreateCustomerDialog } from "@/components/customers/create-customer-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Users } from "lucide-react";
+import { CustomersTable } from "@/components/customers/customers-table";
 
 interface SearchParams {
   search?: string;
@@ -105,62 +95,7 @@ export default async function CustomersPage({
           Failed to load customers. Make sure your Supabase connection is configured.
         </div>
       ) : (
-        <div className="table-responsive rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-24">Code</TableHead>
-                <TableHead>Company Name</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Payment Terms</TableHead>
-                <TableHead className="w-24">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {customers && customers.length > 0 ? (
-                customers.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell>
-                      <Link
-                        href={`/customers/${customer.id}`}
-                        className="font-mono font-medium text-blue-600 hover:underline"
-                      >
-                        {customer.code}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {customer.company_name}
-                    </TableCell>
-                    <TableCell>{customer.contact_name ?? "—"}</TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {customer.contact_email ?? "—"}
-                    </TableCell>
-                    <TableCell>{customer.payment_terms}</TableCell>
-                    <TableCell>
-                      <Badge variant={customer.is_active ? "default" : "secondary"}>
-                        {customer.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-0">
-                    <EmptyState
-                      icon={Users}
-                      title="No customers found"
-                      description={params.search ? `No results for "${params.search}". Try a different search term.` : "Add your first customer to get started."}
-                      className="border-0"
-                    >
-                      <CreateCustomerDialog />
-                    </EmptyState>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+        <CustomersTable customers={customers ?? []} search={params.search} />
       )}
     </div>
   );

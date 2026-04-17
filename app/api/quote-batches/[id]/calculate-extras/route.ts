@@ -19,7 +19,7 @@ import type { OverageTier } from "@/lib/pricing/types";
  * Output: Batch moves to "extras_calculated", lines updated with extras and order_qty per tier
  */
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: batchId } = await params;

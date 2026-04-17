@@ -462,18 +462,6 @@ export async function GET(
   // Need space check for continuation (totals + terms footer ~= 160)
   const FOOTER_RESERVE = 170;
 
-  function ensureRowSpace() {
-    if (rowY - rowH < MARGIN + FOOTER_RESERVE) {
-      // Finish current page: draw bounding box
-      drawTableBorder(page, tableTop, rowY);
-      page = doc.addPage([PAGE_W, PAGE_H]);
-      const newTop = PAGE_H - MARGIN;
-      drawLineItemHeader(page, newTop);
-      rowY = newTop - headerRowH;
-      // Update tableTop reference via closure variable — we shadow in caller
-    }
-  }
-
   function drawTableBorder(pg: PDFPage, top: number, bottom: number) {
     pg.drawRectangle({
       x: MARGIN,

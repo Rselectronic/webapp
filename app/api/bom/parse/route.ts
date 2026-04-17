@@ -97,6 +97,18 @@ export async function POST(request: Request) {
     } catch { /* ignore bad JSON */ }
   }
 
+  // Optional: user-editable BOM display name, gerber info
+  const bomName = ((formData.get("bom_name") as string) ?? "").trim() || null;
+  const gerberName = ((formData.get("gerber_name") as string) ?? "").trim() || null;
+  const gerberRevision = ((formData.get("gerber_revision") as string) ?? "").trim() || null;
+
+  // Optional: explicit header row and last row from the UI (1-indexed).
+  // If provided, overrides the auto-detection and bom_config header_row.
+  const rawHeaderRow = formData.get("header_row") as string | null;
+  const rawLastRow = formData.get("last_row") as string | null;
+  const userHeaderRow = rawHeaderRow ? parseInt(rawHeaderRow, 10) : null;
+  const userLastRow = rawLastRow ? parseInt(rawLastRow, 10) : null;
+
   if (!file || !customerId || !gmpId) {
     return NextResponse.json(
       { error: "Missing required fields: file, customer_id, gmp_id" },
@@ -153,11 +165,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "File is empty" }, { status: 400 });
     }
 
-    // Determine header row and data start
+    // Trim rows to the user's last-row boundary (1-indexed → 0-indexed, inclusive)
+    if (userLastRow && userLastRow > 0 && userLastRow < allRows.length) {
+      allRows = allRows.slice(0, userLastRow);
+    }
+
+    // Determine header row and data start.
+    // Priority: user-provided header_row > bom_config > auto-detect
     let headers: string[];
     let dataStartIndex: number;
 
-    if (bomConfig.header_none || bomConfig.columns_fixed) {
+    if (userHeaderRow && userHeaderRow >= 1 && userHeaderRow <= allRows.length) {
+      // User explicitly chose the header row in the column mapper UI (1-indexed)
+      const idx = userHeaderRow - 1;
+      headers = allRows[idx].map((h) => String(h ?? ""));
+      dataStartIndex = idx + 1;
+    } else if (bomConfig.header_none || bomConfig.columns_fixed) {
       // No header row (e.g. Lanka) — columns_fixed defines the field order
       // Use generic column names as "headers" for the RawRow keys
       const maxCols = Math.max(...allRows.map((r) => r.length));
@@ -255,7 +278,6 @@ export async function POST(request: Request) {
         if (aiMapping) {
           mapping = aiMapping;
           mappingSource = "ai";
-          console.log("[BOM PARSE] AI column mapper succeeded:", aiMapping);
         }
       }
     }
@@ -299,6 +321,9 @@ export async function POST(request: Request) {
         file_path: filePath,
         file_hash: `${file.size}-${fileName}`,
         revision,
+        bom_name: bomName || fileName,
+        gerber_name: gerberName,
+        gerber_revision: gerberRevision,
         status: "parsing",
         created_by: user.id,
       })

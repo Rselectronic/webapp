@@ -204,7 +204,6 @@ export default async function StencilsPcbPage({
               {all.map((order) => {
                 const job = order.jobs as unknown as FabJob | null;
                 const customer = job?.customers;
-                const gmp = job?.gmps;
                 return (
                   <TableRow key={order.id}>
                     <TableCell>

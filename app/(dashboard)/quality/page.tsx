@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { NCRStatusBadge } from "@/components/ncr/ncr-status-badge";
 import { NCRSeverityBadge } from "@/components/ncr/ncr-severity-badge";
-import { formatDate, formatDateTime } from "@/lib/utils/format";
+import { formatDate } from "@/lib/utils/format";
 
 const STATUSES = ["all", "open", "investigating", "corrective_action", "closed"] as const;
 

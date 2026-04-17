@@ -83,6 +83,14 @@ export function NewQuoteForm({
   const [nreStencil, setNreStencil] = useState("400");
   const [nrePcbFab, setNrePcbFab] = useState("0");
   const [shipping, setShipping] = useState("200");
+  // Markup overrides — empty string = use global defaults from Settings
+  const [componentMarkup, setComponentMarkup] = useState("");
+  const [pcbMarkup, setPcbMarkup] = useState("");
+  // Board details — affect assembly pricing
+  const [assemblyType, setAssemblyType] = useState("TB"); // TB=double-sided, TS=single-sided
+  const [boardsPerPanel, setBoardsPerPanel] = useState("1");
+  const [ipcClass, setIpcClass] = useState("2");
+  const [solderType, setSolderType] = useState("lead-free");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -221,6 +229,12 @@ export function NewQuoteForm({
           bom_id: bomId,
           tiers: parsedTiers,
           shipping_flat: parseFloat(shipping) || 0,
+          assembly_type: assemblyType,
+          boards_per_panel: parseInt(boardsPerPanel, 10) || 1,
+          ipc_class: ipcClass,
+          solder_type: solderType,
+          ...(componentMarkup !== "" && { component_markup_pct: parseFloat(componentMarkup) }),
+          ...(pcbMarkup !== "" && { pcb_markup_pct: parseFloat(pcbMarkup) }),
         }),
       });
 
@@ -254,9 +268,15 @@ export function NewQuoteForm({
           customer_id: customerId,
           tiers: parsedTiers,
           shipping_flat: parseFloat(shipping) || 0,
+          assembly_type: assemblyType,
+          boards_per_panel: parseInt(boardsPerPanel, 10) || 1,
+          ipc_class: ipcClass,
+          solder_type: solderType,
           lead_times: Object.fromEntries(
             tierRows.map((row, i) => [`tier_${i + 1}`, row.lead_time || ""])
           ),
+          ...(componentMarkup !== "" && { component_markup_pct: parseFloat(componentMarkup) }),
+          ...(pcbMarkup !== "" && { pcb_markup_pct: parseFloat(pcbMarkup) }),
         }),
       });
 
@@ -332,6 +352,68 @@ export function NewQuoteForm({
                 </SelectContent>
               </Select>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Board Details */}
+      {bomId && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Board Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div>
+                <Label className="mb-1 block text-xs text-gray-500">Assembly Type</Label>
+                <Select value={assemblyType} onValueChange={(v) => { if (v) { setAssemblyType(v); setPreview(null); } }}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TB">Double-sided (Top + Bottom)</SelectItem>
+                    <SelectItem value="TS">Single-sided (Top only)</SelectItem>
+                    <SelectItem value="CS">Consignment</SelectItem>
+                    <SelectItem value="AS">Assembly only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs text-gray-500">Boards per Panel</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={boardsPerPanel}
+                  onChange={(e) => { setBoardsPerPanel(e.target.value); setPreview(null); }}
+                  className="text-sm"
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs text-gray-500">IPC Class</Label>
+                <Select value={ipcClass} onValueChange={(v) => { if (v) setIpcClass(v); }}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Class 1 — General</SelectItem>
+                    <SelectItem value="2">Class 2 — Dedicated Service</SelectItem>
+                    <SelectItem value="3">Class 3 — High Reliability</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs text-gray-500">Solder Type</Label>
+                <Select value={solderType} onValueChange={(v) => { if (v) setSolderType(v); }}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lead-free">Lead-Free (RoHS)</SelectItem>
+                    <SelectItem value="leaded">Leaded</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -412,8 +494,8 @@ export function NewQuoteForm({
               </table>
             </div>
 
-            {/* Add tier + Shipping row */}
-            <div className="flex items-end justify-between gap-4">
+            {/* Add tier + overrides row */}
+            <div className="flex flex-wrap items-end gap-4">
               <Button
                 type="button"
                 variant="outline"
@@ -424,18 +506,49 @@ export function NewQuoteForm({
                 Add Tier
               </Button>
 
-              <div className="w-48">
-                <Label className="mb-1 block text-xs text-gray-500">
-                  Shipping ($)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={shipping}
-                  onChange={(e) => setShipping(e.target.value)}
-                  placeholder="200"
-                />
+              <div className="ml-auto flex flex-wrap items-end gap-3">
+                <div className="w-36">
+                  <Label className="mb-1 block text-xs text-gray-500">
+                    Component Markup (%)
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={componentMarkup}
+                    onChange={(e) => { setComponentMarkup(e.target.value); setPreview(null); }}
+                    placeholder="default 25"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="w-36">
+                  <Label className="mb-1 block text-xs text-gray-500">
+                    PCB Markup (%)
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={pcbMarkup}
+                    onChange={(e) => { setPcbMarkup(e.target.value); setPreview(null); }}
+                    placeholder="default 25"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="w-36">
+                  <Label className="mb-1 block text-xs text-gray-500">
+                    Shipping ($)
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={shipping}
+                    onChange={(e) => setShipping(e.target.value)}
+                    placeholder="200"
+                    className="text-sm"
+                  />
+                </div>
               </div>
             </div>
 

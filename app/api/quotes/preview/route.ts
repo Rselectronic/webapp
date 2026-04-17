@@ -29,6 +29,9 @@ interface PreviewBody {
   shipping_flat: number;
   /** Assembly type (TB, TS, etc.) for programming fee lookup */
   assembly_type?: string;
+  /** Per-quote markup overrides (optional — fall back to global settings) */
+  component_markup_pct?: number;
+  pcb_markup_pct?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json()) as PreviewBody;
-  const { bom_id, tiers: tierInputs, quantities: legacyQuantities, pcb_unit_price: legacyPcbPrice, nre_charge: legacyNreCharge, shipping_flat } =
+  const { bom_id, tiers: tierInputs, quantities: legacyQuantities, pcb_unit_price: legacyPcbPrice, shipping_flat } =
     body;
 
   // Support both new per-tier format and legacy flat format
@@ -260,6 +263,14 @@ export async function POST(req: NextRequest) {
     .single();
 
   const settings = (settingsRow?.value ?? {}) as PricingSettings;
+
+  // Apply per-quote markup overrides if provided
+  if (body.component_markup_pct !== undefined && !isNaN(body.component_markup_pct)) {
+    settings.component_markup_pct = body.component_markup_pct;
+  }
+  if (body.pcb_markup_pct !== undefined && !isNaN(body.pcb_markup_pct)) {
+    settings.pcb_markup_pct = body.pcb_markup_pct;
+  }
 
   // --- Calculate pricing ---
   const pricing = calculateQuote({

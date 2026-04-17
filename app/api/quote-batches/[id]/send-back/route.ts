@@ -18,7 +18,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
  * Output: Batch moves to "sent_back", bom_lines updated, quotes created
  */
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: batchId } = await params;

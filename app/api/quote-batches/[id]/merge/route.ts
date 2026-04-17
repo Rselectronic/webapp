@@ -15,7 +15,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
  * This is an explicit user action — the user clicks "Merge" after reviewing which BOMs are in the batch.
  */
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: batchId } = await params;

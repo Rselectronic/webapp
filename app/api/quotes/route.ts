@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/auth/api-auth";
 import { recomputeQuotePricing } from "@/lib/pricing/recompute";
 import type { TierInput } from "@/lib/pricing/types";
@@ -69,6 +68,13 @@ interface CreateQuoteBody {
   assembly_type?: string;
   /** Per-tier lead times, e.g. {"tier_1": "4-6 weeks", "tier_2": "3-4 weeks"} */
   lead_times?: Record<string, string>;
+  /** Per-quote markup overrides (optional — fall back to global settings) */
+  component_markup_pct?: number;
+  pcb_markup_pct?: number;
+  /** Board details */
+  boards_per_panel?: number;
+  ipc_class?: string;
+  solder_type?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -85,7 +91,6 @@ export async function POST(req: NextRequest) {
     tiers: tierInputs,
     quantities: legacyQuantities,
     pcb_unit_price: legacyPcbPrice,
-    nre_charge: legacyNreCharge,
     shipping_flat,
     notes,
   } = body;
@@ -131,7 +136,11 @@ export async function POST(req: NextRequest) {
       bom_id,
       resolvedTiers,
       shipping_flat,
-      body.assembly_type
+      body.assembly_type,
+      {
+        component_markup_pct: body.component_markup_pct,
+        pcb_markup_pct: body.pcb_markup_pct,
+      }
     );
     pricing = result.pricing;
     settings = result.settings;
@@ -185,6 +194,10 @@ export async function POST(req: NextRequest) {
       validity_days: settings.quote_validity_days ?? 30,
       notes: notes ?? null,
       lead_times: body.lead_times ?? {},
+      assembly_type: body.assembly_type ?? "TB",
+      boards_per_panel: body.boards_per_panel ?? 1,
+      ipc_class: body.ipc_class ?? "2",
+      solder_type: body.solder_type ?? "lead-free",
       created_by: user.id,
     })
     .select("id, quote_number")

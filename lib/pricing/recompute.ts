@@ -23,7 +23,9 @@ export async function recomputeQuotePricing(
   bom_id: string,
   resolvedTiers: TierInput[],
   shipping_flat: number,
-  assembly_type?: string
+  assembly_type?: string,
+  /** Per-quote markup overrides — applied on top of global settings */
+  markupOverrides?: { component_markup_pct?: number; pcb_markup_pct?: number }
 ): Promise<{
   pricing: QuotePricing;
   settings: PricingSettings;
@@ -116,6 +118,14 @@ export async function recomputeQuotePricing(
     .single();
 
   const settings = (settingsRow?.value ?? {}) as PricingSettings;
+
+  // Apply per-quote markup overrides if provided
+  if (markupOverrides?.component_markup_pct !== undefined) {
+    settings.component_markup_pct = markupOverrides.component_markup_pct;
+  }
+  if (markupOverrides?.pcb_markup_pct !== undefined) {
+    settings.pcb_markup_pct = markupOverrides.pcb_markup_pct;
+  }
 
   // --- Calculate pricing ---
   const pricing = calculateQuote({

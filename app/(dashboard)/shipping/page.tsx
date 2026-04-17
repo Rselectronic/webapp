@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Copy, Download, Package, Truck } from "lucide-react";
+import { Download, Package, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

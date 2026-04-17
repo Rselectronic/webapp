@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { PDFDocument, rgb } from "pdf-lib";
+import { rgb } from "pdf-lib";
 import {
   createPdfDoc,
   drawHeader,
@@ -19,7 +19,7 @@ import {
   COLOR_BORDER,
   PdfFonts,
 } from "@/lib/pdf/helpers";
-import type { PDFImage, PDFPage, PDFFont } from "pdf-lib";
+import type { PDFPage, PDFFont } from "pdf-lib";
 import type { PricingTier } from "@/lib/pricing/types";
 
 /* ------------------------------------------------------------------ */
@@ -284,6 +284,12 @@ export async function GET(
           mansmt_placements: 0,
           components_with_price: 0,
           components_missing_price: 0,
+          component_cost_before_markup: 0,
+          component_markup_amount: 0,
+          component_markup_pct: 0,
+          pcb_cost_before_markup: 0,
+          pcb_markup_amount: 0,
+          pcb_markup_pct: 0,
           overage_cost: 0,
           overage_qty: 0,
           labour: {
@@ -718,7 +724,6 @@ export async function GET(
     const tierInputs = rawPricing?.tier_inputs as Array<{ pcb_unit_price?: number }> | undefined;
     const tierPcbUnit = tierInputs?.[ti]?.pcb_unit_price ?? pcbUnitPrice;
     const pcbMarkupPct = 30; // default PCB markup
-    const pcbBeforeMarkup = tier.pcb_cost / (1 + pcbMarkupPct / 100);
 
     py = drawKVRow(page, fonts, py, "PCB unit price", fmt(tierPcbUnit));
     py = drawKVRow(page, fonts, py, `PCB unit price x ${tier.board_qty} boards`, fmt(tierPcbUnit * tier.board_qty));

@@ -715,6 +715,15 @@ It tries three strategies:
 
 If the customer's BOM config specifies forced columns, it uses those instead of guessing.
 
+### Header Row + Last Row Controls (April 2026)
+
+The upload page now shows **Header Row** and **Last Row to Process** inputs in the column mapper:
+
+- **Header Row** — 1-indexed, auto-detected but user-overridable. Some BOMs have banner/title rows before the actual headers (e.g. Legend Power has headers at row 12, Signel at row 7). The user can adjust this if auto-detection picks the wrong row.
+- **Last Row to Process** — 1-indexed, defaults to total rows. Lets the user exclude summary/total/notes rows at the bottom of the BOM.
+
+When the header row changes, the column mapping dropdowns re-auto-detect from the new headers and the preview table updates. Both values are sent to the server as `header_row` and `last_row` in formData, where they take priority over bom_config and auto-detection.
+
 ---
 
 ## PART 5: The Pricing Engine — How Quotes Get Numbers
@@ -1990,6 +1999,11 @@ A single-column form to upload a new BOM file.
 1. **Customer** -- Dropdown of all active customers. When you pick one, the app fetches that customer's existing GMP/board entries.
 2. **GMP / Board** -- Either pick an existing GMP from the dropdown, or toggle to \"New GMP\" and type a new GMP number. If the GMP already exists, it creates a new revision under it.
 3. **File** -- Drag-and-drop zone or click to browse. Accepts `.xlsx`, `.csv`, `.xls` files.
+4. **BOM Name** -- Editable text field that defaults to the uploaded filename. Appears after a file is selected. Lets the user give the BOM a cleaner display name (e.g. "Lanka TL265 Rev 3" instead of "TL265-5001_BOM_2026-04-17_v3_FINAL.xlsx"). Stored in the `boms` table.
+5. **Gerber Name** -- Optional text field for associating a Gerber file name with the BOM (e.g. "TL265-5001-000-T_Gerber"). Stored in the `boms` table.
+6. **Gerber Revision** -- Optional text field for the Gerber revision (e.g. "V3", "Rev A"). Stored in the `boms` table.
+
+These three fields (4-6) appear in a grouped card below the file drop zone after a file is selected. They are sent to the server as `bom_name`, `gerber_name`, and `gerber_revision` in formData.
 
 **Upload BOM** button -- Sends the file to `/api/bom/parse`. The server:
 - Creates the GMP if it is new
@@ -2101,23 +2115,51 @@ A form to create a new quote from a parsed BOM.
 
 1. **Customer** -- Dropdown of all active customers. When you pick one, the app fetches parsed BOMs for that customer.
 2. **BOM** -- Dropdown showing parsed BOMs for the selected customer. Shows filename, GMP number, and revision.
-3. **Quantity Tiers** -- Starts with 4 inputs pre-filled (50, 100, 250, 500). Each has:
-   - A number input for the quantity
+
+**Board Details** (appears after BOM is selected):
+
+A 4-column card with fields that affect assembly pricing and are stored on the quote:
+
+| Field | Options | Default | What it controls |
+|---|---|---|---|
+| **Assembly Type** | TB (Double-sided Top+Bottom), TS (Single-sided Top only), CS (Consignment), AS (Assembly only) | TB | Determines which sides get SMT passes. TB = two passes, TS = one pass. CS and AS are special billing modes. |
+| **Boards per Panel** | Number (min 1) | 1 | If the PCB fab delivers panelized boards (e.g. 4 boards per panel), this divides the total PCB cost appropriately. |
+| **IPC Class** | 1 (General), 2 (Dedicated Service), 3 (High Reliability) | 2 | Higher class = stricter inspection/rework requirements = higher assembly cost. |
+| **Solder Type** | Lead-Free (RoHS), Leaded | Lead-Free | Affects reflow profile and paste type. |
+
+3. **Quantity Tiers** -- Starts with 4 inputs pre-filled (50, 100, 250, 500). Each tier row has:
+   - A number input for the board quantity
+   - A PCB Unit Price input (per bare PCB from the fabricator quote, e.g. from WMD or Candor)
+   - A Lead Time text input (defaults to "4-6 weeks", "3-5 weeks", etc.)
    - An **X** button to remove that tier (cannot remove if only 1 left)
    - An **Add Tier** button (+ icon) below to add more tiers
-4. **PCB Unit Price** -- The cost per bare PCB (from the PCB fabricator quote, e.g. from WMD or Candor)
-5. **NRE Charge** -- Non-recurring engineering charge (defaults to $350 -- stencil + setup + programming)
-6. **Shipping** -- Flat shipping estimate (defaults to $200)
 
-**Calculate Pricing** button -- Sends the BOM ID, quantities, PCB price, NRE, and shipping to `/api/quotes/preview`. The pricing engine:
+**Markup Overrides** (inline below the tier table, right-aligned):
+
+| Field | Default | What it does |
+|---|---|---|
+| **Component Markup (%)** | Empty (uses global default from Settings, currently 25%) | Overrides the global component markup for this specific quote. Leave empty to use the default. |
+| **PCB Markup (%)** | Empty (uses global default from Settings, currently 25%) | Overrides the global PCB markup for this specific quote. Leave empty to use the default. |
+| **Shipping ($)** | 200 | Flat shipping estimate. |
+
+These overrides let Anas adjust margins per-quote without changing the global defaults. The placeholder text shows "default 25" as a hint. When empty, the pricing engine reads the global default from `app_settings`.
+
+4. **NRE Charges** (separate card, quote-level):
+   - **NRE Programming ($)** -- Auto-calculated from BOM line count when a BOM is selected. Can be overridden.
+   - **NRE Stencil ($)** -- Defaults to $400.
+   - **NRE PCB Fab ($)** -- Defaults to $0.
+   NRE is charged once per quote regardless of quantity tier. The per-unit NRE contribution shrinks as quantity grows.
+
+**Calculate Pricing** button -- Sends the BOM ID, quantities, PCB prices, NRE, shipping, board details, and any markup overrides to `/api/quotes/preview`. The pricing engine:
 - Looks up each component's price from the `api_pricing_cache` (DigiKey/Mouser/LCSC)
 - Calculates order quantities with M-Code-based overage
-- Applies component markup (from pricing settings)
+- Applies component markup (from override or global default)
+- Applies PCB markup (from override or global default)
 - Calculates assembly cost (placement count x rate per M-Code type)
 - Adds PCB cost, NRE, and shipping
 - Returns a per-tier breakdown
 
-After calculating, a **Pricing Breakdown** table appears showing the results.
+After calculating, a **Pricing Breakdown** table appears showing the results (see Pricing Table below).
 
 **Save Quote as Draft** button -- Creates the quote in the database with status \"draft\" and redirects to the quote detail page.
 
@@ -2151,13 +2193,17 @@ Full detail view of a single quote.
 | **Component Markup** | The markup percentage applied to component costs (e.g. \"20%\") |
 
 **Pricing Breakdown Table:** A table with one column per quantity tier. Rows show:
-- Component cost (total)
-- PCB cost (total)
-- Assembly cost
+- **Components** -- total component cost (after markup). **Expandable:** click the chevron to reveal sub-rows showing cost before markup, markup percentage, and markup amount (in green).
+- **PCB** -- total PCB cost (after markup). **Expandable:** same chevron pattern, shows cost before markup, markup percentage, and markup amount.
+- Assembly cost (labelled "Assembly (Time-Based)" or "Assembly (Placements)" depending on model used)
 - NRE charge
 - Shipping
-- Subtotal
-- Per-unit price
+- **Total** (bold row)
+- **Per Unit** (bold row)
+
+The expandable markup sub-rows only appear when the pricing engine returns markup data (i.e. for quotes created after Session 14). Older quotes without `component_cost_before_markup` in the tier data will just show the flat rows without chevrons.
+
+Below the table, per-unit price cards show each tier's per-unit price in a grid. If any tier has components with missing prices, a count appears in orange under the per-unit card.
 
 If components are missing prices (no cached API price), a collapsible \"Missing price components\" section lists each MPN, description, and qty per board.
 
@@ -4872,3 +4918,99 @@ Invoice actions (1): `components/invoices/invoice-actions.tsx` — added cancel 
 *Part 30 written: April 16, 2026, Session 13c*
 
 *Part 27 last updated: April 16, 2026, Session 12*
+
+---
+
+## PART 31: SESSION 14 FEATURES — BOM Upload Fields, Board Details, Markup Overrides, Expandable Pricing (April 17, 2026)
+
+Session 14 added several UX improvements across the BOM upload and quoting workflows. No database migrations were needed -- all new fields map to existing JSONB columns or existing table columns.
+
+### 31.1 BOM Upload — Header Row + Last Row Controls
+
+The column mapper on the upload page now has **Header Row** and **Last Row to Process** number inputs. See the section in Part 4 ("Header Row + Last Row Controls") for full details. Summary:
+
+- **Header Row** (1-indexed) — auto-detected but user-overridable. Handles BOMs with banner/title rows before the actual headers.
+- **Last Row to Process** (1-indexed) — defaults to total rows. Lets the user exclude summary/total/notes rows at the bottom.
+- When header row changes, column mapping dropdowns re-auto-detect and the preview table updates.
+- Both values are sent to the server as `header_row` and `last_row` in formData, where they override bom_config and auto-detection.
+
+Files: `components/bom/column-mapper.tsx`, `components/bom/upload-form.tsx`, `app/api/bom/parse/route.ts`
+
+### 31.2 BOM Upload — BOM Name + Gerber Fields
+
+Three new fields appear in a grouped card below the file drop zone after a file is selected:
+
+| Field | Default | Purpose |
+|---|---|---|
+| **BOM Name** | Uploaded filename | Editable display name for the BOM. Cleaner than raw filenames like "TL265-5001_BOM_2026-04-17_v3_FINAL.xlsx". |
+| **Gerber Name** | Empty | Associates a Gerber file name with the BOM (e.g. "TL265-5001-000-T_Gerber"). Used on the Job Card production document. |
+| **Gerber Revision** | Empty | Gerber revision string (e.g. "V3", "Rev A"). |
+
+All three are sent as formData (`bom_name`, `gerber_name`, `gerber_revision`) and stored in the `boms` table. The BOM Name auto-populates when a file is dropped -- editing it is optional.
+
+Files: `components/bom/upload-form.tsx`, `app/api/bom/parse/route.ts`
+
+### 31.3 Quote Form — Board Details
+
+A new "Board Details" card appears on the quote form (`/quotes/new`) after a BOM is selected, before the quantity tiers. Four fields in a 4-column grid:
+
+| Field | Options | Default | Effect |
+|---|---|---|---|
+| **Assembly Type** | TB (Double-sided), TS (Single-sided), CS (Consignment), AS (Assembly only) | TB | Controls how many SMT passes the assembly cost assumes. |
+| **Boards per Panel** | Number >= 1 | 1 | Panelization factor for PCB cost division. |
+| **IPC Class** | 1 (General), 2 (Dedicated Service), 3 (High Reliability) | 2 | Higher class = stricter inspection, higher assembly cost. |
+| **Solder Type** | Lead-Free (RoHS), Leaded | Lead-Free | Affects reflow profile and solder paste type. |
+
+These values are sent to the pricing engine in `POST /api/quotes/preview` and stored on the quote when saved. They replace the old single `assembly_type` field on the jobs table -- now they live at the quote level so Anas sets them during quoting, not after job creation.
+
+Files: `components/quotes/new-quote-form.tsx`, `app/api/quotes/preview/route.ts`, `app/api/quotes/route.ts`
+
+### 31.4 Quote Form — Markup Overrides
+
+Two new inputs appear inline below the tier table (right-aligned, next to the Shipping input):
+
+| Field | Default | Behavior |
+|---|---|---|
+| **Component Markup (%)** | Empty (placeholder: "default 25") | When empty, pricing engine reads the global default from `app_settings`. When filled, overrides the global default for this specific quote only. |
+| **PCB Markup (%)** | Empty (placeholder: "default 25") | Same behavior -- empty = global default, filled = per-quote override. |
+
+This lets Anas adjust margins on a per-quote basis (e.g. give a loyal customer a lower markup, or add margin on a rush job) without touching the global settings that affect all future quotes.
+
+The overrides are sent as optional `component_markup_pct` and `pcb_markup_pct` fields in the API request body. When omitted, the pricing engine reads defaults from `app_settings`.
+
+Files: `components/quotes/new-quote-form.tsx`, `app/api/quotes/preview/route.ts`, `lib/pricing/engine.ts`
+
+### 31.5 Pricing Table — Expandable Markup Breakdown
+
+The pricing preview table (`PricingTable` component) now shows expandable rows for **Components** and **PCB**. Each has a chevron icon (triangle) that toggles two sub-rows:
+
+1. **Cost before markup** — the raw cost before any percentage is applied (gray text)
+2. **Markup (X%)** — the markup percentage and dollar amount added (green text, prefixed with "+")
+
+Visual design: sub-rows have a light blue background tint (`bg-blue-50/30`) and are indented. The chevron rotates when expanded (right arrow = collapsed, down arrow = expanded).
+
+This is backward-compatible: older quotes without `component_cost_before_markup` / `pcb_cost_before_markup` in the tier data just show flat rows without chevrons. The component checks `hasMarkupData` before rendering the expand toggle.
+
+The pricing engine now returns these additional fields per tier:
+- `component_cost_before_markup` — raw component cost
+- `component_markup_pct` — the percentage used
+- `component_markup_amount` — the dollar amount of markup
+- `pcb_cost_before_markup` — raw PCB cost
+- `pcb_markup_pct` — the percentage used
+- `pcb_markup_amount` — the dollar amount of markup
+
+Files: `components/quotes/pricing-table.tsx`, `lib/pricing/engine.ts`, `lib/pricing/types.ts`
+
+### Summary of all files touched in Session 14
+
+- `components/bom/upload-form.tsx` — BOM Name, Gerber Name, Gerber Revision fields
+- `components/bom/column-mapper.tsx` — Header Row + Last Row inputs
+- `app/api/bom/parse/route.ts` — accepts header_row, last_row, bom_name, gerber_name, gerber_revision
+- `components/quotes/new-quote-form.tsx` — Board Details card, Markup Override inputs
+- `components/quotes/pricing-table.tsx` — expandable markup sub-rows for Components and PCB
+- `app/api/quotes/preview/route.ts` — accepts board details + markup overrides
+- `app/api/quotes/route.ts` — stores board details + markup overrides on the quote
+- `lib/pricing/engine.ts` — returns markup breakdown fields per tier
+- `lib/pricing/types.ts` — added markup breakdown fields to PricingTier type
+
+*Part 31 written: April 17, 2026, Session 14*

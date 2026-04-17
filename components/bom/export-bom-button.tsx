@@ -4,21 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2 } from "lucide-react";
 
-interface BomLine {
-  line_number: number;
-  quantity: number;
-  reference_designator: string | null;
-  cpc: string | null;
-  description: string | null;
-  mpn: string | null;
-  manufacturer: string | null;
-  m_code: string | null;
-  m_code_confidence: number | null;
-  m_code_source: string | null;
-  m_code_reasoning: string | null;
-  is_pcb: boolean;
-}
-
 export function ExportBomButton({
   bomId,
   fileName,

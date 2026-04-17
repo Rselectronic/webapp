@@ -22,7 +22,6 @@ import {
   XCircle,
   Sparkles,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { detectPageContext, getPageSuggestions } from "@/lib/chat/page-context";
 
 // ---------- Types ----------

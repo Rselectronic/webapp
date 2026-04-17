@@ -20,7 +20,7 @@ import { classifyComponent, fetchKeywords } from "@/lib/mcode/classifier";
  * Output: Batch moves to "mcodes_assigned", lines updated with m_code fields
  */
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: batchId } = await params;

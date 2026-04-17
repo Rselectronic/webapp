@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import type { PricingSettings } from "@/lib/pricing/types";
 
 interface Props {
@@ -58,14 +57,6 @@ export function PricingSettingsForm({ settings: initial }: Props) {
     }
   }
 
-  // Compute NRE total for display
-  const nreTotal =
-    (Number(settings.nre_programming) || 0) +
-    (Number(settings.nre_stencil) || 0) +
-    (Number(settings.nre_setup) || 0) +
-    (Number(settings.nre_pcb_fab) || 0) +
-    (Number(settings.nre_misc) || 0);
-
   const markupFields: FieldDef[] = [
     { key: "component_markup_pct", label: "Component markup", suffix: "%" },
     { key: "pcb_markup_pct", label: "PCB markup", suffix: "%" },
@@ -97,14 +88,6 @@ export function PricingSettingsForm({ settings: initial }: Props) {
     { key: "smt_rate_per_hour", label: "SMT rate (machine time)", suffix: "CAD/hr" },
     { key: "setup_time_hours", label: "Default setup time", suffix: "hours", step: "0.25" },
     { key: "programming_time_hours", label: "Default programming time", suffix: "hours", step: "0.25" },
-  ];
-
-  const nreFields: FieldDef[] = [
-    { key: "nre_programming", label: "Programming fees", suffix: "CAD" },
-    { key: "nre_stencil", label: "Stencil fees", suffix: "CAD" },
-    { key: "nre_setup", label: "Setup fees", suffix: "CAD" },
-    { key: "nre_pcb_fab", label: "PCB fabrication NRE", suffix: "CAD" },
-    { key: "nre_misc", label: "Misc NRE", suffix: "CAD" },
   ];
 
   const otherFields: FieldDef[] = [
@@ -250,31 +233,6 @@ export function PricingSettingsForm({ settings: initial }: Props) {
         </CardHeader>
         <CardContent className="space-y-4">
           {renderFieldGroup(labourFields)}
-        </CardContent>
-      </Card>
-
-      {/* NRE Breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>NRE Breakdown</CardTitle>
-          <CardDescription>
-            Non-Recurring Engineering charges. These apply to first-time boards.
-            Items already paid can be zeroed out per quote. From VBA: Programming (B21),
-            Stencil (B22), PCB FAB (B23), Misc (B24).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {renderFieldGroup(nreFields)}
-          <Separator />
-          <div className="flex items-center gap-4">
-            <Label className="w-56 shrink-0 text-sm font-semibold">NRE Total (computed)</Label>
-            <div className="flex flex-1 items-center gap-2">
-              <span className="font-mono text-sm font-semibold">
-                ${nreTotal.toFixed(2)}
-              </span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">CAD</span>
-            </div>
-          </div>
         </CardContent>
       </Card>
 

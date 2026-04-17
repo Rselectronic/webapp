@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/auth/api-auth";
 
 async function generateJobNumber(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -17,7 +18,8 @@ async function generateJobNumber(
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
+  const { supabase } = await getAuthUser(req);
+  // Note: job list is available to all authenticated roles
   const url = new URL(req.url);
   const status = url.searchParams.get("status");
   const customerId = url.searchParams.get("customer_id");
@@ -103,10 +105,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, supabase } = await getAuthUser(req);
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

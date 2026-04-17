@@ -42,15 +42,22 @@ export function UploadForm({ customers }: UploadFormProps) {
   const [gmpDropdownOpen, setGmpDropdownOpen] = useState(false);
   const gmpWrapperRef = useRef<HTMLDivElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [bomName, setBomName] = useState("");
   const [revision, setRevision] = useState("1");
+  const [gerberName, setGerberName] = useState("");
+  const [gerberRevision, setGerberRevision] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   // Column mapper preview state
+  const [allFileRows, setAllFileRows] = useState<(string | number | null)[][]>([]);
   const [previewHeaders, setPreviewHeaders] = useState<string[]>([]);
   const [previewRows, setPreviewRows] = useState<string[][]>([]);
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>({});
   const [showMapper, setShowMapper] = useState(false);
+  // 1-indexed row numbers for the user
+  const [headerRow, setHeaderRow] = useState(1);
+  const [lastRow, setLastRow] = useState(1);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -106,30 +113,62 @@ export function UploadForm({ customers }: UploadFormProps) {
     return mapping;
   }
 
+  /** Given all rows and a 0-indexed header position, compute headers + sample rows + auto-mapping */
+  function computePreview(
+    rows: (string | number | null)[][],
+    headerIdx: number,
+    endIdx?: number
+  ) {
+    const hdrs = (rows[headerIdx] ?? []).map((c) => String(c ?? "").trim());
+    const dataEnd = endIdx ?? rows.length;
+    const sampleEnd = Math.min(headerIdx + 6, dataEnd);
+    const samples = rows
+      .slice(headerIdx + 1, sampleEnd)
+      .map((row) => hdrs.map((_, ci) => String(row[ci] ?? "").trim()));
+
+    setPreviewHeaders(hdrs);
+    setPreviewRows(samples);
+    setColumnMapping(autoDetectMapping(hdrs));
+  }
+
+  function handleHeaderRowChange(row1: number) {
+    setHeaderRow(row1);
+    // Ensure last row stays >= header row + 1
+    if (lastRow <= row1) setLastRow(Math.min(row1 + 1, allFileRows.length));
+    computePreview(allFileRows, row1 - 1, lastRow);
+  }
+
+  function handleLastRowChange(row1: number) {
+    setLastRow(row1);
+    computePreview(allFileRows, headerRow - 1, row1);
+  }
+
   async function readFilePreview(f: File) {
     try {
       const buffer = await f.arrayBuffer();
       const ext = f.name.split(".").pop()?.toLowerCase();
-      let allRows: (string | number | null)[][];
+      let rows: (string | number | null)[][];
 
       if (ext === "csv" || ext === "tsv") {
         const text = new TextDecoder("utf-8").decode(buffer);
-        allRows = text
+        rows = text
           .split("\n")
           .filter((line) => line.trim())
           .map((line) => line.split(ext === "tsv" ? "\t" : ","));
       } else {
         const wb = XLSX.read(buffer, { type: "array" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+        rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
       }
 
-      if (allRows.length === 0) return;
+      if (rows.length === 0) return;
 
-      // Find the header row (first row with 3+ non-empty text cells)
+      setAllFileRows(rows);
+
+      // Auto-detect the header row (first row with 3+ non-empty text cells)
       let headerIdx = 0;
-      for (let i = 0; i < Math.min(allRows.length, 20); i++) {
-        const textCells = (allRows[i] ?? [])
+      for (let i = 0; i < Math.min(rows.length, 20); i++) {
+        const textCells = (rows[i] ?? [])
           .map((c) => String(c ?? "").trim())
           .filter((s) => s.length > 1 && isNaN(Number(s)));
         if (textCells.length >= 3) {
@@ -138,16 +177,10 @@ export function UploadForm({ customers }: UploadFormProps) {
         }
       }
 
-      const hdrs = (allRows[headerIdx] ?? []).map((c) => String(c ?? "").trim());
-      const samples = allRows
-        .slice(headerIdx + 1, headerIdx + 6)
-        .map((row) =>
-          hdrs.map((_, ci) => String(row[ci] ?? "").trim())
-        );
-
-      setPreviewHeaders(hdrs);
-      setPreviewRows(samples);
-      setColumnMapping(autoDetectMapping(hdrs));
+      const detectedHeaderRow = headerIdx + 1; // 1-indexed
+      setHeaderRow(detectedHeaderRow);
+      setLastRow(rows.length);
+      computePreview(rows, headerIdx, rows.length);
       setShowMapper(true);
     } catch {
       // If preview fails, still allow upload (server will handle parsing)
@@ -157,10 +190,14 @@ export function UploadForm({ customers }: UploadFormProps) {
 
   function handleFileSelected(f: File | null) {
     setFile(f);
+    setBomName(f ? f.name : "");
     setShowMapper(false);
     setPreviewHeaders([]);
     setPreviewRows([]);
     setColumnMapping({});
+    setAllFileRows([]);
+    setHeaderRow(1);
+    setLastRow(1);
     if (f) void readFilePreview(f);
   }
 
@@ -258,9 +295,19 @@ export function UploadForm({ customers }: UploadFormProps) {
       formData.append("customer_id", customerId);
       formData.append("gmp_id", resolvedGmpId);
       formData.append("revision", revision.trim() || "1");
+      if (bomName.trim()) formData.append("bom_name", bomName.trim());
+      if (gerberName.trim()) formData.append("gerber_name", gerberName.trim());
+      if (gerberRevision.trim()) formData.append("gerber_revision", gerberRevision.trim());
       // Send the user's column mapping so the server uses it instead of auto-detect
       if (Object.keys(columnMapping).length > 0) {
         formData.append("column_mapping", JSON.stringify(columnMapping));
+      }
+      // Always send header row and last row (1-indexed) when the column mapper was shown.
+      // This overrides the customer's bom_config header detection (e.g. TLAN has columns_fixed
+      // which tells the server "no header row" — but the file might actually have one).
+      if (showMapper && headerRow >= 1) {
+        formData.append("header_row", String(headerRow));
+        formData.append("last_row", String(lastRow));
       }
 
       const res = await fetch("/api/bom/parse", { method: "POST", body: formData });
@@ -421,6 +468,47 @@ export function UploadForm({ customers }: UploadFormProps) {
         </div>
       )}
 
+      {/* BOM Name + Gerber fields — shown after file is selected */}
+      {file && (
+        <div className="space-y-3 rounded-lg border p-4 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
+          <div>
+            <Label htmlFor="bom-name">BOM Name</Label>
+            <Input
+              id="bom-name"
+              type="text"
+              value={bomName}
+              onChange={(e) => setBomName(e.target.value)}
+              placeholder={file.name}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Defaults to the uploaded filename. Edit if you want a cleaner display name.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="gerber-name">Gerber Name</Label>
+              <Input
+                id="gerber-name"
+                type="text"
+                value={gerberName}
+                onChange={(e) => setGerberName(e.target.value)}
+                placeholder="e.g. TL265-5001-000-T_Gerber"
+              />
+            </div>
+            <div>
+              <Label htmlFor="gerber-revision">Gerber Revision</Label>
+              <Input
+                id="gerber-revision"
+                type="text"
+                value={gerberRevision}
+                onChange={(e) => setGerberRevision(e.target.value)}
+                placeholder="e.g. V3, Rev A"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Column mapper preview */}
       {showMapper && previewHeaders.length > 0 && (
         <ColumnMapper
@@ -428,6 +516,11 @@ export function UploadForm({ customers }: UploadFormProps) {
           sampleRows={previewRows}
           mapping={columnMapping}
           onMappingChange={setColumnMapping}
+          headerRow={headerRow}
+          lastRow={lastRow}
+          totalRows={allFileRows.length}
+          onHeaderRowChange={handleHeaderRowChange}
+          onLastRowChange={handleLastRowChange}
         />
       )}
 

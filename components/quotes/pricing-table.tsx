@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils/format";
 import type { PricingTier, MissingPriceComponent } from "@/lib/pricing/types";
+import { ChevronRight, ChevronDown } from "lucide-react";
 
 interface PricingTableProps {
   tiers: PricingTier[];
@@ -9,10 +13,9 @@ interface PricingTableProps {
   showLabourDetail?: boolean;
 }
 
-function getRows(timeModelUsed: boolean): { key: keyof PricingTier; label: string; highlight?: boolean; indent?: boolean; muted?: boolean }[] {
+function getRows(timeModelUsed: boolean): { key: keyof PricingTier; label: string; highlight?: boolean }[] {
   return [
-    { key: "component_cost", label: "Components (incl. overage)" },
-    { key: "overage_cost", label: "↳ Overage extras included above", indent: true, muted: true },
+    { key: "component_cost", label: "Components" },
     { key: "pcb_cost", label: "PCB" },
     { key: "assembly_cost", label: timeModelUsed ? "Assembly (Time-Based)" : "Assembly (Placements)" },
     { key: "nre_charge", label: "NRE" },
@@ -23,8 +26,19 @@ function getRows(timeModelUsed: boolean): { key: keyof PricingTier; label: strin
 }
 
 export function PricingTable({ tiers, warnings, missingPriceComponents, showLabourDetail = true }: PricingTableProps) {
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Backward compatibility: old quotes may not have labour breakdown
   const hasLabour = tiers.length > 0 && tiers[0].labour != null && typeof tiers[0].labour === "object";
+  const hasMarkupData = tiers.length > 0 && tiers[0].component_cost_before_markup != null;
+
+  function toggleRow(key: string) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-3">
@@ -85,33 +99,93 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
             </tr>
           </thead>
           <tbody>
-            {getRows(tiers[0]?.labour?.time_model_used ?? false).map(({ key, label, highlight, indent, muted }) => {
-              const values = tiers.map((t) => (t[key] as number) ?? 0);
-              if (muted && values.every((v) => v === 0)) return null;
+            {getRows(tiers[0]?.labour?.time_model_used ?? false).map(({ key, label, highlight }) => {
+              const expandable = hasMarkupData && (key === "component_cost" || key === "pcb_cost");
+              const isExpanded = expandedRows.has(key);
               return (
-                <tr
-                  key={key}
-                  className={
-                    highlight
-                      ? "border-t bg-gray-50 font-semibold dark:border-gray-800 dark:bg-gray-900"
-                      : "border-t dark:border-gray-800"
-                  }
-                >
-                  <td className={`px-4 py-2 ${indent ? "pl-8" : ""} ${muted ? "text-xs text-gray-400 dark:text-gray-500 italic" : "text-gray-600 dark:text-gray-400"}`}>
-                    {label}
-                    {key === "overage_cost" && tiers[0]?.overage_qty > 0 && (
-                      <span className="ml-1 not-italic">({tiers[0].overage_qty} extra parts)</span>
-                    )}
-                  </td>
-                  {tiers.map((t) => (
-                    <td
-                      key={t.board_qty}
-                      className={`px-4 py-2 text-right font-mono ${highlight ? "text-gray-900 dark:text-gray-100" : muted ? "text-xs text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-300"}`}
-                    >
-                      {formatCurrency((t[key] as number) ?? 0)}
+                <>
+                  <tr
+                    key={key}
+                    className={
+                      highlight
+                        ? "border-t bg-gray-50 font-semibold dark:border-gray-800 dark:bg-gray-900"
+                        : "border-t dark:border-gray-800"
+                    }
+                  >
+                    <td className="px-4 py-2 text-gray-600 dark:text-gray-400">
+                      {expandable ? (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                          onClick={() => toggleRow(key)}
+                        >
+                          {isExpanded
+                            ? <ChevronDown className="h-3.5 w-3.5 text-blue-500" />
+                            : <ChevronRight className="h-3.5 w-3.5 text-gray-400" />}
+                          {label}
+                        </button>
+                      ) : label}
                     </td>
-                  ))}
-                </tr>
+                    {tiers.map((t) => (
+                      <td
+                        key={t.board_qty}
+                        className={`px-4 py-2 text-right font-mono ${highlight ? "text-gray-900 dark:text-gray-100" : "text-gray-700 dark:text-gray-300"}`}
+                      >
+                        {formatCurrency((t[key] as number) ?? 0)}
+                      </td>
+                    ))}
+                  </tr>
+                  {/* Expandable markup sub-rows for Components */}
+                  {expandable && isExpanded && key === "component_cost" && (
+                    <>
+                      <tr key="comp_before" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Cost before markup
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
+                            {formatCurrency(t.component_cost_before_markup ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr key="comp_markup" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Markup ({tiers[0].component_markup_pct ?? 25}%)
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-green-600 dark:text-green-400">
+                            +{formatCurrency(t.component_markup_amount ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                    </>
+                  )}
+                  {/* Expandable markup sub-rows for PCB */}
+                  {expandable && isExpanded && key === "pcb_cost" && (
+                    <>
+                      <tr key="pcb_before" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Cost before markup
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
+                            {formatCurrency(t.pcb_cost_before_markup ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr key="pcb_markup" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Markup ({tiers[0].pcb_markup_pct ?? 25}%)
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-green-600 dark:text-green-400">
+                            +{formatCurrency(t.pcb_markup_amount ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                    </>
+                  )}
+                </>
               );
             })}
           </tbody>

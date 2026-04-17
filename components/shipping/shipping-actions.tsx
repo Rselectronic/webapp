@@ -29,7 +29,7 @@ const SHIPPING_ELIGIBLE_STATUSES = [
 
 export function ShippingActions({
   jobId,
-  jobNumber,
+  jobNumber: _jobNumber,
   currentStatus,
   metadata,
 }: ShippingActionsProps) {

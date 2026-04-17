@@ -14,7 +14,6 @@ const IP_FEEDER_MCODES = new Set(["IP"]);
 const CP_CPEXP_MCODES = new Set(["CP", "CPEXP"]);      // Standard high-speed
 const SMALL_MCODES = new Set(["0402"]);                  // Small passives
 const ULTRA_SMALL_MCODES = new Set(["0201"]);            // Ultra-tiny passives
-const IP_MCODES = new Set(["IP"]);                       // Large ICs
 
 // These M-codes don't contribute to placement costs (manual assembly, non-SMT)
 // MEC, Accs, CABLE, DEV B, PCB, EA, APCB, AEA, FUSE, LABEL, WIRE, PRESSFIT
@@ -316,6 +315,13 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       mansmt_placements: mansmtPlacements,
       components_with_price: componentsWithPrice,
       components_missing_price: componentsMissingPrice,
+      // Markup breakdown
+      component_cost_before_markup: round2(componentCost / markupMultiplier),
+      component_markup_amount: round2(componentCost - componentCost / markupMultiplier),
+      component_markup_pct: settings.component_markup_pct,
+      pcb_cost_before_markup: round2(pcbCost / pcbMarkupMultiplier),
+      pcb_markup_amount: round2(pcbCost - pcbCost / pcbMarkupMultiplier),
+      pcb_markup_pct: settings.pcb_markup_pct,
       overage_cost: round2(overageCost),
       overage_qty: overageQty,
       labour,

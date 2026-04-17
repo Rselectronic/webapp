@@ -53,7 +53,6 @@ export default async function BomDetailPage({
   ]);
 
   const parseResult = bom.parse_result as Record<string, unknown> | null;
-  const classSummary = (parseResult?.classification_summary ?? {}) as Record<string, number>;
   const statsSummary = (parseResult?.stats ?? {}) as Record<string, number>;
 
   const customer = bom.customers as Record<string, string> | null;

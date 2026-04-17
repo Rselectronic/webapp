@@ -6,11 +6,8 @@ import {
   createPdfDoc,
   drawHeader,
   drawFooter,
-  drawTableHeaderRow,
-  drawSignatureBlock,
   truncate,
   sanitizeForPdf,
-  fmtDate,
   A4_WIDTH,
   A4_HEIGHT,
   MARGIN,
@@ -23,7 +20,6 @@ import {
   COLOR_BG_STRIP,
   COLOR_BORDER,
   COLOR_LIGHT,
-  type PdfFonts,
 } from "@/lib/pdf/helpers";
 
 const VALID_TYPES = ["job-card", "traveller", "print-bom", "reception"] as const;
@@ -97,8 +93,6 @@ export async function GET(
     revision: string;
     component_count: number;
   } | null;
-  const quote = job.quotes as unknown as { quote_number: string } | null;
-
   const customerCode = customer?.code ?? "UNKNOWN";
   const customerName = customer?.company_name ?? "Unknown Customer";
   const gmpNumber = gmp?.gmp_number ?? "—";
@@ -932,7 +926,6 @@ const TRAVELLER_SECTIONS: TravSection[] = [
 async function generateTraveller(p: TravellerParams): Promise<Uint8Array> {
   const { doc, fonts, logo } = await createPdfDoc();
 
-  const pagesData: TravSection[][] = [];
   // We'll paginate as we go — keep a running y and start a new page when
   // the next section wouldn't fit.
 

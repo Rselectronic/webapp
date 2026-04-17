@@ -46,9 +46,9 @@ export function parseBom(
   headers: string[],
   config: BomConfig,
   /** Optional: BOM filename, used for Auto-PCB fallback (Rule 8) when no PCB row found */
-  bomFileName?: string,
+  _bomFileName?: string,
   /** Optional: GMP number, used as final Auto-PCB fallback when filename extraction fails */
-  gmpInfo?: { gmp_number: string; board_name?: string | null }
+  _gmpInfo?: { gmp_number: string; board_name?: string | null }
 ): ParseResult {
   const log: ParseLogEntry[] = [];
   const included: ParsedLine[] = [];
@@ -211,24 +211,6 @@ export function parseBom(
   });
 
   return { lines: merged, log, pcb_row: pcbRow, stats };
-}
-
-/**
- * Extract a PCB name from a BOM filename.
- * Strips common prefixes (BOM_, CP_IP_, Gerber_PCB_), file extensions, and date suffixes.
- *
- * "BOM_TL265-5040-000-T_RevB.xlsx" → "TL265-5040-000-T"
- * "CP_IP_2100-0074-2-P.xlsx" → "2100-0074-2-P"
- */
-function extractPcbNameFromFile(filename: string): string | null {
-  let name = filename
-    .replace(/\.(xlsx|xls|csv|zip)$/i, "")    // strip extension
-    .replace(/^(BOM[_\s-]*|CP[_\s-]*IP[_\s-]*)/i, "")  // strip BOM_ or CP_IP_ prefix
-    .replace(/[_\s-]*(Rev[A-Z0-9]*|v\d+)$/i, "")  // strip revision suffix
-    .replace(/[_\s-]*\d{6,8}$/i, "")  // strip date suffix (YYYYMMDD or YYMMDD)
-    .trim();
-
-  return name.length >= 3 ? name : null;
 }
 
 /** Merge rows sharing the same MPN: sum quantities, combine designators. */
