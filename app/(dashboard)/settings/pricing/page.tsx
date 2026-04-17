@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { PricingSettingsForm } from "@/components/settings/pricing-settings-form";
+import { PricingSourceReference } from "@/components/settings/pricing-source-reference";
 import type { PricingSettings } from "@/lib/pricing/types";
 
 const DEFAULTS: PricingSettings = {
@@ -72,6 +73,7 @@ export default async function PricingSettingsPage() {
         </p>
       </div>
       <PricingSettingsForm settings={settings} />
+      <PricingSourceReference />
     </div>
   );
 }
