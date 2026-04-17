@@ -222,9 +222,13 @@ export function NewQuoteForm({
     setPreview(null);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+
       const res = await fetch("/api/quotes/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           bom_id: bomId,
           tiers: parsedTiers,
@@ -237,6 +241,7 @@ export function NewQuoteForm({
           ...(pcbMarkup !== "" && { pcb_markup_pct: parseFloat(pcbMarkup) }),
         }),
       });
+      clearTimeout(timeout);
 
       if (!res.ok) {
         const err = await res.json();
@@ -247,7 +252,11 @@ export function NewQuoteForm({
       setPreview(data.pricing ?? data);
       setTimeout(() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Pricing calculation failed");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("Pricing timed out after 2 minutes. This usually means supplier APIs (DigiKey/Mouser) are slow. Try again — cached prices will make it faster on retry.");
+      } else {
+        setError(err instanceof Error ? err.message : "Pricing calculation failed");
+      }
     } finally {
       setLoading(false);
     }

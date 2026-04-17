@@ -85,6 +85,7 @@ export async function searchLCSCPrice(
 
     const res = await fetch(`${LCSC_SEARCH_URL}?${params.toString()}`, {
       method: "GET",
+      signal: AbortSignal.timeout(15_000), // 15s per API call
       headers: { Accept: "application/json" },
     });
 

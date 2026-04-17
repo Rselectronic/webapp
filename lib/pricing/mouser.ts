@@ -54,6 +54,7 @@ export async function searchMouserPrice(
   try {
     const res = await fetch(`${MOUSER_SEARCH_URL}?apiKey=${apiKey}`, {
       method: "POST",
+      signal: AbortSignal.timeout(15_000), // 15s per API call
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

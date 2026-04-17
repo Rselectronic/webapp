@@ -68,6 +68,7 @@ async function getAccessToken(): Promise<string> {
   const tokenUrl = `${digikeyBaseUrl(creds.environment)}/v1/oauth2/token`;
   const res = await fetch(tokenUrl, {
     method: "POST",
+    signal: AbortSignal.timeout(10_000), // 10s for auth
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "client_credentials",
@@ -114,8 +115,10 @@ export async function searchPartPrice(
   const currency = await getPreferredCurrency("digikey");
   // Ported from lib/supplier-tests.ts fix by Piyush 2026-04-15 (Session 10 entry 1)
   const searchUrl = `${digikeyBaseUrl(creds.environment)}/products/v4/search/keyword`;
+  const abort = AbortSignal.timeout(15_000); // 15s per API call
   const res = await fetch(searchUrl, {
     method: "POST",
+    signal: abort,
     headers: {
       Authorization: `Bearer ${token}`,
       "X-DIGIKEY-Client-Id": creds.client_id,
