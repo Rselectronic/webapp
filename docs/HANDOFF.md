@@ -1990,10 +1990,10 @@ DigiKey/Mouser/LCSC search calls had no timeout — if an API was unresponsive, 
 
 ### What's still pending
 
-- Migrations 039 and 040 need to be applied to production Supabase (they exist as files but may not be deployed yet)
-- LCSC API still blocked vendor-side (unchanged from prior sessions)
-- Loading skeletons and new components are untracked — need to be committed
-- All uncommitted changes (22 files modified, 16 new files) need a commit
+- LCSC API still blocked vendor-side — Anas needs to email LCSC contact
+- End-to-end validation with Lanka BOMs (80% of revenue, haven't stress-tested real formats)
+- Batch send-back route uses legacy per-placement model — should migrate to time-based CPH model ($0.35→$0.035 fix applied, but architecture is still flat-rate)
+- Keyword suffix variants to push auto-classification from 90.5% → 95%+ (trivial data migration)
 
-*Entry 54 written: April 17, 2026, Session 14*
+*Entry 54 last updated: April 17, 2026, Session 14 — all committed and deployed (commits bf68db9, fbec547, 78eecf5)*
 

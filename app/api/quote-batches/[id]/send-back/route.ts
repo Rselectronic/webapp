@@ -138,9 +138,13 @@ export async function POST(
     }
 
     const pcbCost = bb.pcb_cost_per_unit ?? 0;
-    const smtRate = batch.smt_cost_per_placement ?? 0.35;
+    const smtRate = batch.smt_cost_per_placement ?? 0.035;
     const thRate = batch.th_cost_per_placement ?? 0.75;
     const mansmtRate = 1.25; // MANSMT default rate
+    const componentMarkupPct = batch.component_markup_pct ?? 25;
+    const pcbMarkupPct = batch.pcb_markup_pct ?? 25;
+    const componentMarkupMultiplier = 1 + componentMarkupPct / 100;
+    const pcbMarkupMultiplier = 1 + pcbMarkupPct / 100;
     const assemblyCostPerBoard = (smtPlacements * smtRate) + (thPlacements * thRate) + (mansmtPlacements * mansmtRate);
     const nre = batch.nre_charge ?? 350;
     const totalSmtPlacements = cpPlacementSum + ipPlacementSum + mansmtPlacements;
@@ -176,8 +180,16 @@ export async function POST(
         smt_placements: smtPlacements,
         th_placements: thPlacements,
         mansmt_placements: mansmtPlacements,
+        component_cost_before_markup: +(tier.components / componentMarkupMultiplier).toFixed(2),
+        component_markup_amount: +(tier.components - tier.components / componentMarkupMultiplier).toFixed(2),
+        component_markup_pct: componentMarkupPct,
+        pcb_cost_before_markup: +(pcbTotal / pcbMarkupMultiplier).toFixed(2),
+        pcb_markup_amount: +(pcbTotal - pcbTotal / pcbMarkupMultiplier).toFixed(2),
+        pcb_markup_pct: pcbMarkupPct,
         components_with_price: 0,
         components_missing_price: 0,
+        overage_cost: 0,
+        overage_qty: 0,
         labour: {
           smt_placement_cost: smtPlacementCost,
           th_placement_cost: thPlacementCost,
