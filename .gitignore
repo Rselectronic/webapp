@@ -57,3 +57,15 @@ claude_desktop_config.json
 mcp_config.json
 .mcp.json
 
+# FUSE filesystem hidden files (OS artifact from file operations)
+.fuse_hidden*
+
+# Duplicate migration files (macOS copy artifacts with space + "2" suffix)
+supabase/migrations/*\ 2.sql
+
+# Agent bot (separate project, has its own repo/deploy)
+agent/
+
+# Scratch / standup notes
+FOUNDERS_BRIEF.md
+STANDUP_*.md

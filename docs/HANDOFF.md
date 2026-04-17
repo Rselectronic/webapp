@@ -1941,6 +1941,14 @@ Replaced the separate overage sub-row. Components and PCB rows now have a clicka
 
 New fields added to `PricingTier` type and engine output: `component_cost_before_markup`, `component_markup_amount`, `component_markup_pct`, `pcb_cost_before_markup`, `pcb_markup_amount`, `pcb_markup_pct`.
 
+### 14. Supplier API timeouts (Piyush bug report)
+
+DigiKey/Mouser/LCSC search calls had no timeout — if an API was unresponsive, pricing calculation hung indefinitely. Added `AbortSignal.timeout(15_000)` to all 3 supplier search functions and `AbortSignal.timeout(10_000)` to DigiKey OAuth. Client-side Calculate Pricing button now has a 2-minute abort with user-friendly error message. Files: `lib/pricing/digikey.ts`, `lib/pricing/mouser.ts`, `lib/pricing/lcsc.ts`, `components/quotes/new-quote-form.tsx`.
+
+### 15. Time model CPH rates seeded
+
+`app_settings.pricing` was missing `use_time_model`, `cp_cph`, `small_cph`, `ip_cph`, `th_cph`, `mansmt_cph`, and feeder setup times. Assembly cost calculations fell through to zero. Seeded all values from DM/TIME V11: CP 4,500 CPH, 0402 3,500, 0201 2,500, IP 2,000, TH 150, MANSMT 100, plus feeder load times (2/3 min) and printer setup (15 min). No migration needed — direct DB update to existing `app_settings` JSONB.
+
 ### Files touched
 
 **New files:**
@@ -1976,6 +1984,9 @@ New fields added to `PricingTier` type and engine output: `component_cost_before
 - `lib/pricing/engine.ts` — markup breakdown fields in PricingTier output
 - `lib/pricing/types.ts` — 6 new markup breakdown fields + bom_line_id/cpc on MissingPrice
 - `lib/pricing/recompute.ts` — markup override passthrough, MPN-less lookup chain
+- `lib/pricing/digikey.ts` — 15s timeout on search, 10s timeout on OAuth
+- `lib/pricing/mouser.ts` — 15s timeout on search
+- `lib/pricing/lcsc.ts` — 15s timeout on search
 
 ### What's still pending
 

@@ -1172,7 +1172,7 @@ This is not a "nice to have" bolt-on. It's a core architectural requirement. The
 1. **Anas opens Claude/any AI** → it already knows every customer, every active job, every open quote, every unpaid invoice. Zero context-building.
 2. **Piyush asks AI about procurement** → AI queries live PROC data, checks supplier PO status, identifies backorders, suggests alternatives.
 3. **Any new AI tool** (email drafting, scheduling, analytics) → plugs into the same MCP server and has full business context instantly.
-4. **Abdul's BLANQ agency** → the MCP server becomes a sellable product. Other EMS shops get the same AI integration.
+4. **Future-proofing** → as new AI models and interfaces emerge, RS's operational context is already exposed in a standard protocol. No re-integration work required.
 
 ### MCP Server Architecture
 
@@ -1433,4 +1433,4 @@ By week 8, the full MCP server is live with ~20 tools. Any AI that connects gets
 
 ### Why This Is a Competitive Advantage
 
-No other small EMS shop has this. The big ERPs (Epicor, Syteline) don't have MCP servers. CalcuQuote doesn't have one. This makes RS the first AI-native PCB assembly company — and when Abdul packages this for BLANQ, it's a selling point that no competitor can match.
+No other small EMS shop has this. The big ERPs (Epicor, Syteline) don't have MCP servers. CalcuQuote doesn't have one. This makes RS the first AI-native PCB assembly company — a structural advantage that compounds with every quote, every job, and every decision the system captures.

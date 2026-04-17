@@ -3244,6 +3244,8 @@ So the more BOMs you price, the richer the components table gets, the more accur
 
 **Rate limit exceeded:** The response is cached HTTP 429 — treated as a failure, falls back to other suppliers.
 
+**Timeout:** All supplier API calls have a 15-second timeout (`AbortSignal.timeout(15_000)`) to prevent hanging. DigiKey OAuth token requests have a 10-second timeout. If a supplier is unresponsive, the call fails gracefully and pricing continues with cached/available data from other suppliers.
+
 ### 16.8 API routes that call suppliers
 
 | Route | When it fires | What it does with the result |
