@@ -1,35 +1,17 @@
-import Link from "next/link";
 import { Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { CreateCustomerDialog } from "@/components/customers/create-customer-dialog";
 import { Button } from "@/components/ui/button";
 import { CustomersTable } from "@/components/customers/customers-table";
 
-interface SearchParams {
-  status?: string;
-}
-
-export default async function CustomersPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  const params = await searchParams;
+export default async function CustomersPage() {
   const supabase = await createClient();
 
-  // Fetch ALL customers — client-side search handles filtering instantly
-  let query = supabase
+  // Fetch ALL customers — client component handles search + status filtering instantly
+  const { data: customers, error } = await supabase
     .from("customers")
     .select("*")
     .order("company_name", { ascending: true });
-
-  if (params.status === "inactive") {
-    query = query.eq("is_active", false);
-  } else if (params.status !== "all") {
-    query = query.eq("is_active", true);
-  }
-
-  const { data: customers, error } = await query;
 
   return (
     <div className="space-y-6">
@@ -50,19 +32,6 @@ export default async function CustomersPage({
             </Button>
           </a>
         </div>
-      </div>
-
-      <div className="flex gap-1">
-        {["active", "inactive", "all"].map((s) => (
-          <Link key={s} href={`/customers?status=${s}`}>
-            <Button
-              variant={(params.status ?? "active") === s ? "default" : "outline"}
-              size="sm"
-            >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </Button>
-          </Link>
-        ))}
       </div>
 
       {error ? (

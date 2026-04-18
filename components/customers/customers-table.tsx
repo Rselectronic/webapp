@@ -43,6 +43,8 @@ function SortArrow({ column, sort }: { column: SortColumn; sort: SortState }) {
   );
 }
 
+type StatusFilter = "active" | "inactive" | "all";
+
 export function CustomersTable({
   customers,
 }: {
@@ -51,6 +53,7 @@ export function CustomersTable({
 }) {
   const [sort, setSort] = useState<SortState>({ column: null, direction: "asc" });
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
 
   function handleSort(column: SortColumn) {
     setSort((prev) => {
@@ -61,15 +64,22 @@ export function CustomersTable({
   }
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return customers;
-    const q = query.toLowerCase();
-    return customers.filter((c) =>
-      c.code.toLowerCase().includes(q) ||
-      c.company_name.toLowerCase().includes(q) ||
-      (c.contact_name ?? "").toLowerCase().includes(q) ||
-      (c.contact_email ?? "").toLowerCase().includes(q)
-    );
-  }, [customers, query]);
+    let list = customers;
+    // Status filter
+    if (statusFilter === "active") list = list.filter((c) => c.is_active);
+    else if (statusFilter === "inactive") list = list.filter((c) => !c.is_active);
+    // Search filter
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter((c) =>
+        c.code.toLowerCase().includes(q) ||
+        c.company_name.toLowerCase().includes(q) ||
+        (c.contact_name ?? "").toLowerCase().includes(q) ||
+        (c.contact_email ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [customers, query, statusFilter]);
 
   const sorted = [...filtered].sort((a, b) => {
     if (!sort.column) return 0;
@@ -93,21 +103,45 @@ export function CustomersTable({
   const headerClass =
     "cursor-pointer select-none hover:text-blue-600 dark:hover:text-blue-400 transition-colors";
 
+  const statusButtons: { value: StatusFilter; label: string }[] = [
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+    { value: "all", label: "All" },
+  ];
+
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <Input
-          placeholder="Search customers..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="pl-9"
-        />
-        {query && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-            {filtered.length} of {customers.length}
-          </span>
-        )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Input
+            placeholder="Search customers..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9"
+          />
+          {query && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+              {filtered.length} of {customers.length}
+            </span>
+          )}
+        </div>
+        <div className="flex gap-1">
+          {statusButtons.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => setStatusFilter(s.value)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                statusFilter === s.value
+                  ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="table-responsive rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
       <Table>
