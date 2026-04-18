@@ -3,11 +3,9 @@ import { Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { CreateCustomerDialog } from "@/components/customers/create-customer-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { CustomersTable } from "@/components/customers/customers-table";
 
 interface SearchParams {
-  search?: string;
   status?: string;
 }
 
@@ -19,6 +17,7 @@ export default async function CustomersPage({
   const params = await searchParams;
   const supabase = await createClient();
 
+  // Fetch ALL customers — client-side search handles filtering instantly
   let query = supabase
     .from("customers")
     .select("*")
@@ -28,13 +27,6 @@ export default async function CustomersPage({
     query = query.eq("is_active", false);
   } else if (params.status !== "all") {
     query = query.eq("is_active", true);
-  }
-
-  if (params.search) {
-    const sanitized = params.search.replace(/[,.()"\\]/g, "");
-    query = query.or(
-      `code.ilike.%${sanitized}%,company_name.ilike.%${sanitized}%`
-    );
   }
 
   const { data: customers, error } = await query;
@@ -60,34 +52,17 @@ export default async function CustomersPage({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-        <form className="flex items-center gap-2">
-          <Input
-            name="search"
-            placeholder="Search customers..."
-            defaultValue={params.search ?? ""}
-            className="w-full sm:w-64"
-          />
-          <input type="hidden" name="status" value={params.status ?? ""} />
-          <Button type="submit" variant="secondary" size="sm">
-            Search
-          </Button>
-        </form>
-        <div className="flex gap-1">
-          {["active", "inactive", "all"].map((s) => (
-            <Link
-              key={s}
-              href={`/customers?status=${s}${params.search ? `&search=${params.search}` : ""}`}
+      <div className="flex gap-1">
+        {["active", "inactive", "all"].map((s) => (
+          <Link key={s} href={`/customers?status=${s}`}>
+            <Button
+              variant={(params.status ?? "active") === s ? "default" : "outline"}
+              size="sm"
             >
-              <Button
-                variant={(params.status ?? "active") === s ? "default" : "outline"}
-                size="sm"
-              >
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </Button>
-            </Link>
-          ))}
-        </div>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </Button>
+          </Link>
+        ))}
       </div>
 
       {error ? (
@@ -95,7 +70,7 @@ export default async function CustomersPage({
           Failed to load customers. Make sure your Supabase connection is configured.
         </div>
       ) : (
-        <CustomersTable customers={customers ?? []} search={params.search} />
+        <CustomersTable customers={customers ?? []} />
       )}
     </div>
   );

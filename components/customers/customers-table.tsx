@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -12,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Users } from "lucide-react";
+import { Users, Search } from "lucide-react";
 import { CreateCustomerDialog } from "@/components/customers/create-customer-dialog";
 
 interface Customer {
@@ -44,12 +45,12 @@ function SortArrow({ column, sort }: { column: SortColumn; sort: SortState }) {
 
 export function CustomersTable({
   customers,
-  search,
 }: {
   customers: Customer[];
   search?: string;
 }) {
   const [sort, setSort] = useState<SortState>({ column: null, direction: "asc" });
+  const [query, setQuery] = useState("");
 
   function handleSort(column: SortColumn) {
     setSort((prev) => {
@@ -59,7 +60,18 @@ export function CustomersTable({
     });
   }
 
-  const sorted = [...customers].sort((a, b) => {
+  const filtered = useMemo(() => {
+    if (!query.trim()) return customers;
+    const q = query.toLowerCase();
+    return customers.filter((c) =>
+      c.code.toLowerCase().includes(q) ||
+      c.company_name.toLowerCase().includes(q) ||
+      (c.contact_name ?? "").toLowerCase().includes(q) ||
+      (c.contact_email ?? "").toLowerCase().includes(q)
+    );
+  }, [customers, query]);
+
+  const sorted = [...filtered].sort((a, b) => {
     if (!sort.column) return 0;
     const col = sort.column;
     let aVal: string | boolean | null;
@@ -82,7 +94,22 @@ export function CustomersTable({
     "cursor-pointer select-none hover:text-blue-600 dark:hover:text-blue-400 transition-colors";
 
   return (
-    <div className="table-responsive rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <Input
+          placeholder="Search customers..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="pl-9"
+        />
+        {query && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+            {filtered.length} of {customers.length}
+          </span>
+        )}
+      </div>
+      <div className="table-responsive rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
       <Table>
         <TableHeader>
           <TableRow>
@@ -153,8 +180,8 @@ export function CustomersTable({
                   icon={Users}
                   title="No customers found"
                   description={
-                    search
-                      ? `No results for "${search}". Try a different search term.`
+                    query
+                      ? `No results for "${query}". Try a different search term.`
                       : "Add your first customer to get started."
                   }
                   className="border-0"
@@ -166,6 +193,7 @@ export function CustomersTable({
           )}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }
