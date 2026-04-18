@@ -2411,9 +2411,9 @@ A confirmation page for creating procurement from a job. Shows job details and e
 - **New Customer** button -- Opens a dialog to add a new customer (code, company name, contact info)
 - **Export CSV** button -- Downloads all customers as CSV
 
-**Search bar:** Text input + Search button. Searches by customer code or company name.
+**Search bar:** Instant client-side search — filters as you type across code, company name, contact, and email. No button, no page reload. Shows "X of Y" count while filtering.
 
-**Status filter:** Active / Inactive / All buttons.
+**Status filter:** Active / Inactive / All toggle buttons — client-side, instant. No page reload. All customers fetched once from the server, filtered in the browser.
 
 **Table columns:**
 

@@ -1997,3 +1997,28 @@ DigiKey/Mouser/LCSC search calls had no timeout — if an API was unresponsive, 
 
 *Entry 54 last updated: April 17, 2026, Session 14 — all committed and deployed (commits bf68db9, fbec547, 78eecf5)*
 
+## Entry 55 — April 18, 2026 (Session 14 cont.) — Client-Side Rendering on Customers Page
+
+Piyush pointed out that the customers page had a server-side Search button (click → page reload) and the Active/Inactive/All tabs also triggered page reloads. For client-side rendering, everything should be instant — no buttons, no reloads.
+
+### 1. Instant search (no Search button)
+
+Replaced the server-side `<form>` with a client-side search input in `CustomersTable`. Filters as you type across code, company name, contact, and email. Shows "X of Y" count while filtering. No button, no page reload.
+
+### 2. Active/Inactive/All — client-side toggle
+
+Moved the status filter buttons from the server page into the `CustomersTable` client component. Clicking Active/Inactive/All now filters instantly in-memory — no URL change, no server round-trip.
+
+### 3. Server page simplified
+
+The server page (`customers/page.tsx`) now fetches ALL customers in a single query with no filters. The client component handles all filtering (search + status) in the browser. Removed `Link` import, `searchParams`, and the server-side status/search logic.
+
+### Files touched
+
+- `components/customers/customers-table.tsx` — added instant search input, status filter buttons, `useMemo` filtering
+- `app/(dashboard)/customers/page.tsx` — removed server-side search form + status filter links, simplified to fetch-all
+
+Commits: `657189f` (instant search), `810b963` (client-side status filters). Both pushed to main.
+
+*Entry 55 written: April 18, 2026, Session 14 (continued)*
+
