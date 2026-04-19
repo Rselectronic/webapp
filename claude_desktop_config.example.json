@@ -1,0 +1,14 @@
+{
+  "_comment_1": "RS PCB Assembly MCP server config — paste this into your MCP-capable bot",
+  "_comment_2": "Get your rs_live_ API key at https://webapp-fawn-seven.vercel.app/settings/api-keys",
+  "_comment_3": "The key is shown ONCE at creation time — save it somewhere safe, the DB only stores the hash",
+
+  "mcpServers": {
+    "rs-pcb-assembly": {
+      "url": "https://webapp-fawn-seven.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer rs_live_REPLACE_ME"
+      }
+    }
+  }
+}

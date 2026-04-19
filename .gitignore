@@ -34,8 +34,8 @@ yarn-error.log*
 .env*
 !.env.local.example
 
-# VBA source files (contain API keys)
-All vba codes/
+# VBA source files (now tracked in repo for reference)
+# All vba codes/
 
 # MCP server build artifacts
 erp-rs-mcp/dist/
