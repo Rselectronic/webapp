@@ -89,6 +89,12 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.access_token;
 }
 
+export interface DigiKeyPriceBreak {
+  quantity: number;
+  unit_price: number;
+  currency: string;
+}
+
 export interface DigiKeyPartResult {
   mpn: string;
   description: string;
@@ -97,6 +103,8 @@ export interface DigiKeyPartResult {
   in_stock: boolean;
   stock_qty: number;
   digikey_pn: string;
+  /** Full volume-break ladder from ProductVariations[0].StandardPricing. */
+  price_breaks: DigiKeyPriceBreak[];
   // Component details extracted from Parameters
   mounting_type?: string;
   package_case?: string;
@@ -146,6 +154,11 @@ export async function searchPartPrice(
       ProductVariations?: Array<{
         DigiKeyProductNumber: string;
         PackageType?: { Name: string };
+        StandardPricing?: Array<{
+          BreakQuantity: number;
+          UnitPrice: number;
+          TotalPrice: number;
+        }>;
       }>;
       Parameters?: Array<{
         ParameterId: number;
@@ -208,17 +221,32 @@ export async function searchPartPrice(
   const hMatch = hParen ?? heightStr.match(/([\d.]+)\s*mm/i);
   if (hMatch) heightMm = parseFloat(hMatch[1]);
 
-  // DigiKey PN lives on the first ProductVariation
-  const digikeyPn = product.ProductVariations?.[0]?.DigiKeyProductNumber ?? "";
+  // DigiKey PN + price-break ladder live on the first ProductVariation.
+  // StandardPricing is the full volume-discount table; without extracting
+  // it every tier in the pricing review page would see the same unit price.
+  const firstVariation = product.ProductVariations?.[0];
+  const digikeyPn = firstVariation?.DigiKeyProductNumber ?? "";
+  const priceBreaks: DigiKeyPriceBreak[] = [];
+  for (const pb of firstVariation?.StandardPricing ?? []) {
+    if (!Number.isFinite(pb.BreakQuantity) || pb.BreakQuantity <= 0) continue;
+    if (!Number.isFinite(pb.UnitPrice) || pb.UnitPrice <= 0) continue;
+    priceBreaks.push({
+      quantity: pb.BreakQuantity,
+      unit_price: pb.UnitPrice,
+      currency,
+    });
+  }
+  priceBreaks.sort((a, b) => a.quantity - b.quantity);
 
   return {
     mpn: product.ManufacturerProductNumber,
     description: product.Description.ProductDescription,
-    unit_price: product.UnitPrice,
+    unit_price: priceBreaks[0]?.unit_price ?? product.UnitPrice,
     currency,
     in_stock: product.QuantityAvailable > 0,
     stock_qty: product.QuantityAvailable ?? 0,
     digikey_pn: digikeyPn,
+    price_breaks: priceBreaks,
     mounting_type: mountingType,
     package_case: packageCase,
     category,

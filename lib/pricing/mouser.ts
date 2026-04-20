@@ -33,6 +33,12 @@ async function getMouserCredentials(): Promise<MouserCreds | null> {
   return creds;
 }
 
+export interface MouserPriceBreak {
+  quantity: number;
+  unit_price: number;
+  currency: string;
+}
+
 export interface MouserPartResult {
   mpn: string;
   description: string;
@@ -41,6 +47,8 @@ export interface MouserPartResult {
   in_stock: boolean;
   mouser_pn: string;
   stock_qty: number;
+  /** Full volume-break ladder when the API returns one; empty otherwise. */
+  price_breaks: MouserPriceBreak[];
 }
 
 export async function searchMouserPrice(
@@ -91,10 +99,26 @@ export async function searchMouserPrice(
     const part = data.SearchResults?.Parts?.[0];
     if (!part) return null;
 
-    // Extract best unit price from price breaks
-    const priceBreak = part.PriceBreaks?.[0];
-    const priceStr = priceBreak?.Price?.replace(/[^0-9.]/g, "") ?? "0";
-    const unitPrice = parseFloat(priceStr) || 0;
+    // Extract the FULL price-break ladder (not just the first entry) so
+    // volume pricing propagates correctly into the review page's per-tier
+    // columns. Mouser stringifies the price ("0.144" or "$0.144") — strip
+    // anything that isn't a digit or decimal.
+    const breaks: MouserPriceBreak[] = [];
+    for (const pb of part.PriceBreaks ?? []) {
+      const priceStr = pb.Price?.replace(/[^0-9.]/g, "") ?? "0";
+      const price = parseFloat(priceStr);
+      if (!Number.isFinite(price) || price <= 0) continue;
+      if (!Number.isFinite(pb.Quantity) || pb.Quantity <= 0) continue;
+      breaks.push({
+        quantity: pb.Quantity,
+        unit_price: price,
+        currency: pb.Currency ?? preferredCurrency,
+      });
+    }
+    breaks.sort((a, b) => a.quantity - b.quantity);
+
+    const headline = breaks[0];
+    if (!headline) return null;
 
     // Parse stock quantity from availability string (e.g., "1,234 In Stock")
     const stockMatch = part.Availability?.match(/[\d,]+/);
@@ -105,11 +129,12 @@ export async function searchMouserPrice(
     return {
       mpn: part.ManufacturerPartNumber,
       description: part.Description,
-      unit_price: unitPrice,
-      currency: priceBreak?.Currency ?? preferredCurrency,
+      unit_price: headline.unit_price,
+      currency: headline.currency,
       in_stock: stockQty > 0,
       mouser_pn: part.MouserPartNumber,
       stock_qty: stockQty,
+      price_breaks: breaks,
     };
   } catch {
     return null;

@@ -12,6 +12,7 @@ import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import { ExportBomButton } from "@/components/bom/export-bom-button";
 import { DeleteBomButton } from "@/components/bom/delete-bom-button";
+import { StartQuoteButton } from "@/components/quote-wizard/start-quote-button";
 import { formatDateTime } from "@/lib/utils/format";
 
 export default async function BomDetailPage({
@@ -108,14 +109,7 @@ export default async function BomDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {bom.status === "parsed" && (
-            <Link href={`/quotes/new?bom_id=${id}`}>
-              <Button size="sm" className="gap-1.5">
-                <Calculator className="h-4 w-4" />
-                {linkedQuote ? "New Quote" : "Create Quote"}
-              </Button>
-            </Link>
-          )}
+          {bom.status === "parsed" && <StartQuoteButton bomId={id} />}
           {linkedQuote && (
             <Link href={`/quotes/${linkedQuote.id}`}>
               <Button size="sm" variant="secondary" className="gap-1.5">
@@ -131,15 +125,21 @@ export default async function BomDetailPage({
 
       {/* Stats — computed LIVE from bom_lines so they stay in sync with the
           database after every classification run (the parse_result.classification_summary
-          snapshot only reflects the initial upload state). */}
+          snapshot only reflects the initial upload state). Qty=0 lines are
+          excluded: they're not-installed placeholders kept only so the
+          production print-out shows their designators, and they deliberately
+          don't get M-coded. */}
       {(() => {
-        const classifiableLines = (lines ?? []).filter((l) => !l.is_pcb && !l.is_dni);
+        const classifiableLines = (lines ?? []).filter(
+          (l) => !l.is_pcb && !l.is_dni && (l.quantity ?? 0) > 0
+        );
+        const liveComponents = classifiableLines.length;
         const liveClassified = classifiableLines.filter((l) => l.m_code).length;
         const liveUnclassified = classifiableLines.filter((l) => !l.m_code).length;
         return (
       <div className="grid gap-4 md:grid-cols-4">
         {[
-          { label: "Components", value: bom.component_count, color: "" },
+          { label: "Components", value: liveComponents, color: "" },
           { label: "Classified", value: liveClassified, color: "text-green-600" },
           { label: "Need Review", value: liveUnclassified, color: "text-orange-600" },
           { label: "Merged Lines", value: statsSummary.merged ?? 0, color: "" },
@@ -166,7 +166,7 @@ export default async function BomDetailPage({
           bomId={id}
           unclassifiedCount={
             lines.filter(
-              (l) => !l.m_code && !l.is_pcb && !l.is_dni
+              (l) => !l.m_code && !l.is_pcb && !l.is_dni && (l.quantity ?? 0) > 0
             ).length
           }
         />

@@ -29,6 +29,7 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     settings,
     tier_inputs,
     assembly_type,
+    pricing_overrides,
   } = input;
 
   // Resolve per-tier inputs: prefer new tier_inputs, fall back to legacy flat values
@@ -178,9 +179,14 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       const baseQty = line.qty_per_board * boardQty;
       const extras = orderQty - baseQty;
 
-      const unitPrice = line.unit_price ?? 0;
+      // Prefer the user-pinned per-tier price from the Component Pricing Review
+      // page. Falls back to the cache-resolved line.unit_price when absent.
+      const overrideForLine = pricing_overrides?.get(line.bom_line_id);
+      const overridePrice = overrideForLine?.get(boardQty);
+      const effectiveUnitPrice = typeof overridePrice === "number" ? overridePrice : line.unit_price;
+      const unitPrice = effectiveUnitPrice ?? 0;
 
-      if (line.unit_price === null) {
+      if (effectiveUnitPrice === null || effectiveUnitPrice === undefined) {
         componentsMissingPrice++;
       } else {
         componentsWithPrice++;

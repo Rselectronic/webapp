@@ -5,14 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Upload, FileSpreadsheet, Loader2, Check } from "lucide-react";
+import { Upload, FileSpreadsheet, Loader2, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ColumnMapper, type ColumnMapping } from "./column-mapper";
 import * as XLSX from "xlsx";
@@ -36,6 +29,11 @@ interface UploadFormProps {
 export function UploadForm({ customers }: UploadFormProps) {
   const router = useRouter();
   const [customerId, setCustomerId] = useState("");
+  // Free-text customer search. Mirrors the GMP typeahead pattern: customerId
+  // is the authoritative FK; customerInput is the text box the user sees.
+  const [customerInput, setCustomerInput] = useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const customerWrapperRef = useRef<HTMLDivElement>(null);
   const [gmps, setGmps] = useState<Gmp[]>([]);
   const [gmpId, setGmpId] = useState("");
   const [gmpInput, setGmpInput] = useState("");
@@ -59,16 +57,60 @@ export function UploadForm({ customers }: UploadFormProps) {
   const [headerRow, setHeaderRow] = useState(1);
   const [lastRow, setLastRow] = useState(1);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (gmpWrapperRef.current && !gmpWrapperRef.current.contains(e.target as Node)) {
         setGmpDropdownOpen(false);
       }
+      if (customerWrapperRef.current && !customerWrapperRef.current.contains(e.target as Node)) {
+        setCustomerDropdownOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Filter customers by typed text against code OR company name (case-insensitive).
+  const filteredCustomers = customers.filter((c) => {
+    const q = customerInput.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.code.toLowerCase().includes(q) ||
+      c.company_name.toLowerCase().includes(q)
+    );
+  });
+
+  const handleCustomerSelect = (customer: Customer) => {
+    setCustomerInput(`${customer.code} — ${customer.company_name}`);
+    setCustomerDropdownOpen(false);
+    handleCustomerChange(customer.id);
+  };
+
+  const handleCustomerInputChange = (value: string) => {
+    setCustomerInput(value);
+    setCustomerDropdownOpen(true);
+    // Clear the underlying FK if the user types something that doesn't match
+    // the currently-selected customer — forces them to pick from the list.
+    if (customerId) {
+      const current = customers.find((c) => c.id === customerId);
+      if (current && value !== `${current.code} — ${current.company_name}`) {
+        setCustomerId("");
+        setGmpId("");
+        setGmpInput("");
+        setGmps([]);
+      }
+    }
+  };
+
+  const clearCustomer = () => {
+    setCustomerInput("");
+    setCustomerId("");
+    setCustomerDropdownOpen(false);
+    setGmpId("");
+    setGmpInput("");
+    setGmps([]);
+  };
 
   const handleCustomerChange = useCallback(async (id: string | null) => {
     if (!id) return;
@@ -328,23 +370,61 @@ export function UploadForm({ customers }: UploadFormProps) {
 
   return (
     <div className="space-y-6">
-      {/* Customer */}
+      {/* Customer — type to search, click to pick */}
       <div className="space-y-2">
         <Label>Customer</Label>
-        <Select value={customerId} onValueChange={handleCustomerChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select a customer...">
-              {customerId ? (() => { const c = customers.find(c => c.id === customerId); return c ? `${c.code} — ${c.company_name}` : customerId; })() : undefined}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {customers.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.code} — {c.company_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="relative" ref={customerWrapperRef}>
+          <Input
+            placeholder="Type customer code or company name..."
+            value={customerInput}
+            onChange={(e) => handleCustomerInputChange(e.target.value)}
+            onFocus={() => setCustomerDropdownOpen(true)}
+            autoComplete="off"
+            className={customerId ? "pr-8" : undefined}
+          />
+          {customerInput && (
+            <button
+              type="button"
+              onClick={clearCustomer}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+              aria-label="Clear customer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {customerDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+              <div className="max-h-60 overflow-y-auto p-1">
+                {filteredCustomers.length > 0 ? (
+                  filteredCustomers.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left hover:bg-muted transition-colors",
+                        customerId === c.id && "bg-muted"
+                      )}
+                      onMouseDown={(e) => {
+                        // mousedown fires before input blur, keeping the click alive
+                        e.preventDefault();
+                        handleCustomerSelect(c);
+                      }}
+                    >
+                      <Check className={cn("h-3.5 w-3.5 shrink-0", customerId === c.id ? "opacity-100" : "opacity-0")} />
+                      <span className="font-mono font-medium">{c.code}</span>
+                      <span className="text-muted-foreground truncate">— {c.company_name}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+                    No customers match <span className="font-medium">&quot;{customerInput.trim()}&quot;</span>.
+                    Add them first in <a href="/customers" className="underline">Customers</a>.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* GMP */}
@@ -509,8 +589,10 @@ export function UploadForm({ customers }: UploadFormProps) {
         </div>
       )}
 
-      {/* Column mapper preview */}
-      {showMapper && previewHeaders.length > 0 && (
+      {/* Column mapper preview — keep mounted whenever a file is loaded, even
+          if the currently-selected header row is blank (so the user can keep
+          adjusting the row number instead of the whole section disappearing). */}
+      {showMapper && allFileRows.length > 0 && (
         <ColumnMapper
           headers={previewHeaders}
           sampleRows={previewRows}
