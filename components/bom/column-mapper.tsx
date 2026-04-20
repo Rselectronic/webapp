@@ -131,6 +131,13 @@ export function ColumnMapper({
         </p>
       </div>
 
+      {/* Empty-row warning when the picked header row has no cells. */}
+      {headers.filter((h) => h.trim().length > 0).length === 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
+          Row {headerRow} looks blank — no column headers detected. Try a different Header Row number.
+        </div>
+      )}
+
       {/* Mapping dropdowns */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {STANDARD_FIELDS.map((field) => (

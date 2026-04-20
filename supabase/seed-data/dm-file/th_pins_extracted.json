@@ -1,0 +1,9278 @@
+[
+  {
+    "mpn": "3568",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "3568",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5000",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5000",
+    "pin_count": 1
+  },
+  {
+    "mpn": "5009",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5009",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5010",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5010",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5011",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5011",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5012",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5012",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5014",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5014",
+    "pin_count": 2
+  },
+  {
+    "mpn": "66253",
+    "manufacturer": "Molex",
+    "cpc": "66253",
+    "pin_count": 3
+  },
+  {
+    "mpn": "112404",
+    "manufacturer": "Amphenol RF",
+    "cpc": "112404",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1755749",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1755749",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1757242",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1757242",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1757255",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1757255",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1770924",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1770924",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1776508",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1776508",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1776524",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1776524",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1777073",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1777073",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1827868",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1827868",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1827907",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1827907",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1830596",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1830596",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1984620",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1984620",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1991095",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1991095",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1991105",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1991105",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1999000",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1999000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "22102021",
+    "manufacturer": "Molex",
+    "cpc": "22102021",
+    "pin_count": 2
+  },
+  {
+    "mpn": "22102061",
+    "manufacturer": "Molex",
+    "cpc": "22102061",
+    "pin_count": 6
+  },
+  {
+    "mpn": "22232021",
+    "manufacturer": "Molex",
+    "cpc": "22232021",
+    "pin_count": 2
+  },
+  {
+    "mpn": "22232031",
+    "manufacturer": "Molex",
+    "cpc": "22232031",
+    "pin_count": 3
+  },
+  {
+    "mpn": "22232051",
+    "manufacturer": "Molex",
+    "cpc": "22232051",
+    "pin_count": 5
+  },
+  {
+    "mpn": "22232061",
+    "manufacturer": "Molex",
+    "cpc": "22232061",
+    "pin_count": 6
+  },
+  {
+    "mpn": "22232071",
+    "manufacturer": "Molex",
+    "cpc": "22232071",
+    "pin_count": 7
+  },
+  {
+    "mpn": "22232081",
+    "manufacturer": "Molex",
+    "cpc": "22232081",
+    "pin_count": 8
+  },
+  {
+    "mpn": "22284065",
+    "manufacturer": "Molex",
+    "cpc": "22284065",
+    "pin_count": 6
+  },
+  {
+    "mpn": "22284085",
+    "manufacturer": "Molex",
+    "cpc": "22284085",
+    "pin_count": 8
+  },
+  {
+    "mpn": "151340200",
+    "manufacturer": null,
+    "cpc": "151340200",
+    "pin_count": 2
+  },
+  {
+    "mpn": "430450212",
+    "manufacturer": "Molex",
+    "cpc": "430450212",
+    "pin_count": 2
+  },
+  {
+    "mpn": "430450612",
+    "manufacturer": "Molex",
+    "cpc": "430450612",
+    "pin_count": 6
+  },
+  {
+    "mpn": "436450300",
+    "manufacturer": "Molex",
+    "cpc": "436450300",
+    "pin_count": 3
+  },
+  {
+    "mpn": "43645-0400",
+    "manufacturer": "Molex",
+    "cpc": "436450400",
+    "pin_count": 4
+  },
+  {
+    "mpn": "436500204",
+    "manufacturer": "Molex",
+    "cpc": "436500204",
+    "pin_count": 2
+  },
+  {
+    "mpn": "559350210",
+    "manufacturer": "Molex",
+    "cpc": "559350210",
+    "pin_count": 2
+  },
+  {
+    "mpn": "559350410",
+    "manufacturer": "Molex",
+    "cpc": "559350410",
+    "pin_count": 4
+  },
+  {
+    "mpn": "559350510",
+    "manufacturer": "Molex",
+    "cpc": "559350510",
+    "pin_count": 5
+  },
+  {
+    "mpn": "559350610",
+    "manufacturer": "Molex",
+    "cpc": "559350610",
+    "pin_count": 6
+  },
+  {
+    "mpn": "559350810",
+    "manufacturer": "Molex",
+    "cpc": "559350810",
+    "pin_count": 8
+  },
+  {
+    "mpn": "705550001",
+    "manufacturer": "Molex",
+    "cpc": "705550001",
+    "pin_count": 2
+  },
+  {
+    "mpn": "901310121",
+    "manufacturer": "Molex",
+    "cpc": "901310121",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1731130214",
+    "manufacturer": "Molex",
+    "cpc": "1731130214",
+    "pin_count": 15
+  },
+  {
+    "mpn": "1731130238",
+    "manufacturer": "Molex",
+    "cpc": "1731130238",
+    "pin_count": 78
+  },
+  {
+    "mpn": "9562517512",
+    "manufacturer": "HARTING",
+    "cpc": "9562517512",
+    "pin_count": 26
+  },
+  {
+    "mpn": "9562527612",
+    "manufacturer": "HARTING",
+    "cpc": "9562527612",
+    "pin_count": 26
+  },
+  {
+    "mpn": "9563517513",
+    "manufacturer": "HARTING",
+    "cpc": "9563517513",
+    "pin_count": 44
+  },
+  {
+    "mpn": "9563527612",
+    "manufacturer": "HARTING",
+    "cpc": "9563527612",
+    "pin_count": 44
+  },
+  {
+    "mpn": "9564527612",
+    "manufacturer": "HARTING",
+    "cpc": "9564527612",
+    "pin_count": 62
+  },
+  {
+    "mpn": "9565517500",
+    "manufacturer": "HARTING",
+    "cpc": "9565517500",
+    "pin_count": 78
+  },
+  {
+    "mpn": "9565525613",
+    "manufacturer": "HARTING",
+    "cpc": "9565525613",
+    "pin_count": 78
+  },
+  {
+    "mpn": "9565617700",
+    "manufacturer": "HARTING",
+    "cpc": "9565617700",
+    "pin_count": 78
+  },
+  {
+    "mpn": "9665627811",
+    "manufacturer": "HARTING",
+    "cpc": "9665627811",
+    "pin_count": 50
+  },
+  {
+    "mpn": "37211250411",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "37211250411",
+    "pin_count": 3
+  },
+  {
+    "mpn": "56200001009",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "56200001009",
+    "pin_count": 2
+  },
+  {
+    "mpn": "61300211121",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "61300211121",
+    "pin_count": 2
+  },
+  {
+    "mpn": "61300311121",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "61300311121",
+    "pin_count": 3
+  },
+  {
+    "mpn": "61300411121",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "61300411121",
+    "pin_count": 4
+  },
+  {
+    "mpn": "61300511121",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "61300511121",
+    "pin_count": 5
+  },
+  {
+    "mpn": "61400416121",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "61400416121",
+    "pin_count": 6
+  },
+  {
+    "mpn": "65600001409",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "65600001409",
+    "pin_count": 1
+  },
+  {
+    "mpn": "ACS772ECB-400B-PFF-T",
+    "manufacturer": "Allegro MicroSystems",
+    "cpc": "0100047",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SSW-105-01-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "0100543",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TSW-105-14-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "0100743",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSM-107-01-L-DV-006",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "0100752",
+    "pin_count": 14
+  },
+  {
+    "mpn": "A-DF 09 A/KG-T2S",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "0100849",
+    "pin_count": 9
+  },
+  {
+    "mpn": "TSW-102-07-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "0100868",
+    "pin_count": 2
+  },
+  {
+    "mpn": "3020-26-0200-00",
+    "manufacturer": "CNC Tech",
+    "cpc": "0100909",
+    "pin_count": 26
+  },
+  {
+    "mpn": "SSW-113-01-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "0100910",
+    "pin_count": 26
+  },
+  {
+    "mpn": "3020-26-0100-00",
+    "manufacturer": "CNC Tech",
+    "cpc": "0100943",
+    "pin_count": 26
+  },
+  {
+    "mpn": "86130162113345E1LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "0100949",
+    "pin_count": 16
+  },
+  {
+    "mpn": "640456-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "0100950",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UE27AC5410H",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "0105015",
+    "pin_count": 4
+  },
+  {
+    "mpn": "MTJ-889X1-FSE",
+    "manufacturer": "Adam Tech",
+    "cpc": "0105016",
+    "pin_count": 5
+  },
+  {
+    "mpn": "ROE-1205S",
+    "manufacturer": "Recom Power",
+    "cpc": "0105024",
+    "pin_count": 4
+  },
+  {
+    "mpn": "ROE-0505S",
+    "manufacturer": "Recom Power",
+    "cpc": "0105028",
+    "pin_count": 4
+  },
+  {
+    "mpn": "30R500UF",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "0105033",
+    "pin_count": 2
+  },
+  {
+    "mpn": "0ZRE0055FF2A",
+    "manufacturer": "Bel Fuse Inc.",
+    "cpc": "0105034",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSW-118-01-G-S",
+    "manufacturer": "Samtec",
+    "cpc": "0105037",
+    "pin_count": 2
+  },
+  {
+    "mpn": "640456-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "0105039",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CMF55249K00BEEB",
+    "manufacturer": "Vishay Dale",
+    "cpc": "0105041",
+    "pin_count": 1
+  },
+  {
+    "mpn": "FMP200JR-52-100K",
+    "manufacturer": "YAGEO",
+    "cpc": "0105047",
+    "pin_count": 1
+  },
+  {
+    "mpn": "0105048",
+    "manufacturer": null,
+    "cpc": "0105048",
+    "pin_count": 4
+  },
+  {
+    "mpn": "R60MR42205040K",
+    "manufacturer": "KEMET",
+    "cpc": "0105054",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-118-14-G-S",
+    "manufacturer": "Samtec",
+    "cpc": "0105055",
+    "pin_count": 2
+  },
+  {
+    "mpn": "7499010441",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "0105084",
+    "pin_count": 6
+  },
+  {
+    "mpn": "RAC10-12SK/277",
+    "manufacturer": "Recom Power",
+    "cpc": "0105130",
+    "pin_count": 15
+  },
+  {
+    "mpn": "640445-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "0105170",
+    "pin_count": 2
+  },
+  {
+    "mpn": "640445-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "0105172",
+    "pin_count": 3
+  },
+  {
+    "mpn": "670689000",
+    "manufacturer": "Molex",
+    "cpc": "018-00000138-00-0",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TRAPC5MX",
+    "manufacturer": "Switchcraft Inc.",
+    "cpc": "018-00000300-00-0",
+    "pin_count": 5
+  },
+  {
+    "mpn": "5227161-7",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "018-00000310-00-0",
+    "pin_count": 4
+  },
+  {
+    "mpn": "SJ1-3535NG-GR",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "018-00000311-00-0",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1-406507-1",
+    "manufacturer": "TE Connectivity / AMP",
+    "cpc": "018-00000334-00-0",
+    "pin_count": 5
+  },
+  {
+    "mpn": "ACS773ECB-200B-PFF-T",
+    "manufacturer": "Allegro MicroSystems",
+    "cpc": "02704010101 AA",
+    "pin_count": 7
+  },
+  {
+    "mpn": "RP40Q-11024SRUW/P-HC",
+    "manufacturer": "Recom Power",
+    "cpc": "02717010501 AA",
+    "pin_count": 10
+  },
+  {
+    "mpn": "031-5637",
+    "manufacturer": "Amphenol RF",
+    "cpc": "031-5637",
+    "pin_count": 1
+  },
+  {
+    "mpn": "0430450800",
+    "manufacturer": "Molex",
+    "cpc": "0430450800",
+    "pin_count": 8
+  },
+  {
+    "mpn": "0528060610",
+    "manufacturer": "Molex",
+    "cpc": "0528060610",
+    "pin_count": 6
+  },
+  {
+    "mpn": "530480410",
+    "manufacturer": "Molex",
+    "cpc": "0530480410",
+    "pin_count": 4
+  },
+  {
+    "mpn": "0530480610",
+    "manufacturer": null,
+    "cpc": "0530480610",
+    "pin_count": 6
+  },
+  {
+    "mpn": "533750210",
+    "manufacturer": "Molex",
+    "cpc": "0533750210",
+    "pin_count": 2
+  },
+  {
+    "mpn": "22232061",
+    "manufacturer": "Molex",
+    "cpc": "067-00000020-00-0",
+    "pin_count": 6
+  },
+  {
+    "mpn": "067-00000024-00-0",
+    "manufacturer": null,
+    "cpc": "067-00000024-00-0",
+    "pin_count": 10
+  },
+  {
+    "mpn": "067-00000031-00-0",
+    "manufacturer": null,
+    "cpc": "067-00000031-00-0",
+    "pin_count": 14
+  },
+  {
+    "mpn": "067-00000056-00-0",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "067-00000056-00-0",
+    "pin_count": 3
+  },
+  {
+    "mpn": "M206103205",
+    "manufacturer": "Harwin",
+    "cpc": "067-00000060-00-0",
+    "pin_count": 64
+  },
+  {
+    "mpn": "IPL1-107-01-F-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "067-00000118-00-0",
+    "pin_count": 14
+  },
+  {
+    "mpn": "PG04102V100-00",
+    "manufacturer": null,
+    "cpc": "067-00000145-00-0",
+    "pin_count": 10
+  },
+  {
+    "mpn": "EHT-120-01-S-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "067-00000169-00-0",
+    "pin_count": 40
+  },
+  {
+    "mpn": "68000-103HLF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "067-00000259-00-0",
+    "pin_count": 3
+  },
+  {
+    "mpn": "0700-0-00-01-00-00-03-0",
+    "manufacturer": "Mill-Max Manufacturing Corp.",
+    "cpc": "0700-0-00-01-00-00-03-0",
+    "pin_count": 2
+  },
+  {
+    "mpn": "733910060",
+    "manufacturer": "Molex",
+    "cpc": "0733910060",
+    "pin_count": 5
+  },
+  {
+    "mpn": "0914-2-15-20-77-14-11-0",
+    "manufacturer": "Mill-Max Manufacturing Corp.",
+    "cpc": "0914-2-15-20-77-14-11-0",
+    "pin_count": 1
+  },
+  {
+    "mpn": "9565627813",
+    "manufacturer": "HARTING",
+    "cpc": "09565627813",
+    "pin_count": 78
+  },
+  {
+    "mpn": "095-850-286-100",
+    "manufacturer": "Amphenol RF",
+    "cpc": "095-850-286-100",
+    "pin_count": 4
+  },
+  {
+    "mpn": "095-902-502-100",
+    "manufacturer": "Amphenol RF",
+    "cpc": "095-902-502-100",
+    "pin_count": 4
+  },
+  {
+    "mpn": "0997005.WXN",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "0997005.WXN",
+    "pin_count": 2
+  },
+  {
+    "mpn": "640389-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "1000039",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-104-07-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "1000149",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1000259",
+    "manufacturer": null,
+    "cpc": "1000259",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1757284",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1000260",
+    "pin_count": 6
+  },
+  {
+    "mpn": "V25S140P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "1000274",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AC07000002007JAC00",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "1000345",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CK45-B3AD681KYNNA",
+    "manufacturer": "TDK Corporation",
+    "cpc": "100124",
+    "pin_count": 2
+  },
+  {
+    "mpn": "66951-020LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "100137",
+    "pin_count": 20
+  },
+  {
+    "mpn": "100143",
+    "manufacturer": null,
+    "cpc": "100143",
+    "pin_count": 2
+  },
+  {
+    "mpn": "IXTP180N10T",
+    "manufacturer": "IXYS",
+    "cpc": "100463",
+    "pin_count": 3
+  },
+  {
+    "mpn": "100479",
+    "manufacturer": null,
+    "cpc": "100479",
+    "pin_count": 3
+  },
+  {
+    "mpn": "IRF530NPBF",
+    "manufacturer": "Infineon Technologies",
+    "cpc": "100490",
+    "pin_count": 3
+  },
+  {
+    "mpn": "100491",
+    "manufacturer": null,
+    "cpc": "100491",
+    "pin_count": 3
+  },
+  {
+    "mpn": "100531",
+    "manufacturer": null,
+    "cpc": "100531",
+    "pin_count": 2
+  },
+  {
+    "mpn": "100534",
+    "manufacturer": null,
+    "cpc": "100534",
+    "pin_count": 4
+  },
+  {
+    "mpn": "100535",
+    "manufacturer": null,
+    "cpc": "100535",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MP2060-0.50-1%",
+    "manufacturer": "Caddock Electronics Inc.",
+    "cpc": "100546",
+    "pin_count": 2
+  },
+  {
+    "mpn": "100703",
+    "manufacturer": null,
+    "cpc": "100703",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MP2060-5.00-1%",
+    "manufacturer": "Caddock Electronics Inc.",
+    "cpc": "100777",
+    "pin_count": 2
+  },
+  {
+    "mpn": "100790",
+    "manufacturer": null,
+    "cpc": "100790",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SPC02SYAN",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "100894",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MJE15032G",
+    "manufacturer": "onsemi",
+    "cpc": "100903",
+    "pin_count": 3
+  },
+  {
+    "mpn": "MJE15033G",
+    "manufacturer": "onsemi",
+    "cpc": "100904",
+    "pin_count": 3
+  },
+  {
+    "mpn": "10090928-P444VLF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "10090928-P444VLF",
+    "pin_count": 44
+  },
+  {
+    "mpn": "10090929-S154VLF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "10090929-S154VLF",
+    "pin_count": 15
+  },
+  {
+    "mpn": "100DP3T1B1M2QEH",
+    "manufacturer": "E-Switch",
+    "cpc": "100DP3T1B1M2QEH",
+    "pin_count": 6
+  },
+  {
+    "mpn": "100SP3T1B4VS2QE",
+    "manufacturer": "E-Switch",
+    "cpc": "100SP3T1B4VS2QE",
+    "pin_count": 7
+  },
+  {
+    "mpn": "10129381-920001BLF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "10129381-920001BLF",
+    "pin_count": 20
+  },
+  {
+    "mpn": "101569",
+    "manufacturer": null,
+    "cpc": "101569",
+    "pin_count": 2
+  },
+  {
+    "mpn": "102-TBL007A-508-08GY-ND",
+    "manufacturer": null,
+    "cpc": "102-TBL007A-508-08GY-ND",
+    "pin_count": 16
+  },
+  {
+    "mpn": "103JT-025",
+    "manufacturer": null,
+    "cpc": "103JT-025",
+    "pin_count": 2
+  },
+  {
+    "mpn": "104344-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "104344-4",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1053131202",
+    "manufacturer": "Molex",
+    "cpc": "105313-1202",
+    "pin_count": 2
+  },
+  {
+    "mpn": "105313-1203",
+    "manufacturer": "Molex",
+    "cpc": "1053131203",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1053131203",
+    "manufacturer": "Molex",
+    "cpc": "105313-1203",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1053131204",
+    "manufacturer": "Molex",
+    "cpc": "105313-1204",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1053141204",
+    "manufacturer": "Molex",
+    "cpc": "105314-1204",
+    "pin_count": 4
+  },
+  {
+    "mpn": "108CKE050M",
+    "manufacturer": "Cornell Dubilier Knowles",
+    "cpc": "108CKE050M",
+    "pin_count": 2
+  },
+  {
+    "mpn": "10C7322",
+    "manufacturer": null,
+    "cpc": "10C7322",
+    "pin_count": 5
+  },
+  {
+    "mpn": "10UF50VC110GL",
+    "manufacturer": null,
+    "cpc": "10UF50VC110GL",
+    "pin_count": 2
+  },
+  {
+    "mpn": "257-451",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113010072 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "236-401",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113010075 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "236-601",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113010079 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "236-100",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113010512 00",
+    "pin_count": 3
+  },
+  {
+    "mpn": "257-100",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113010550 00",
+    "pin_count": 3
+  },
+  {
+    "mpn": "2706-202",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113990601 00",
+    "pin_count": 6
+  },
+  {
+    "mpn": "2706-103",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113990611 AA",
+    "pin_count": 6
+  },
+  {
+    "mpn": "2616-3102/020-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "11113990701 AA",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1-1825059-3",
+    "manufacturer": "TE Connectivity ALCOSWITCH Switches",
+    "cpc": "1-1825059-3",
+    "pin_count": 4
+  },
+  {
+    "mpn": "9665627811",
+    "manufacturer": "HARTING",
+    "cpc": "1195-5057-ND",
+    "pin_count": 50
+  },
+  {
+    "mpn": "1217133-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "1217133-1",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1-2834011-6",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "1-2834011-6",
+    "pin_count": 6
+  },
+  {
+    "mpn": "132134",
+    "manufacturer": "Amphenol RF",
+    "cpc": "132134",
+    "pin_count": 2
+  },
+  {
+    "mpn": "135-9701-211",
+    "manufacturer": "Cinch Connectivity Solutions Johnson",
+    "cpc": "135-9701-211",
+    "pin_count": 1
+  },
+  {
+    "mpn": "1-406541-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "1-406541-1",
+    "pin_count": 8
+  },
+  {
+    "mpn": "142138-75",
+    "manufacturer": "Amphenol RF",
+    "cpc": "142138-75",
+    "pin_count": 4
+  },
+  {
+    "mpn": "142146-75",
+    "manufacturer": "Amphenol RF",
+    "cpc": "142146-75",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1462041-8",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "1462041-8",
+    "pin_count": 4
+  },
+  {
+    "mpn": "EKYB800ELL271MK20S",
+    "manufacturer": "Chemi-Con",
+    "cpc": "1501029",
+    "pin_count": 2
+  },
+  {
+    "mpn": "151034BS03000",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "151034BS03000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "155900-0231",
+    "manufacturer": null,
+    "cpc": "155900-0231",
+    "pin_count": 37
+  },
+  {
+    "mpn": "155900-0233",
+    "manufacturer": null,
+    "cpc": "155900-0233",
+    "pin_count": 37
+  },
+  {
+    "mpn": "155900-0235",
+    "manufacturer": null,
+    "cpc": "155900-0235",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1581-5",
+    "manufacturer": "Pomona Electronics",
+    "cpc": "1581-5",
+    "pin_count": 6
+  },
+  {
+    "mpn": "2-826656-8",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "16245011155 00",
+    "pin_count": 56
+  },
+  {
+    "mpn": "9160009908",
+    "manufacturer": "HARTING",
+    "cpc": "16256010601 AA",
+    "pin_count": 6
+  },
+  {
+    "mpn": "9160009918",
+    "manufacturer": "HARTING",
+    "cpc": "16256010602 AA",
+    "pin_count": 5
+  },
+  {
+    "mpn": "721-164/001-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011132 00",
+    "pin_count": 4
+  },
+  {
+    "mpn": "734-132",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011206 00",
+    "pin_count": 4
+  },
+  {
+    "mpn": "734-134",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011209 00",
+    "pin_count": 4
+  },
+  {
+    "mpn": "733-332",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011227 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "733-334",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011228 AA",
+    "pin_count": 4
+  },
+  {
+    "mpn": "733-336",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011229 AA",
+    "pin_count": 6
+  },
+  {
+    "mpn": "733-340",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011251 AA",
+    "pin_count": 10
+  },
+  {
+    "mpn": "832-3603",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "16264011801 AA",
+    "pin_count": 5
+  },
+  {
+    "mpn": "163A18219X",
+    "manufacturer": "Amphenol CONEC",
+    "cpc": "163A18219X",
+    "pin_count": 78
+  },
+  {
+    "mpn": "171825-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "171825-4",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1723163206",
+    "manufacturer": "Molex",
+    "cpc": "1723163206",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1734709-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "1734709-2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1755545",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1755545",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1757491",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1757491",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1803277",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1803277",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1825360-3",
+    "manufacturer": "TE Connectivity ALCOSWITCH Switches",
+    "cpc": "1825360-3",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1830786",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1830786",
+    "pin_count": 9
+  },
+  {
+    "mpn": "1830799",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1830799",
+    "pin_count": 10
+  },
+  {
+    "mpn": "1830883",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1830883",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1844236",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1844236",
+    "pin_count": 4
+  },
+  {
+    "mpn": "191-00000018-00-0",
+    "manufacturer": null,
+    "cpc": "191-00000018-00-0",
+    "pin_count": 40
+  },
+  {
+    "mpn": "1935776",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1935776",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1985069",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "1985069",
+    "pin_count": 12
+  },
+  {
+    "mpn": "ERM6-50-01.5-L-DV-A-K-TR",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "1H-720-100067-AA",
+    "pin_count": 100
+  },
+  {
+    "mpn": "ERF6-50-03.5-L-DV-A-K-TR",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "1H-720-100068-AA",
+    "pin_count": 100
+  },
+  {
+    "mpn": "1734366-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "1M-720-100015-AA",
+    "pin_count": 4
+  },
+  {
+    "mpn": "483930003",
+    "manufacturer": "Molex",
+    "cpc": "1M-720-100044-AA",
+    "pin_count": 9
+  },
+  {
+    "mpn": "1N4001G",
+    "manufacturer": "onsemi",
+    "cpc": "1N4001G",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1N4007",
+    "manufacturer": "Diotec Semiconductor",
+    "cpc": "1N4007",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1N4448",
+    "manufacturer": "onsemi",
+    "cpc": "1N4448",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1N5400G",
+    "manufacturer": "onsemi",
+    "cpc": "1N5400G",
+    "pin_count": 2
+  },
+  {
+    "mpn": "2.54-1*6P\u6bcd",
+    "manufacturer": null,
+    "cpc": "2.54-1*6P\u6bcd",
+    "pin_count": 2
+  },
+  {
+    "mpn": "2.54-1*8P\u6bcd\u73af\u4fdd",
+    "manufacturer": null,
+    "cpc": "2.54-1*8P\u6bcd\u73af\u4fdd",
+    "pin_count": 8
+  },
+  {
+    "mpn": "2.54PH H=2.5 1 XBP DIP L=28.5 RevC",
+    "manufacturer": null,
+    "cpc": "2.54PH H=2.5 1 XBP DIP L=28.5 RevC",
+    "pin_count": 5
+  },
+  {
+    "mpn": "20021311-00006T4LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "20021311-00006T4LF",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TSW-108-07-T-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "2100377",
+    "pin_count": 8
+  },
+  {
+    "mpn": "B2B-XH-A",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "2100553",
+    "pin_count": 2
+  },
+  {
+    "mpn": "430451024",
+    "manufacturer": "Molex",
+    "cpc": "2100630",
+    "pin_count": 10
+  },
+  {
+    "mpn": "643494-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "2100678",
+    "pin_count": 6
+  },
+  {
+    "mpn": "DF51K-12DP-2DSA(800)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "2100752",
+    "pin_count": 12
+  },
+  {
+    "mpn": "DF63M-2P-3.96DSA",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "2100754",
+    "pin_count": 2
+  },
+  {
+    "mpn": "20021511-00006T4LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "2100764",
+    "pin_count": 6
+  },
+  {
+    "mpn": "USB4220-03-1000-C",
+    "manufacturer": "GCT",
+    "cpc": "2100814",
+    "pin_count": 24
+  },
+  {
+    "mpn": "DF51K-10DP-2DSA(800)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "2100815",
+    "pin_count": 10
+  },
+  {
+    "mpn": "436500228",
+    "manufacturer": "Molex",
+    "cpc": "2100819",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DF63M-4P-3.96DSA",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "2100820",
+    "pin_count": 4
+  },
+  {
+    "mpn": "436500328",
+    "manufacturer": "Molex",
+    "cpc": "2100821",
+    "pin_count": 3
+  },
+  {
+    "mpn": "DF63M-3P-3.96DSA",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "2100822",
+    "pin_count": 3
+  },
+  {
+    "mpn": "DF51K-2P-2DSA(805)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "2100824",
+    "pin_count": 2
+  },
+  {
+    "mpn": "436500728",
+    "manufacturer": "Molex",
+    "cpc": "2100825",
+    "pin_count": 7
+  },
+  {
+    "mpn": "430450812",
+    "manufacturer": "Molex",
+    "cpc": "2100826",
+    "pin_count": 8
+  },
+  {
+    "mpn": "DF51K-20DP-2DSA(800)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "2100828",
+    "pin_count": 20
+  },
+  {
+    "mpn": "210-2MS",
+    "manufacturer": "CTS Electrocomponents",
+    "cpc": "210-2MS",
+    "pin_count": 4
+  },
+  {
+    "mpn": "218-4LPSTR",
+    "manufacturer": null,
+    "cpc": "218-4LPSTR",
+    "pin_count": 4
+  },
+  {
+    "mpn": "218-6LPSTR",
+    "manufacturer": null,
+    "cpc": "218-6LPSTR",
+    "pin_count": 6
+  },
+  {
+    "mpn": "218-8LPSTRF",
+    "manufacturer": null,
+    "cpc": "218-8LPSTRF",
+    "pin_count": 8
+  },
+  {
+    "mpn": "22032081",
+    "manufacturer": "Molex",
+    "cpc": "22-03-2081",
+    "pin_count": 8
+  },
+  {
+    "mpn": "22-05-2081",
+    "manufacturer": "Molex",
+    "cpc": "22-05-2081",
+    "pin_count": 8
+  },
+  {
+    "mpn": "22102021",
+    "manufacturer": "Molex",
+    "cpc": "22-10-2021",
+    "pin_count": 2
+  },
+  {
+    "mpn": "22-23-2101",
+    "manufacturer": "Molex",
+    "cpc": "22-23-2101",
+    "pin_count": 10
+  },
+  {
+    "mpn": "2301840-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "2301840-1",
+    "pin_count": 15
+  },
+  {
+    "mpn": "2311772-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "2311772-1",
+    "pin_count": 80
+  },
+  {
+    "mpn": "2311776-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "2311776-1",
+    "pin_count": 26
+  },
+  {
+    "mpn": "94HEB08T",
+    "manufacturer": null,
+    "cpc": "243-00000010-00-0",
+    "pin_count": 8
+  },
+  {
+    "mpn": "AQZ197",
+    "manufacturer": "Panasonic Electric Works",
+    "cpc": "24546011612 AA",
+    "pin_count": 4
+  },
+  {
+    "mpn": "2466267-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "2466267-1",
+    "pin_count": 1
+  },
+  {
+    "mpn": "2601-1102",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "2601-1102",
+    "pin_count": 2
+  },
+  {
+    "mpn": "P6KE18CA",
+    "manufacturer": "STMicroelectronics",
+    "cpc": "26129010102 0A",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1.5KE350CA",
+    "manufacturer": "STMicroelectronics",
+    "cpc": "26129010124 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UF5408",
+    "manufacturer": "Diotec Semiconductor",
+    "cpc": "26152010218 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "26505011139 AA",
+    "manufacturer": null,
+    "cpc": "26505011139 AA",
+    "pin_count": 4
+  },
+  {
+    "mpn": "26505033536 AA",
+    "manufacturer": null,
+    "cpc": "26505033536 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MKS4F041004F00JSSD",
+    "manufacturer": "WIMA",
+    "cpc": "26505070159 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MKP1O131005F00KSSD",
+    "manufacturer": "WIMA",
+    "cpc": "26505160110 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MKP1T031005I00KSSD",
+    "manufacturer": "WIMA",
+    "cpc": "26505160112 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MKP1J033305I00JSSD",
+    "manufacturer": "WIMA",
+    "cpc": "26505160131 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MKP1T021004B00KSSD",
+    "manufacturer": "WIMA",
+    "cpc": "26505160191 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "26506033020 AA",
+    "manufacturer": null,
+    "cpc": "26506033020 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EKMG201ELL221MMP1S",
+    "manufacturer": "Chemi-Con",
+    "cpc": "26530220109 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "26530451681 AA",
+    "manufacturer": null,
+    "cpc": "26530451681 AA",
+    "pin_count": 4
+  },
+  {
+    "mpn": "26604020",
+    "manufacturer": "Molex",
+    "cpc": "26-60-4020",
+    "pin_count": 2
+  },
+  {
+    "mpn": "26604030",
+    "manufacturer": "Molex",
+    "cpc": "26604030",
+    "pin_count": 3
+  },
+  {
+    "mpn": "7461098",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "26959010516 AA",
+    "pin_count": 10
+  },
+  {
+    "mpn": "277-1013-ND",
+    "manufacturer": null,
+    "cpc": "277-1013-ND",
+    "pin_count": 4
+  },
+  {
+    "mpn": "277-1014-ND",
+    "manufacturer": null,
+    "cpc": "277-1014-ND",
+    "pin_count": 5
+  },
+  {
+    "mpn": "277-1152-ND",
+    "manufacturer": null,
+    "cpc": "277-1152-ND",
+    "pin_count": 4
+  },
+  {
+    "mpn": "277-1153-ND",
+    "manufacturer": null,
+    "cpc": "277-1153-ND",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1770924",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "277-2083-1-ND",
+    "pin_count": 6
+  },
+  {
+    "mpn": "281739-5",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "281739-5",
+    "pin_count": 10
+  },
+  {
+    "mpn": "282837-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "282837-2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "284391-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "284391-3",
+    "pin_count": 3
+  },
+  {
+    "mpn": "284391-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "284391-3-2X",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1727010",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "286-19",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1727078",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "286-20",
+    "pin_count": 8
+  },
+  {
+    "mpn": "1729128",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "286-21",
+    "pin_count": 2
+  },
+  {
+    "mpn": "IRM-60-12",
+    "manufacturer": "MEAN WELL USA Inc.",
+    "cpc": "286-26",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PH1-04-UA",
+    "manufacturer": "Adam Tech",
+    "cpc": "286-61",
+    "pin_count": 4
+  },
+  {
+    "mpn": "292253-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "292253-3",
+    "pin_count": 3
+  },
+  {
+    "mpn": "CF18JT10K0",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "299-10K-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CF18JT1K00",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "299-1K-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CF18JT220R",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "299-220-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "299-390-RC",
+    "manufacturer": "Xicon",
+    "cpc": "299-390-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "2N4403BU",
+    "manufacturer": "onsemi",
+    "cpc": "2N4403BU",
+    "pin_count": 3
+  },
+  {
+    "mpn": "2PH1-07-UA",
+    "manufacturer": "Adam Tech",
+    "cpc": "2PH1-07-UA",
+    "pin_count": 7
+  },
+  {
+    "mpn": "2SN-BK-G",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "2SN-BK-G",
+    "pin_count": 3
+  },
+  {
+    "mpn": "3003614",
+    "manufacturer": "Mill-Max Manufacturing Corp.",
+    "cpc": "3003614",
+    "pin_count": 2
+  },
+  {
+    "mpn": "3005555",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "3005555",
+    "pin_count": 12
+  },
+  {
+    "mpn": "709282002",
+    "manufacturer": "Molex",
+    "cpc": "3010677",
+    "pin_count": 25
+  },
+  {
+    "mpn": "302-S201",
+    "manufacturer": "On Shore Technology Inc.",
+    "cpc": "302-S201",
+    "pin_count": 20
+  },
+  {
+    "mpn": "310-87-103-41-001101",
+    "manufacturer": "Preci-Dip",
+    "cpc": "310-87-103-41-001101",
+    "pin_count": 3
+  },
+  {
+    "mpn": "3-126-793",
+    "manufacturer": "SCHURTER Inc.",
+    "cpc": "3-126-793",
+    "pin_count": 5
+  },
+  {
+    "mpn": "320.01E11GRN",
+    "manufacturer": "E-Switch",
+    "cpc": "320.01E11GRN",
+    "pin_count": 2
+  },
+  {
+    "mpn": "3220-10-0100-00",
+    "manufacturer": "CNC Tech",
+    "cpc": "3220-10-0100-00",
+    "pin_count": 10
+  },
+  {
+    "mpn": "3220-10-0200-00",
+    "manufacturer": "CNC Tech",
+    "cpc": "3220-10-0200-00",
+    "pin_count": 10
+  },
+  {
+    "mpn": "3296W-1-102LF",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "3296W-1-102LF",
+    "pin_count": 3
+  },
+  {
+    "mpn": "3296W-1-105LF",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "3296W-1-105LF",
+    "pin_count": 3
+  },
+  {
+    "mpn": "3544-2",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "3544-2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "3-644456-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "3-644456-3",
+    "pin_count": 3
+  },
+  {
+    "mpn": "5000",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "36-5000-ND",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5225",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "36-5225-ND",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5233",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "36-5233-ND",
+    "pin_count": 2
+  },
+  {
+    "mpn": "37002500410",
+    "manufacturer": "Littelfuse",
+    "cpc": "37002500410",
+    "pin_count": 2
+  },
+  {
+    "mpn": "37011000410",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "37011000410",
+    "pin_count": 2
+  },
+  {
+    "mpn": "381-009-112L565",
+    "manufacturer": "NorComp Inc.",
+    "cpc": "381-009-112L565",
+    "pin_count": 10
+  },
+  {
+    "mpn": "381-025-112L565",
+    "manufacturer": "NorComp Inc.",
+    "cpc": "381-025-112L565",
+    "pin_count": 25
+  },
+  {
+    "mpn": "39211250000",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "39211250000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MBB02070C3308FC100",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "40502030113 0A",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MBB02070C1503FCT00",
+    "manufacturer": "Vishay / Beyschlag",
+    "cpc": "40502030265 0A",
+    "pin_count": 2
+  },
+  {
+    "mpn": "40519060281 00",
+    "manufacturer": null,
+    "cpc": "40519060281 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "40519060301 00",
+    "manufacturer": null,
+    "cpc": "40519060301 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "40530010101 AB",
+    "manufacturer": null,
+    "cpc": "40530010101 AB",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B72220S0681K101",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "40707010408 00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B72225S4321K101",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "40707010939 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B72225S4461K101",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "40707010943 AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "4-103239-0-02",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "4-103239-0-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "4-103239-0-04",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "4-103239-0-04",
+    "pin_count": 4
+  },
+  {
+    "mpn": "43-02741",
+    "manufacturer": "Amphenol CONEC",
+    "cpc": "43-02741",
+    "pin_count": 12
+  },
+  {
+    "mpn": "430450200",
+    "manufacturer": "Molex",
+    "cpc": "43045-0200",
+    "pin_count": 2
+  },
+  {
+    "mpn": "430450400",
+    "manufacturer": "Molex",
+    "cpc": "430450400",
+    "pin_count": 4
+  },
+  {
+    "mpn": "430450400",
+    "manufacturer": "Molex",
+    "cpc": "43045-0400",
+    "pin_count": 4
+  },
+  {
+    "mpn": "430450600",
+    "manufacturer": "Molex",
+    "cpc": "430450600",
+    "pin_count": 6
+  },
+  {
+    "mpn": "436500304",
+    "manufacturer": "Molex",
+    "cpc": "43650-0304",
+    "pin_count": 3
+  },
+  {
+    "mpn": "436500404",
+    "manufacturer": "Molex",
+    "cpc": "43650-0404",
+    "pin_count": 4
+  },
+  {
+    "mpn": "440054-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "440054-2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B82721K2362N001",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "44408110104 00",
+    "pin_count": 4
+  },
+  {
+    "mpn": "4610X-101-105LF",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "4610X-101-105",
+    "pin_count": 10
+  },
+  {
+    "mpn": "GBU1006",
+    "manufacturer": "Diodes Incorporated",
+    "cpc": "4800873",
+    "pin_count": 4
+  },
+  {
+    "mpn": "5001",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5001",
+    "pin_count": 1
+  },
+  {
+    "mpn": "5006",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5006",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5011902017",
+    "manufacturer": "Molex",
+    "cpc": "501190-2017",
+    "pin_count": 20
+  },
+  {
+    "mpn": "5013311207",
+    "manufacturer": "Molex",
+    "cpc": "501331-1207",
+    "pin_count": 12
+  },
+  {
+    "mpn": "5019530307",
+    "manufacturer": "Molex",
+    "cpc": "5019530307",
+    "pin_count": 3
+  },
+  {
+    "mpn": "5026",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5026",
+    "pin_count": 3
+  },
+  {
+    "mpn": "712A",
+    "manufacturer": "Switchcraft",
+    "cpc": "502-712A",
+    "pin_count": 3
+  },
+  {
+    "mpn": "760K",
+    "manufacturer": "Switchcraft Inc.",
+    "cpc": "502-760K",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SAJ405XHL0N30SNOLRQ",
+    "manufacturer": "TE Connectivity ALCOSWITCH Switches",
+    "cpc": "5100087",
+    "pin_count": 2
+  },
+  {
+    "mpn": "929950-00",
+    "manufacturer": "3M",
+    "cpc": "517-950-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5227161-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5227161-2",
+    "pin_count": 4
+  },
+  {
+    "mpn": "112575",
+    "manufacturer": "Amphenol RF",
+    "cpc": "523-112575",
+    "pin_count": 5
+  },
+  {
+    "mpn": "530470210",
+    "manufacturer": "Molex",
+    "cpc": "530470210",
+    "pin_count": 2
+  },
+  {
+    "mpn": "53047-0410",
+    "manufacturer": null,
+    "cpc": "53047-0410",
+    "pin_count": 4
+  },
+  {
+    "mpn": "530480210",
+    "manufacturer": "Molex",
+    "cpc": "530480210",
+    "pin_count": 2
+  },
+  {
+    "mpn": "530480610",
+    "manufacturer": null,
+    "cpc": "530480610",
+    "pin_count": 6
+  },
+  {
+    "mpn": "513002B02500G",
+    "manufacturer": "Boyd Laconia, LLC",
+    "cpc": "532-513002B25G",
+    "pin_count": 2
+  },
+  {
+    "mpn": "532614003",
+    "manufacturer": "Molex",
+    "cpc": "53261-4003",
+    "pin_count": 3
+  },
+  {
+    "mpn": "930",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "534-930",
+    "pin_count": 6
+  },
+  {
+    "mpn": "9300",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "534-9300",
+    "pin_count": 2
+  },
+  {
+    "mpn": "9903",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "534-9903",
+    "pin_count": 2
+  },
+  {
+    "mpn": "54-00023",
+    "manufacturer": "Tensility International Corp",
+    "cpc": "54-00023",
+    "pin_count": 5
+  },
+  {
+    "mpn": "54-00166",
+    "manufacturer": "Tensility International Corp",
+    "cpc": "54-00166",
+    "pin_count": 2
+  },
+  {
+    "mpn": "54-00170",
+    "manufacturer": "Tensility International Corp",
+    "cpc": "54-00170",
+    "pin_count": 6
+  },
+  {
+    "mpn": "RRA22H3BBRHN",
+    "manufacturer": "ZF Electronics",
+    "cpc": "540-RRA22H3BBRHN",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1598CSGYPBK",
+    "manufacturer": "Hammond Manufacturing",
+    "cpc": "546-1598CSGYPBK",
+    "pin_count": 5
+  },
+  {
+    "mpn": "551-0207F",
+    "manufacturer": null,
+    "cpc": "551-0207F",
+    "pin_count": 2
+  },
+  {
+    "mpn": "551-0407F",
+    "manufacturer": null,
+    "cpc": "551-0407F",
+    "pin_count": 2
+  },
+  {
+    "mpn": "551-0807F",
+    "manufacturer": null,
+    "cpc": "551-0807F",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5530212200F",
+    "manufacturer": "Dialight",
+    "cpc": "5530212200F",
+    "pin_count": 4
+  },
+  {
+    "mpn": "559173010",
+    "manufacturer": "Molex",
+    "cpc": "559173010",
+    "pin_count": 30
+  },
+  {
+    "mpn": "559592630",
+    "manufacturer": "Molex",
+    "cpc": "559592630",
+    "pin_count": 26
+  },
+  {
+    "mpn": "559594030",
+    "manufacturer": "Molex",
+    "cpc": "559594030",
+    "pin_count": 40
+  },
+  {
+    "mpn": "56.OW69.2400N",
+    "manufacturer": "Altech Corporation",
+    "cpc": "56.OW69.2400N",
+    "pin_count": 8
+  },
+  {
+    "mpn": "1-2199299-5",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "571-1-2199299-5",
+    "pin_count": 40
+  },
+  {
+    "mpn": "1-604771-9",
+    "manufacturer": "TE Connectivity Raychem Cable Protection",
+    "cpc": "571-1-604771-9",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1776275-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "571-1776275-2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "60118-1 (Cut Strip)",
+    "manufacturer": "TE Connectivity / AMP",
+    "cpc": "571-60118-1-CT",
+    "pin_count": 5
+  },
+  {
+    "mpn": "966066-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "571-966066-3",
+    "pin_count": 2
+  },
+  {
+    "mpn": "9600",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "5721-440-SS",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5745782-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5745782-4",
+    "pin_count": 15
+  },
+  {
+    "mpn": "5745784-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5745784-4",
+    "pin_count": 37
+  },
+  {
+    "mpn": "5747236-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5747236-4",
+    "pin_count": 15
+  },
+  {
+    "mpn": "5747301-7",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5747301-7",
+    "pin_count": 37
+  },
+  {
+    "mpn": "5747842-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5747842-3",
+    "pin_count": 25
+  },
+  {
+    "mpn": "5747842-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5747842-4",
+    "pin_count": 25
+  },
+  {
+    "mpn": "5747844-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "5747844-3",
+    "pin_count": 9
+  },
+  {
+    "mpn": "01110501Z",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "576-01110501Z",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5787834-1-ND",
+    "manufacturer": null,
+    "cpc": "5787834-1-ND",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PIC16F1519-I/P",
+    "manufacturer": "Microchip Technology",
+    "cpc": "579-PIC16F1519-I/P",
+    "pin_count": 36
+  },
+  {
+    "mpn": "K104K15X7RF5TL2",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "594-K104K15X7RF5TL2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SN74HCT125N",
+    "manufacturer": "Texas Instruments",
+    "cpc": "595-SN74HCT125N",
+    "pin_count": 14
+  },
+  {
+    "mpn": "WP57EGW",
+    "manufacturer": "Kingbright",
+    "cpc": "604-WP57EGW",
+    "pin_count": 2
+  },
+  {
+    "mpn": "OS102011MS2QS1",
+    "manufacturer": "C&K",
+    "cpc": "611-OS102011MS2QS1",
+    "pin_count": 2
+  },
+  {
+    "mpn": "61400416021",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "61400416021",
+    "pin_count": 6
+  },
+  {
+    "mpn": "618015231321",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "618015231321",
+    "pin_count": 15
+  },
+  {
+    "mpn": "621-025-260-043",
+    "manufacturer": "EDAC Inc.",
+    "cpc": "621-025-260-043",
+    "pin_count": 37
+  },
+  {
+    "mpn": "625-037-262-011",
+    "manufacturer": "EDAC Inc.",
+    "cpc": "625-037-262-011",
+    "pin_count": 37
+  },
+  {
+    "mpn": "1N5819-E3/54",
+    "manufacturer": "Vishay General Semiconductor - Diodes Division",
+    "cpc": "625-1N5819-E3",
+    "pin_count": 2
+  },
+  {
+    "mpn": "181-026-113R531",
+    "manufacturer": "NorComp Inc.",
+    "cpc": "633-026-263-042",
+    "pin_count": 26
+  },
+  {
+    "mpn": "181-044-113R561",
+    "manufacturer": "NorComp Inc.",
+    "cpc": "633-044-263-042",
+    "pin_count": 44
+  },
+  {
+    "mpn": "634-026-263-042",
+    "manufacturer": "EDAC Inc.",
+    "cpc": "634-026-263-042",
+    "pin_count": 26
+  },
+  {
+    "mpn": "634-044-263-032",
+    "manufacturer": "EDAC Inc.",
+    "cpc": "634-044-263-032",
+    "pin_count": 44
+  },
+  {
+    "mpn": "181-044-213R561",
+    "manufacturer": "NorComp Inc.",
+    "cpc": "634-044-263-042",
+    "pin_count": 44
+  },
+  {
+    "mpn": "63951-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "63951-1",
+    "pin_count": 2
+  },
+  {
+    "mpn": "63PK470MEFC12.5X20",
+    "manufacturer": "Rubycon",
+    "cpc": "63PK470MEFC12.5X20",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UVZ1J101MPD",
+    "manufacturer": "Nichicon",
+    "cpc": "63ZLH330MEFC10X23",
+    "pin_count": 2
+  },
+  {
+    "mpn": "640503-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "640503-3",
+    "pin_count": 15
+  },
+  {
+    "mpn": "640506-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "640506-1",
+    "pin_count": 36
+  },
+  {
+    "mpn": "DILB14P-223TLF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "649-DILB14P-223TLF",
+    "pin_count": 14
+  },
+  {
+    "mpn": "651005136421",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "651005136421",
+    "pin_count": 5
+  },
+  {
+    "mpn": "4608X-101-221LF",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "652-4608X-1LF-220",
+    "pin_count": 8
+  },
+  {
+    "mpn": "68000-102HLF",
+    "manufacturer": null,
+    "cpc": "68000-102HLF",
+    "pin_count": 2
+  },
+  {
+    "mpn": "681M9W4203L001",
+    "manufacturer": "NorComp Inc.",
+    "cpc": "681M9W4203L001",
+    "pin_count": 9
+  },
+  {
+    "mpn": "690-004-661-013",
+    "manufacturer": "EDAC Inc.",
+    "cpc": "690-004-661-013",
+    "pin_count": 4
+  },
+  {
+    "mpn": "691137710002",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "691137710002",
+    "pin_count": 2
+  },
+  {
+    "mpn": "691214100002",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "691214100002",
+    "pin_count": 2
+  },
+  {
+    "mpn": "691214100003",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "691214100003",
+    "pin_count": 3
+  },
+  {
+    "mpn": "691215700002",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "691215700002",
+    "pin_count": 2
+  },
+  {
+    "mpn": "691309310008",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "691309310008",
+    "pin_count": 8
+  },
+  {
+    "mpn": "691309310012",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "691309310012",
+    "pin_count": 12
+  },
+  {
+    "mpn": "34.1524",
+    "manufacturer": "Schurter",
+    "cpc": "693-0034.1524",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSH-LX5091",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "696-SSH-LX5091",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CF14JT1K00",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "708-CF14JT1K00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "7103SD9V3QE",
+    "manufacturer": "C&K",
+    "cpc": "7103SD9V3QE",
+    "pin_count": 7
+  },
+  {
+    "mpn": "61301011821",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "710-61301011821",
+    "pin_count": 10
+  },
+  {
+    "mpn": "UB232R",
+    "manufacturer": "FTDI, Future Technology Devices International Ltd",
+    "cpc": "715-00444-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DX07S024JJ3R1300",
+    "manufacturer": "JAE Electronics",
+    "cpc": "720-00135-00",
+    "pin_count": 24
+  },
+  {
+    "mpn": "SSW-103-01-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "720-00341-00",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1-207216-6",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "720-00367-00",
+    "pin_count": 28
+  },
+  {
+    "mpn": "393570002",
+    "manufacturer": "Molex",
+    "cpc": "720-00541-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SFH11-PBPC-D13-ST-BK",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "720-00548-00",
+    "pin_count": 26
+  },
+  {
+    "mpn": "7303P3Y9V7GE",
+    "manufacturer": "C&K",
+    "cpc": "7303P3Y9V7GE",
+    "pin_count": 15
+  },
+  {
+    "mpn": "732512200",
+    "manufacturer": "Molex",
+    "cpc": "732512200",
+    "pin_count": 4
+  },
+  {
+    "mpn": "74650173R",
+    "manufacturer": null,
+    "cpc": "74650173R",
+    "pin_count": 4
+  },
+  {
+    "mpn": "7498011122R",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "7498011122R",
+    "pin_count": 8
+  },
+  {
+    "mpn": "74982104400",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "74982104400",
+    "pin_count": 15
+  },
+  {
+    "mpn": "ELM 3-625",
+    "manufacturer": "Bivar Inc.",
+    "cpc": "749-ELM-3-625",
+    "pin_count": 5
+  },
+  {
+    "mpn": "75869-110LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "75869-110LF",
+    "pin_count": 64
+  },
+  {
+    "mpn": "2055-440-AL-7",
+    "manufacturer": "RAF Electronic Hardware",
+    "cpc": "761-2055-440-AL-7",
+    "pin_count": 2
+  },
+  {
+    "mpn": "4504-440-AL-7",
+    "manufacturer": "RAF Electronic Hardware",
+    "cpc": "761-4504-440-AL-7",
+    "pin_count": 5
+  },
+  {
+    "mpn": "77311-118-02LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "77311-118-02LF",
+    "pin_count": 2
+  },
+  {
+    "mpn": "776087-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "776087-1",
+    "pin_count": 23
+  },
+  {
+    "mpn": "7805SR-C",
+    "manufacturer": "Murata Power Solutions Inc.",
+    "cpc": "7805SR",
+    "pin_count": 3
+  },
+  {
+    "mpn": "A000066",
+    "manufacturer": "Arduino",
+    "cpc": "782-A000066",
+    "pin_count": 10
+  },
+  {
+    "mpn": "794120-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "794120-1",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HR10A-7R-4PB(73)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "798-HR10A-7R-4PB73",
+    "pin_count": 4
+  },
+  {
+    "mpn": "806-040-ME10E-1PTA",
+    "manufacturer": null,
+    "cpc": "806-040-ME10E-1PTA",
+    "pin_count": 10
+  },
+  {
+    "mpn": "806-040-ME10E2-1PTB",
+    "manufacturer": null,
+    "cpc": "806-040-ME10E2-1PTB",
+    "pin_count": 10
+  },
+  {
+    "mpn": "FG14X7R1H334KNT00",
+    "manufacturer": "TDK Corporation",
+    "cpc": "810-FG14X7R1H334KNT0",
+    "pin_count": 2
+  },
+  {
+    "mpn": "811-2692-ND",
+    "manufacturer": null,
+    "cpc": "811-2692-ND",
+    "pin_count": 3
+  },
+  {
+    "mpn": "ABL-20.000MHZ-B2",
+    "manufacturer": "Abracon LLC",
+    "cpc": "815-ABL-20-B2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "RDE5C1H180J0M1H03A",
+    "manufacturer": "Murata Electronics",
+    "cpc": "81-RDE5C1H180J0M1H3A",
+    "pin_count": 2
+  },
+  {
+    "mpn": "8329TFF",
+    "manufacturer": null,
+    "cpc": "8329TFF",
+    "pin_count": 5
+  },
+  {
+    "mpn": "2633",
+    "manufacturer": "Heyco",
+    "cpc": "836-2633",
+    "pin_count": 2
+  },
+  {
+    "mpn": "G2009",
+    "manufacturer": "Heyco",
+    "cpc": "836-G2009",
+    "pin_count": 10
+  },
+  {
+    "mpn": "855085001",
+    "manufacturer": "Molex",
+    "cpc": "855085001",
+    "pin_count": 8
+  },
+  {
+    "mpn": "LTL2R3KRD-EM",
+    "manufacturer": "LITEON",
+    "cpc": "859-LTL2R3KRD-EM",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LTV-817",
+    "manufacturer": "Lite-On Inc.",
+    "cpc": "859-LTV-817",
+    "pin_count": 3
+  },
+  {
+    "mpn": "MC7805ACTG",
+    "manufacturer": "onsemi",
+    "cpc": "863-MC7805ACTG",
+    "pin_count": 3
+  },
+  {
+    "mpn": "920-0011-01",
+    "manufacturer": "SchmartBoard",
+    "cpc": "872-920-0011-01",
+    "pin_count": 40
+  },
+  {
+    "mpn": "874371043",
+    "manufacturer": "Molex",
+    "cpc": "87437-1043",
+    "pin_count": 10
+  },
+  {
+    "mpn": "87583-2010BLF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "87583-2010BLF",
+    "pin_count": 5
+  },
+  {
+    "mpn": "893176-001 BUS WIRE JUMPER",
+    "manufacturer": null,
+    "cpc": "893176-001 BUS WIRE JUMPER",
+    "pin_count": 2
+  },
+  {
+    "mpn": "901-144-8RFX",
+    "manufacturer": "Amphenol RF",
+    "cpc": "901-144-8RFX",
+    "pin_count": 5
+  },
+  {
+    "mpn": "0901310130",
+    "manufacturer": "Molex",
+    "cpc": "90131-0130",
+    "pin_count": 20
+  },
+  {
+    "mpn": "91-569762-05P",
+    "manufacturer": null,
+    "cpc": "91-569762-05P",
+    "pin_count": 9
+  },
+  {
+    "mpn": "92095A454",
+    "manufacturer": null,
+    "cpc": "92095A454",
+    "pin_count": 5
+  },
+  {
+    "mpn": "92107A111",
+    "manufacturer": null,
+    "cpc": "92107A111",
+    "pin_count": 5
+  },
+  {
+    "mpn": "9250A-222-RC",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "9250A-222-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "94.14SMA",
+    "manufacturer": "Finder Relays, Inc.",
+    "cpc": "94.14SMA",
+    "pin_count": 14
+  },
+  {
+    "mpn": "R-78HB5.0-0.5",
+    "manufacturer": "Recom Power",
+    "cpc": "945-1061-ND",
+    "pin_count": 3
+  },
+  {
+    "mpn": "94M4235",
+    "manufacturer": null,
+    "cpc": "94M4235",
+    "pin_count": 8
+  },
+  {
+    "mpn": "SP400-0.007-00-51",
+    "manufacturer": "Bergquist",
+    "cpc": "951-SP400-007-00-51",
+    "pin_count": 2
+  },
+  {
+    "mpn": "9774010243R",
+    "manufacturer": null,
+    "cpc": "9774010243R",
+    "pin_count": 2
+  },
+  {
+    "mpn": "9774025243R",
+    "manufacturer": null,
+    "cpc": "9774025243R",
+    "pin_count": 2
+  },
+  {
+    "mpn": "9774035243R",
+    "manufacturer": null,
+    "cpc": "9774035243R",
+    "pin_count": 2
+  },
+  {
+    "mpn": "9774050243R",
+    "manufacturer": null,
+    "cpc": "9774050243R",
+    "pin_count": 2
+  },
+  {
+    "mpn": "A-2014-3-4-N-T-R",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "A-2014-3-4-N-T-R",
+    "pin_count": 4
+  },
+  {
+    "mpn": "A-2014-3-4-N-T-R",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "A-2014-3-4-N-T-R",
+    "pin_count": 4
+  },
+  {
+    "mpn": "A3B-20PA-2DSA(51)",
+    "manufacturer": "Hirose Connector",
+    "cpc": "A3B-20PA-2DSA(51)",
+    "pin_count": 20
+  },
+  {
+    "mpn": "A3C-20DA-2DSC(71)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "A3C-20DA-2DSC(71)",
+    "pin_count": 20
+  },
+  {
+    "mpn": "A4B-6PA-2DSA(51)",
+    "manufacturer": "Hirose Connector",
+    "cpc": "A4B-6PA-2DSA(51)",
+    "pin_count": 6
+  },
+  {
+    "mpn": "292227-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "A98696CT-ND",
+    "pin_count": 3
+  },
+  {
+    "mpn": "AB26TRB-32.768KHZ-T",
+    "manufacturer": "Abracon LLC",
+    "cpc": "AB26TRB-32.768KHZ-T",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AC01000003307JA100",
+    "manufacturer": "Vishay / Draloric",
+    "cpc": "AC01000003307JA100",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ADC-055B-9",
+    "manufacturer": "Adam Tech",
+    "cpc": "ADC-055B-9",
+    "pin_count": 3
+  },
+  {
+    "mpn": "A-DF 09 A/KG-T2S",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "A-DF 09 A/KG-T2S",
+    "pin_count": 9
+  },
+  {
+    "mpn": "A-DF 15 A/KG-T2S",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "A-DF 15 A/KG-T2S",
+    "pin_count": 16
+  },
+  {
+    "mpn": "A-DF 25 PP/Z",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "A-DF 25 PP/Z",
+    "pin_count": 25
+  },
+  {
+    "mpn": "A-DS 09 A/KG-T2S",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "A-DS 09 A/KG-T2S",
+    "pin_count": 9
+  },
+  {
+    "mpn": "A-DS 09 A/KG-T4S",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "A-DS 09 A/KG-T4S",
+    "pin_count": 9
+  },
+  {
+    "mpn": "AGQ20024",
+    "manufacturer": "Panasonic Electric Works",
+    "cpc": "AGQ20024",
+    "pin_count": 8
+  },
+  {
+    "mpn": "AM1D-1212DZ",
+    "manufacturer": "aimtec",
+    "cpc": "AM1D-1212DZ",
+    "pin_count": 4
+  },
+  {
+    "mpn": "AMS5915-0005-D-B-N",
+    "manufacturer": null,
+    "cpc": "AMS5915-0005-D-B-N",
+    "pin_count": 8
+  },
+  {
+    "mpn": "AN-1306-A",
+    "manufacturer": "Bud Industries",
+    "cpc": "AN-1306-A",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ANT11SECQE",
+    "manufacturer": "CIT Relay and Switch",
+    "cpc": "ANT11SECQE",
+    "pin_count": 3
+  },
+  {
+    "mpn": "ARJM11B1-009-AB-EW2",
+    "manufacturer": "Abracon LLC",
+    "cpc": "ARJM11B1-009-AB-EW2",
+    "pin_count": 16
+  },
+  {
+    "mpn": "ARJM11D7-009-AB-EW2",
+    "manufacturer": "Abracon LLC",
+    "cpc": "ARJM11D7-009-AB-EW2",
+    "pin_count": 8
+  },
+  {
+    "mpn": "ATE2D-2M3-10-Z",
+    "manufacturer": "Nidec Components Corporation",
+    "cpc": "ATE2D-2M3-10-Z",
+    "pin_count": 6
+  },
+  {
+    "mpn": "AU-Y1005",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "AU-Y1005-R",
+    "pin_count": 4
+  },
+  {
+    "mpn": "A-WAGO-734-163-00",
+    "manufacturer": null,
+    "cpc": "A-WAGO-734-163-00",
+    "pin_count": 3
+  },
+  {
+    "mpn": "AWHW 10G-SMD",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "AWHW 10G-SMD",
+    "pin_count": 5
+  },
+  {
+    "mpn": "AWHW2 26A-0202",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "AWHW2-26A-0202",
+    "pin_count": 26
+  },
+  {
+    "mpn": "B12AP",
+    "manufacturer": "NKK Switches",
+    "cpc": "B12AP",
+    "pin_count": 5
+  },
+  {
+    "mpn": "B2B-EH-A(LF)(SN)",
+    "manufacturer": "JST Commercial",
+    "cpc": "B2B-EH-A(LF)(SN)",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B2B-PH-K-S",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B2B-PH-K-S",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B2B-PH-K-S",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B2B-PH-K-S(LF)(SN)",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B2B-ZR",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B2B-ZR(LF)(SN)",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32522C0106K000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "B32522C0106K000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32529C0103K000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "B32529C0103K000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32529C0104K000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "B32529C0104K000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32529C0105K189",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "B32529C0105K189",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32559C3104K000",
+    "manufacturer": "EPCOS / TDK",
+    "cpc": "B32559C3104K000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B3B-EH-A(LF)(SN)",
+    "manufacturer": "JST Commercial",
+    "cpc": "B3B-EH-A(LF)(SN)",
+    "pin_count": 3
+  },
+  {
+    "mpn": "B3B-ZR",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B3B-ZR(LF)(SN)",
+    "pin_count": 3
+  },
+  {
+    "mpn": "B3W-1052",
+    "manufacturer": "Omron Electronics Inc-EMC Div",
+    "cpc": "B3W-1052",
+    "pin_count": 4
+  },
+  {
+    "mpn": "B4B-PH-K",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B4B-PH-K",
+    "pin_count": 4
+  },
+  {
+    "mpn": "B4B-PH-K-S",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B4B-PH-K-S(LF)(SN)",
+    "pin_count": 4
+  },
+  {
+    "mpn": "B4B-PH-SM4-TB",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B4B-PH-SM4-TB",
+    "pin_count": 4
+  },
+  {
+    "mpn": "B6B-XH-A",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "B6B-XH-A(LF)(SN)",
+    "pin_count": 6
+  },
+  {
+    "mpn": "BCAAAPC",
+    "manufacturer": "MPD (Memory Protection Devices)",
+    "cpc": "BCAAAPC",
+    "pin_count": 1
+  },
+  {
+    "mpn": "BH-32H-1",
+    "manufacturer": "Adam Tech",
+    "cpc": "BH-32H-1",
+    "pin_count": 4
+  },
+  {
+    "mpn": "BH-50B-1",
+    "manufacturer": "Adam Tech",
+    "cpc": "BH-50B-1",
+    "pin_count": 1
+  },
+  {
+    "mpn": "BK-6013",
+    "manufacturer": "MPD (Memory Protection Devices)",
+    "cpc": "BK-6013",
+    "pin_count": 10
+  },
+  {
+    "mpn": "C323C130K3G5TA",
+    "manufacturer": null,
+    "cpc": "C323C130K3G5TA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "C503B-GCN-CB0C0891",
+    "manufacturer": "Cree LED",
+    "cpc": "C503B-GCN-CB0C0891",
+    "pin_count": 2
+  },
+  {
+    "mpn": "C503B-RCN-CW0Z0AA1",
+    "manufacturer": "Cree LED",
+    "cpc": "C503B-RCN-CW0Z0AA1",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UBY2A561MHL",
+    "manufacturer": "Nichicon",
+    "cpc": "capacitor_2364",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CDM802-04A-FP-F010-67",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "CDM802-04A-FP-F010-67",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CDM805-03A-FP-F011-67",
+    "manufacturer": "Same Sky",
+    "cpc": "CDM805-03A-FP-F011-67",
+    "pin_count": 3
+  },
+  {
+    "mpn": "CEM-1212S",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "CEM-1212S",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CES-102-01-T-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "CES-102-01-T-D",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CES-104-01-T-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "CES-104-01-T-D",
+    "pin_count": 8
+  },
+  {
+    "mpn": "CE-SM-003-0008__1",
+    "manufacturer": null,
+    "cpc": "CE-SM-003-0008__1",
+    "pin_count": 20
+  },
+  {
+    "mpn": "CF1/4W-100K\u03a9\u00b15%T52",
+    "manufacturer": null,
+    "cpc": "CF1/4W-100K\u03a9\u00b15%T52",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CFM14JT6R80",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "CFM14JT6R80",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CFS1/4CT52R103G",
+    "manufacturer": "KOA Speer Electronics, Inc.",
+    "cpc": "CFS1/4CT52R103G",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CFS-20632768DZCB",
+    "manufacturer": "Citizen Finedevice Co Ltd",
+    "cpc": "CFS-20632768DZCB",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CG-P-M12-1.5",
+    "manufacturer": "Adam Tech",
+    "cpc": "CG-P-M12-1.5",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CG-P-M18-1.5",
+    "manufacturer": "Adam Tech",
+    "cpc": "CG-P-M18-1.5",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CM3440Z171B-00",
+    "manufacturer": "Laird-Signal Integrity Products",
+    "cpc": "CM3440Z171B-00",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CMX100D10",
+    "manufacturer": "Sensata-Crydom",
+    "cpc": "CMX100D10",
+    "pin_count": 4
+  },
+  {
+    "mpn": "39281023",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0001",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AU-Y1007",
+    "manufacturer": "Assmann WSW Components",
+    "cpc": "CNN-0089",
+    "pin_count": 4
+  },
+  {
+    "mpn": "5499910-3",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "CNN-0129",
+    "pin_count": 16
+  },
+  {
+    "mpn": "39302031",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0130",
+    "pin_count": 3
+  },
+  {
+    "mpn": "39290063",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0131",
+    "pin_count": 6
+  },
+  {
+    "mpn": "39290103",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0132",
+    "pin_count": 10
+  },
+  {
+    "mpn": "430450221",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0191",
+    "pin_count": 2
+  },
+  {
+    "mpn": "430450422",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0192",
+    "pin_count": 4
+  },
+  {
+    "mpn": "430450822",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0194",
+    "pin_count": 8
+  },
+  {
+    "mpn": "430451022",
+    "manufacturer": "Molex",
+    "cpc": "CNN-0195",
+    "pin_count": 10
+  },
+  {
+    "mpn": "CON-0000977",
+    "manufacturer": null,
+    "cpc": "CON-0000977",
+    "pin_count": 8
+  },
+  {
+    "mpn": "CON-0001196",
+    "manufacturer": null,
+    "cpc": "CON-0001196",
+    "pin_count": 3
+  },
+  {
+    "mpn": "CON-0001199",
+    "manufacturer": null,
+    "cpc": "CON-0001199",
+    "pin_count": 9
+  },
+  {
+    "mpn": "CON-0001211",
+    "manufacturer": null,
+    "cpc": "CON-0001211",
+    "pin_count": 96
+  },
+  {
+    "mpn": "CONBNC001",
+    "manufacturer": "TE Connectivity Linx",
+    "cpc": "CONBNC001",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CONMCX003.062",
+    "manufacturer": "TE Connectivity Linx",
+    "cpc": "CONMCX003.062",
+    "pin_count": 10
+  },
+  {
+    "mpn": "651005136421",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "CONN RCPT USB2.0 MINI B VERT",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CONN_973582100_ALT",
+    "manufacturer": null,
+    "cpc": "CONN_973582100_ALT",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CONN_973582101_ALT",
+    "manufacturer": null,
+    "cpc": "CONN_973582101_ALT",
+    "pin_count": 2
+  },
+  {
+    "mpn": "IPL1-102-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connecor_2300",
+    "pin_count": 4
+  },
+  {
+    "mpn": "GRPB032VWVN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "connector_1321",
+    "pin_count": 6
+  },
+  {
+    "mpn": "3547",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "connector_1326",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1287-ST",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "connector_1327",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSM-120-01-L-DV",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_1331",
+    "pin_count": 40
+  },
+  {
+    "mpn": "IPL1-112-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_1581",
+    "pin_count": 24
+  },
+  {
+    "mpn": "TSW-120-25-L-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_1729",
+    "pin_count": 40
+  },
+  {
+    "mpn": "SSW-120-02-G-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_1730",
+    "pin_count": 4
+  },
+  {
+    "mpn": "M12A-04PFFP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_1752",
+    "pin_count": 4
+  },
+  {
+    "mpn": "M12A-08PFFP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_1753",
+    "pin_count": 8
+  },
+  {
+    "mpn": "BCS-120-L-D-HE",
+    "manufacturer": "Samtec",
+    "cpc": "connector_1774",
+    "pin_count": 40
+  },
+  {
+    "mpn": "IPL1-120-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_1781",
+    "pin_count": 40
+  },
+  {
+    "mpn": "IPL1-102-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_1790",
+    "pin_count": 4
+  },
+  {
+    "mpn": "63969-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "connector_1800",
+    "pin_count": 4
+  },
+  {
+    "mpn": "M12D-04PFFP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_1829",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1415338",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "connector_1830",
+    "pin_count": 5
+  },
+  {
+    "mpn": "M12A-12PFFP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_1851",
+    "pin_count": 12
+  },
+  {
+    "mpn": "M12A-12PMMP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_1853",
+    "pin_count": 12
+  },
+  {
+    "mpn": "UJ2-AV-1-TH",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "connector_1961",
+    "pin_count": 4
+  },
+  {
+    "mpn": "RAHUA30E",
+    "manufacturer": "Switchcraft Inc.",
+    "cpc": "connector_1962",
+    "pin_count": 4
+  },
+  {
+    "mpn": "10152803-00011LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "connector_1963",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TSW-104-07-G-T",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_1965",
+    "pin_count": 12
+  },
+  {
+    "mpn": "RJHSE-3381",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "connector_1966",
+    "pin_count": 6
+  },
+  {
+    "mpn": "M12A-04PMMP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_2023",
+    "pin_count": 4
+  },
+  {
+    "mpn": "connector_2135",
+    "manufacturer": null,
+    "cpc": "connector_2135",
+    "pin_count": 20
+  },
+  {
+    "mpn": "connector_2136",
+    "manufacturer": null,
+    "cpc": "connector_2136",
+    "pin_count": 20
+  },
+  {
+    "mpn": "SSW-115-01-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_2162",
+    "pin_count": 30
+  },
+  {
+    "mpn": "476591102",
+    "manufacturer": "Molex",
+    "cpc": "connector_2175",
+    "pin_count": 19
+  },
+  {
+    "mpn": "LTMM-115-02-F-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_2198",
+    "pin_count": 30
+  },
+  {
+    "mpn": "M20-9990345",
+    "manufacturer": "Harwin Inc.",
+    "cpc": "connector_2238",
+    "pin_count": 3
+  },
+  {
+    "mpn": "SS-52400-003",
+    "manufacturer": "Stewart Connector",
+    "cpc": "connector_2248",
+    "pin_count": 4
+  },
+  {
+    "mpn": "IPL1-105-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "connector_513",
+    "pin_count": 10
+  },
+  {
+    "mpn": "M12A-12PFFP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_523",
+    "pin_count": 12
+  },
+  {
+    "mpn": "M12A-12PMMP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "connector_556",
+    "pin_count": 12
+  },
+  {
+    "mpn": "CP-01302130",
+    "manufacturer": "Cvilux USA",
+    "cpc": "CP-01302130",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CP-01304130",
+    "manufacturer": "Cvilux USA",
+    "cpc": "CP-01304130",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CR1/2WS-470K\u00b15%-ST52",
+    "manufacturer": null,
+    "cpc": "CR1/2WS-470K\u00b15%-ST52",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CR1/8W-1K5\u00b15%-OT26",
+    "manufacturer": null,
+    "cpc": "CR1/8W-1K5\u00b15%-OT26",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CT2086-ND",
+    "manufacturer": null,
+    "cpc": "CT2086-ND",
+    "pin_count": 6
+  },
+  {
+    "mpn": "CT3149-0",
+    "manufacturer": "Cal Test Electronics",
+    "cpc": "CT3149-0",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CT3149-2",
+    "manufacturer": "Cal Test Electronics",
+    "cpc": "CT3149-2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CTRJ-21000-1K6X-00",
+    "manufacturer": "Panasonic",
+    "cpc": "CTRJ-21000-1K6X-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "D09S33E4GV00LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "D09S33E4GV00LF",
+    "pin_count": 9
+  },
+  {
+    "mpn": "D15P33E4PA00LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "D15P33E4PA00LF",
+    "pin_count": 15
+  },
+  {
+    "mpn": "D15S33E4GV00LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "D15S33E4GV00LF",
+    "pin_count": 15
+  },
+  {
+    "mpn": "D15S33E4GX00LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "D15S33E4GX00LF",
+    "pin_count": 15
+  },
+  {
+    "mpn": "D22012B",
+    "manufacturer": "NKK Switches",
+    "cpc": "D22012B",
+    "pin_count": 5
+  },
+  {
+    "mpn": "D25S33E4PA00LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "D25S33E4PA00LF",
+    "pin_count": 25
+  },
+  {
+    "mpn": "D37P33E4GX00LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "D37P33E4GX00LF",
+    "pin_count": 37
+  },
+  {
+    "mpn": "DCC270J20COHF6FJ5A0",
+    "manufacturer": null,
+    "cpc": "DCC270J20COHF6FJ5A0",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DCMN8H8SNA197",
+    "manufacturer": "ITT Cannon",
+    "cpc": "DCMN8H8SNA197",
+    "pin_count": 8
+  },
+  {
+    "mpn": "DCO8W8P300H40LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "DCO8W8P300H40LF",
+    "pin_count": 8
+  },
+  {
+    "mpn": "DD50P564GTXLF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "DD50P564GTXLF",
+    "pin_count": 50
+  },
+  {
+    "mpn": "DF13EA-20DP-1.25V(52)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "DF13EA-20DP-1.25V(52)",
+    "pin_count": 20
+  },
+  {
+    "mpn": "FERD20H100STS",
+    "manufacturer": "STMicroelectronics",
+    "cpc": "diode_2205",
+    "pin_count": 3
+  },
+  {
+    "mpn": "D-OP266W-00",
+    "manufacturer": "TT Electronics/Optek Technology",
+    "cpc": "D-OP266W-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DP-M-03",
+    "manufacturer": null,
+    "cpc": "DP-M-03",
+    "pin_count": 20
+  },
+  {
+    "mpn": "DRTR5V0U2SR-7",
+    "manufacturer": "Diodes Incorporated",
+    "cpc": "DRTR5V0U2SR-7",
+    "pin_count": 4
+  },
+  {
+    "mpn": "DS01-254-L-01BE",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "DS01-254-L-01BE",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DS01C-254-S-03BE",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "DS01C-254-S-03BE",
+    "pin_count": 3
+  },
+  {
+    "mpn": "DS01C-254-S-03BE",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "DS01C-254-S-03BE",
+    "pin_count": 3
+  },
+  {
+    "mpn": "DS04-254-2-01BK-SMT",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "DS04-254-2-01BK-SMT",
+    "pin_count": 1
+  },
+  {
+    "mpn": "DW-03-10-F-S-375",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "DW-03-10-F-S-375",
+    "pin_count": 3
+  },
+  {
+    "mpn": "DW-05-10-F-S-375",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "DW-05-10-F-S-375",
+    "pin_count": 5
+  },
+  {
+    "mpn": "DW-05-10-F-S-375-B",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "DW-05-10-F-S-375-B",
+    "pin_count": 5
+  },
+  {
+    "mpn": "DX07S024WJ1R350",
+    "manufacturer": "JAE Electronics",
+    "cpc": "DX07S024WJ1R350",
+    "pin_count": 24
+  },
+  {
+    "mpn": "E22-6-16R-3F3-A-1250",
+    "manufacturer": null,
+    "cpc": "E22-6-16R-3F3-A-1250",
+    "pin_count": 10
+  },
+  {
+    "mpn": "E6S20B-40MT5-Z",
+    "manufacturer": "Rosenberger",
+    "cpc": "E6S20B-40MT5-Z",
+    "pin_count": 4
+  },
+  {
+    "mpn": "ECA-2AM101B",
+    "manufacturer": "Panasonic",
+    "cpc": "ECA-2AM101",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECK-D3D102KBP",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "ECK-D3D102KBP",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC1E221",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "EEU-FC1E221",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC1H221S",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "EEU-FC1H221S",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC1H680",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "EEU-FC1H680",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC1H680",
+    "manufacturer": "Panasonic",
+    "cpc": "EEU-FC1H680",
+    "pin_count": 2
+  },
+  {
+    "mpn": "BMOD0001 P005 B02",
+    "manufacturer": "Maxwell Technologies",
+    "cpc": "EMHSR-0001C5-005R0",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ER18505HC-AX-INCENDIA RED",
+    "manufacturer": null,
+    "cpc": "ER18505HC-AX-INCENDIA RED",
+    "pin_count": 10
+  },
+  {
+    "mpn": "ESL474M063AC3AA",
+    "manufacturer": "KEMET",
+    "cpc": "ESL474M063AC3AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ESQ-107-12-G-S",
+    "manufacturer": "Samtec",
+    "cpc": "ESQ-107-12-G-S",
+    "pin_count": 7
+  },
+  {
+    "mpn": "ESQ-122-12-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "ESQ-122-12-G-S",
+    "pin_count": 22
+  },
+  {
+    "mpn": "1546306-5",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "ETB52011205",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1-1546306-1",
+    "manufacturer": "TE Connectivity",
+    "cpc": "ETB52011211",
+    "pin_count": 11
+  },
+  {
+    "mpn": "FAS-0160",
+    "manufacturer": null,
+    "cpc": "FAS-0160",
+    "pin_count": 4
+  },
+  {
+    "mpn": "FCR7350B",
+    "manufacturer": "CLIFF Electronic Components Ltd",
+    "cpc": "FCR7350B",
+    "pin_count": 5
+  },
+  {
+    "mpn": "FCR7350R",
+    "manufacturer": "CLIFF Electronic Components Ltd",
+    "cpc": "FCR7350R",
+    "pin_count": 5
+  },
+  {
+    "mpn": "FI-SEB20P-HFE",
+    "manufacturer": "JAE Electronics",
+    "cpc": "FI-SEB20P-HFE",
+    "pin_count": 20
+  },
+  {
+    "mpn": "FI-X30SSLA-HF-R2500",
+    "manufacturer": "JAE Electronics",
+    "cpc": "FI-X30SSLA-HF-R2500",
+    "pin_count": 30
+  },
+  {
+    "mpn": "FP10996_LISA2-W-PIN",
+    "manufacturer": null,
+    "cpc": "FP10996_LISA2-W-PIN",
+    "pin_count": 2
+  },
+  {
+    "mpn": "FR01FR10P",
+    "manufacturer": "NKK Switches",
+    "cpc": "FR01FR10P",
+    "pin_count": 10
+  },
+  {
+    "mpn": "FTSH-110-01-L-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "FTSH-110-01-L-D",
+    "pin_count": 20
+  },
+  {
+    "mpn": "G3VM-31HR1",
+    "manufacturer": "Omron Electronics",
+    "cpc": "G3VM-31HR1",
+    "pin_count": 4
+  },
+  {
+    "mpn": "G5V-1 DC12",
+    "manufacturer": "Omron Electronics Inc-EMC Div",
+    "cpc": "G5V-1-DC12",
+    "pin_count": 6
+  },
+  {
+    "mpn": "G800W306018EU",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "G800W306018EU",
+    "pin_count": 2
+  },
+  {
+    "mpn": "GBU15M-BP",
+    "manufacturer": "MCC (Micro Commercial Components)",
+    "cpc": "GBU15M-BP",
+    "pin_count": 4
+  },
+  {
+    "mpn": "22284024",
+    "manufacturer": "Molex",
+    "cpc": "Generic",
+    "pin_count": 2
+  },
+  {
+    "mpn": "GF-123-0054",
+    "manufacturer": "CW Industries",
+    "cpc": "GF-123-0054",
+    "pin_count": 3
+  },
+  {
+    "mpn": "GL5528",
+    "manufacturer": null,
+    "cpc": "GL5528",
+    "pin_count": 2
+  },
+  {
+    "mpn": "GRPB021VWCN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "GRPB021VWCN-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "GSB311131HR",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "GSB311131HR",
+    "pin_count": 9
+  },
+  {
+    "mpn": "GSB422137EU",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "GSB422137EU",
+    "pin_count": 5
+  },
+  {
+    "mpn": "GTS447A101HR",
+    "manufacturer": "CW Industries",
+    "cpc": "GTS447A101HR",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HC-PZ200-8.7L-2x3PZ",
+    "manufacturer": null,
+    "cpc": "HC-PZ200-8.7L-2x3PZ",
+    "pin_count": 12
+  },
+  {
+    "mpn": "HEADER2X1 COPY",
+    "manufacturer": null,
+    "cpc": "HEADER2X1 COPY",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HEADER3X1",
+    "manufacturer": null,
+    "cpc": "HEADER3X1",
+    "pin_count": 3
+  },
+  {
+    "mpn": "header4x1 I2C",
+    "manufacturer": null,
+    "cpc": "header4x1 I2C",
+    "pin_count": 4
+  },
+  {
+    "mpn": "header4x1 SPI1-1",
+    "manufacturer": null,
+    "cpc": "header4x1 SPI1-1",
+    "pin_count": 4
+  },
+  {
+    "mpn": "header4x1 SPI1-2",
+    "manufacturer": null,
+    "cpc": "header4x1 SPI1-2",
+    "pin_count": 4
+  },
+  {
+    "mpn": "header4x1 SPI2-1",
+    "manufacturer": null,
+    "cpc": "header4x1 SPI2-1",
+    "pin_count": 4
+  },
+  {
+    "mpn": "header4x1 UART",
+    "manufacturer": null,
+    "cpc": "header4x1 UART",
+    "pin_count": 4
+  },
+  {
+    "mpn": "header8x1 sat",
+    "manufacturer": null,
+    "cpc": "header8x1 sat",
+    "pin_count": 8
+  },
+  {
+    "mpn": "HL-SMA-KE-02",
+    "manufacturer": null,
+    "cpc": "HL-SMA-KE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HN-5001",
+    "manufacturer": null,
+    "cpc": "HN-5001",
+    "pin_count": 3
+  },
+  {
+    "mpn": "HTSW-101-07-L-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "HTSW-101-07-L-S",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HUGD-50",
+    "manufacturer": null,
+    "cpc": "HUGD-50",
+    "pin_count": 4
+  },
+  {
+    "mpn": "HV0810-2R7105-R",
+    "manufacturer": "Eaton - Electronics Division",
+    "cpc": "HV0810-2R7105-R",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HW-05-11-F-D-620-SM",
+    "manufacturer": null,
+    "cpc": "HW-05-11-F-D-620-SM",
+    "pin_count": 10
+  },
+  {
+    "mpn": "LAN9253-I/R4X",
+    "manufacturer": "Microchip Technology",
+    "cpc": "ic_2099",
+    "pin_count": 5
+  },
+  {
+    "mpn": "INC025",
+    "manufacturer": null,
+    "cpc": "INC025",
+    "pin_count": 3
+  },
+  {
+    "mpn": "INCTECH-6CONN",
+    "manufacturer": null,
+    "cpc": "INCTECH-6CONN",
+    "pin_count": 6
+  },
+  {
+    "mpn": "INCTECH-GNDCON",
+    "manufacturer": null,
+    "cpc": "INCTECH-GNDCON",
+    "pin_count": 20
+  },
+  {
+    "mpn": "INCTECH-PWRDISC",
+    "manufacturer": null,
+    "cpc": "INCTECH-PWRDISC",
+    "pin_count": 5
+  },
+  {
+    "mpn": "INCTECH-TABTEMP 2022-01-15",
+    "manufacturer": null,
+    "cpc": "INCTECH-TABTEMP 2022-01-15",
+    "pin_count": 5
+  },
+  {
+    "mpn": "IPL1-102-01-L-S-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-102-01-L-S-K",
+    "pin_count": 2
+  },
+  {
+    "mpn": "IPL1-102-01-S-S-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-102-01-S-S-RA-K",
+    "pin_count": 2
+  },
+  {
+    "mpn": "IPL1-103-01-L-S-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-103-01-L-S-K",
+    "pin_count": 3
+  },
+  {
+    "mpn": "IPL1-103-01-L-S-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-103-01-L-S-RA-K",
+    "pin_count": 3
+  },
+  {
+    "mpn": "IPL1-104-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-104-01-L-D-K",
+    "pin_count": 8
+  },
+  {
+    "mpn": "IPL1-104-01-L-D-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-104-01-L-D-RA-K",
+    "pin_count": 8
+  },
+  {
+    "mpn": "IPL1-104-01-L-S-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-104-01-L-S-K",
+    "pin_count": 4
+  },
+  {
+    "mpn": "IPL1-104-01-L-S-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-104-01-L-S-RA-K",
+    "pin_count": 4
+  },
+  {
+    "mpn": "IPL1-104-01-S-D-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-104-01-S-D-RA-K",
+    "pin_count": 8
+  },
+  {
+    "mpn": "IPL1-104-01-S-S-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-104-01-S-S-RA-K",
+    "pin_count": 4
+  },
+  {
+    "mpn": "IPL1-105-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-105-01-L-D-K",
+    "pin_count": 10
+  },
+  {
+    "mpn": "IPL1-105-01-L-D-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-105-01-L-D-RA-K",
+    "pin_count": 10
+  },
+  {
+    "mpn": "IPL1-106-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-106-01-L-D-K",
+    "pin_count": 12
+  },
+  {
+    "mpn": "IPL1-106-01-L-S-K",
+    "manufacturer": "Samtec",
+    "cpc": "IPL1-106-01-L-S-K",
+    "pin_count": 6
+  },
+  {
+    "mpn": "IPL1-107-01-L-D-K",
+    "manufacturer": "Samtec",
+    "cpc": "IPL1-107-01-L-D-K",
+    "pin_count": 14
+  },
+  {
+    "mpn": "IPL1-110-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-110-01-L-D-K",
+    "pin_count": 20
+  },
+  {
+    "mpn": "IPL1-110-01-L-D-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-110-01-L-D-RA-K",
+    "pin_count": 20
+  },
+  {
+    "mpn": "IPL1-110-01-L-D-RA-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-110-01-X-D-RA-K",
+    "pin_count": 20
+  },
+  {
+    "mpn": "IPL1-111-01-L-D-K",
+    "manufacturer": "Samtec",
+    "cpc": "IPL1-111-01-L-D-K",
+    "pin_count": 22
+  },
+  {
+    "mpn": "IPL1-112-01-L-D-K",
+    "manufacturer": "Samtec",
+    "cpc": "IPL1-112-01-L-D-K",
+    "pin_count": 24
+  },
+  {
+    "mpn": "IPL1-116-01-L-D-K",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "IPL1-116-01-L-D-K",
+    "pin_count": 32
+  },
+  {
+    "mpn": "IRLZ44NPBF",
+    "manufacturer": null,
+    "cpc": "IRLZ44NPBF",
+    "pin_count": 3
+  },
+  {
+    "mpn": "IRM-10-24",
+    "manufacturer": "MEAN WELL USA Inc.",
+    "cpc": "IRM-10-24",
+    "pin_count": 4
+  },
+  {
+    "mpn": "IT-3003",
+    "manufacturer": null,
+    "cpc": "IT-3003",
+    "pin_count": 2
+  },
+  {
+    "mpn": "J107F1CS1212VDC.36",
+    "manufacturer": "CIT Relay and Switch",
+    "cpc": "J107F1CS1212VDC.36",
+    "pin_count": 4
+  },
+  {
+    "mpn": "K66X-A26P-N",
+    "manufacturer": "Kycon, Inc.",
+    "cpc": "K66X-A26P-N",
+    "pin_count": 26
+  },
+  {
+    "mpn": "K86X-CD-62S-BR",
+    "manufacturer": "Kycon, Inc.",
+    "cpc": "K86X-CD-62S-BR",
+    "pin_count": 62
+  },
+  {
+    "mpn": "KA100/254DPMD11TH",
+    "manufacturer": null,
+    "cpc": "KA100/254DPMD11TH",
+    "pin_count": 100
+  },
+  {
+    "mpn": "KPJX-4S-S",
+    "manufacturer": "Kycon, Inc.",
+    "cpc": "KPJX-4S-S",
+    "pin_count": 4
+  },
+  {
+    "mpn": "L149-5006",
+    "manufacturer": null,
+    "cpc": "L149-5006",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TLDR6400",
+    "manufacturer": "Vishay Semiconductor Opto Division",
+    "cpc": "L314ET",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HLMP-3519-F0002",
+    "manufacturer": "Broadcom Limited",
+    "cpc": "L314GT",
+    "pin_count": 2
+  },
+  {
+    "mpn": "L717HDAH26POL2RM5",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "L717HDAH26POL2RM5",
+    "pin_count": 26
+  },
+  {
+    "mpn": "L717HDCH62POL2RM5",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "L717HDCH62POL2RM5",
+    "pin_count": 62
+  },
+  {
+    "mpn": "L77HDA26SD1CH4R",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "L77HDA26SD1CH4R",
+    "pin_count": 26
+  },
+  {
+    "mpn": "L77SDD50SOL2",
+    "manufacturer": "Amphenol Commercial Products",
+    "cpc": "L77SDD50SOL2",
+    "pin_count": 50
+  },
+  {
+    "mpn": "L77SDDH50SOL2RM8",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "L77SDDH50SOL2RM8",
+    "pin_count": 50
+  },
+  {
+    "mpn": "LED",
+    "manufacturer": null,
+    "cpc": "LED",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LED05-\u7ea2\u706f",
+    "manufacturer": null,
+    "cpc": "LED05-\u7ea2\u706f",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LHA-06-TRB",
+    "manufacturer": "Adam Tech",
+    "cpc": "LHA-06-TRB",
+    "pin_count": 6
+  },
+  {
+    "mpn": "LM78L05ACZ/NOPB",
+    "manufacturer": "Texas Instruments",
+    "cpc": "LM78L05A",
+    "pin_count": 3
+  },
+  {
+    "mpn": "LTL1BEKVJNN",
+    "manufacturer": "Lite-On Inc.",
+    "cpc": "LTL1BEKVJNN",
+    "pin_count": 3
+  },
+  {
+    "mpn": "M20-9760246",
+    "manufacturer": "Harwin Inc.",
+    "cpc": "M20-9760246",
+    "pin_count": 4
+  },
+  {
+    "mpn": "M20-9980245",
+    "manufacturer": "Harwin Inc.",
+    "cpc": "M20-9980245",
+    "pin_count": 4
+  },
+  {
+    "mpn": "M20-9990246",
+    "manufacturer": "Harwin Inc.",
+    "cpc": "M20-9990246",
+    "pin_count": 2
+  },
+  {
+    "mpn": "M22-2010305",
+    "manufacturer": "Harwin Inc.",
+    "cpc": "M22-2010305",
+    "pin_count": 3
+  },
+  {
+    "mpn": "M39003/01-2306",
+    "manufacturer": "KEMET",
+    "cpc": "M39003/01-2306",
+    "pin_count": 2
+  },
+  {
+    "mpn": "M80-5000000M3-02-332-00-000",
+    "manufacturer": "Harwin Inc.",
+    "cpc": "M80-5000000M3-02-332-00-000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CM5441Z161B-10",
+    "manufacturer": "Laird-Signal Integrity Products",
+    "cpc": "magnetic_2214",
+    "pin_count": 4
+  },
+  {
+    "mpn": "MF-R025",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "MF-R025",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MF-R500",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "MF-R500",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MF-R700",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "MF-R700",
+    "pin_count": 2
+  },
+  {
+    "mpn": "Molex - 0022035045",
+    "manufacturer": "Molex",
+    "cpc": "Molex - 0022035045",
+    "pin_count": 4
+  },
+  {
+    "mpn": "MPSA06",
+    "manufacturer": "onsemi",
+    "cpc": "MPSA06",
+    "pin_count": 3
+  },
+  {
+    "mpn": "MPSA56",
+    "manufacturer": "Diotec Semiconductor",
+    "cpc": "MPSA56",
+    "pin_count": 3
+  },
+  {
+    "mpn": "MRJR5381M1",
+    "manufacturer": null,
+    "cpc": "MRJR5381M1",
+    "pin_count": 1
+  },
+  {
+    "mpn": "MRJR538401",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "MRJR538401",
+    "pin_count": 16
+  },
+  {
+    "mpn": "MS-50",
+    "manufacturer": null,
+    "cpc": "MS-50",
+    "pin_count": 3
+  },
+  {
+    "mpn": "MTJ-88ARX1-FSM-LG",
+    "manufacturer": "Adam Tech",
+    "cpc": "MTJ-88ARX1-FSM-LG",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TSW-102-05-T-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "MTLW-102-06-G-D-125",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TSW-104-05-T-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "MTLW-104-06-G-D-125",
+    "pin_count": 8
+  },
+  {
+    "mpn": "MTSW-108-08-T-S-285",
+    "manufacturer": null,
+    "cpc": "MTSW-108-08-T-S-285",
+    "pin_count": 8
+  },
+  {
+    "mpn": "MTSW-110-09-G-S-475",
+    "manufacturer": null,
+    "cpc": "MTSW-110-09-G-S-475",
+    "pin_count": 10
+  },
+  {
+    "mpn": "MUSBRM1C130",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "MUSBRM1C130",
+    "pin_count": 24
+  },
+  {
+    "mpn": "MUSBRM1C1M0",
+    "manufacturer": null,
+    "cpc": "MUSBRM1C1M0",
+    "pin_count": 24
+  },
+  {
+    "mpn": "NA",
+    "manufacturer": null,
+    "cpc": "NA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "NCA1",
+    "manufacturer": "CIT Relay and Switch",
+    "cpc": "NCA1",
+    "pin_count": 2
+  },
+  {
+    "mpn": "NHD-240128WG-BTFH-VZ#",
+    "manufacturer": "Newhaven Display Intl",
+    "cpc": "NHD-240128WG-BTFH-VZ#",
+    "pin_count": 25
+  },
+  {
+    "mpn": "No Code",
+    "manufacturer": null,
+    "cpc": "No Code",
+    "pin_count": 4
+  },
+  {
+    "mpn": "No_Code1",
+    "manufacturer": null,
+    "cpc": "No_Code1",
+    "pin_count": 3
+  },
+  {
+    "mpn": "Not Coded - TL304-5203-000-T",
+    "manufacturer": null,
+    "cpc": "Not Coded - TL304-5203-000-T",
+    "pin_count": 2
+  },
+  {
+    "mpn": "NPB02SVFN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "NPB02SVFN-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "NPPN061BFCN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "NPPN061BFCN-RC",
+    "pin_count": 6
+  },
+  {
+    "mpn": "NPPN121BFCN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "NPPN121BFCN-RC",
+    "pin_count": 12
+  },
+  {
+    "mpn": "NQR010A0X4Z",
+    "manufacturer": "OmniOn Power",
+    "cpc": "NQR010A0X4Z",
+    "pin_count": 5
+  },
+  {
+    "mpn": "NXRT15WF104FA1B010",
+    "manufacturer": "Murata Electronics",
+    "cpc": "NXRT15WF104FA1B010",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DD104M4R7000/AA",
+    "manufacturer": "Amphenol Positronic",
+    "cpc": "ODD104M5R7",
+    "pin_count": 104
+  },
+  {
+    "mpn": "OPKM_MAG CONNECTOR 4-PIN",
+    "manufacturer": null,
+    "cpc": "OPKM_MAG CONNECTOR 4-PIN",
+    "pin_count": 4
+  },
+  {
+    "mpn": "MJTP1230C",
+    "manufacturer": "APEM Inc.",
+    "cpc": "OPKM_MJTP1230C",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PBC36DAAN",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PBC36DAAN",
+    "pin_count": 72
+  },
+  {
+    "mpn": "PCIB26W11M300A1",
+    "manufacturer": "Amphenol Positronic",
+    "cpc": "PCIB26W11M300A1",
+    "pin_count": 26
+  },
+  {
+    "mpn": "PDQ30-Q48-S12-D",
+    "manufacturer": "CUI Inc.",
+    "cpc": "PDQ30-Q48-S12-D",
+    "pin_count": 6
+  },
+  {
+    "mpn": "CD14ZT0R00",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "PE1-058",
+    "pin_count": 2
+  },
+  {
+    "mpn": "54602-908LF",
+    "manufacturer": "Amphenol ICC (FCI)",
+    "cpc": "PE9-052",
+    "pin_count": 8
+  },
+  {
+    "mpn": "353130260",
+    "manufacturer": "Molex",
+    "cpc": "PE9171",
+    "pin_count": 2
+  },
+  {
+    "mpn": "705430040",
+    "manufacturer": "Molex",
+    "cpc": "PE9174",
+    "pin_count": 6
+  },
+  {
+    "mpn": "705430036",
+    "manufacturer": "Molex",
+    "cpc": "PE9181",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PEC12R-3225F-S0024",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "PEC12R-3225F-S0024",
+    "pin_count": 8
+  },
+  {
+    "mpn": "PEC12SAAN",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PEC12SAAN",
+    "pin_count": 12
+  },
+  {
+    "mpn": "PH1-03-TA",
+    "manufacturer": "Adam Tech",
+    "cpc": "PH1-03-TA",
+    "pin_count": 3
+  },
+  {
+    "mpn": "PH1-06-UA",
+    "manufacturer": "Adam Tech",
+    "cpc": "PH1-06-UA",
+    "pin_count": 6
+  },
+  {
+    "mpn": "PJ-002B",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "PJ-002B",
+    "pin_count": 3
+  },
+  {
+    "mpn": "PJ1-023",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "PJ1-023",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PJ-3136-B",
+    "manufacturer": null,
+    "cpc": "PJ-3136-B",
+    "pin_count": 6
+  },
+  {
+    "mpn": "PJ-313D",
+    "manufacturer": null,
+    "cpc": "PJ-313D",
+    "pin_count": 6
+  },
+  {
+    "mpn": "PM254-2-19-Z-8.5",
+    "manufacturer": null,
+    "cpc": "PM254-2-19-Z-8.5",
+    "pin_count": 38
+  },
+  {
+    "mpn": "PPPC031LFBN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PPPC031LFBN-RC",
+    "pin_count": 3
+  },
+  {
+    "mpn": "PPPC082LFBN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PPPC082LFBN-RC",
+    "pin_count": 16
+  },
+  {
+    "mpn": "PPPC362LFBN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PPPC362LFBN-RC",
+    "pin_count": 72
+  },
+  {
+    "mpn": "PPTC041LFBN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PPTC041LFBN-RC",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PPTC121LFBN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PPTC121LFBN-RC",
+    "pin_count": 12
+  },
+  {
+    "mpn": "PQS075-S5-S12-S",
+    "manufacturer": "CUI Inc.",
+    "cpc": "PQS075-S5-S12-S",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PREC003SAAN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "PREC003SAAN-RC",
+    "pin_count": 3
+  },
+  {
+    "mpn": "PS103J2",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "PS103J2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PS103J2",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "PS103J2",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PS1240P02CT3",
+    "manufacturer": null,
+    "cpc": "PS1240P02CT3",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PT1.5/2-5.0-H",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "PT1.5/2-5.0-H",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PTC10MV10-104A2020",
+    "manufacturer": "Amphenol Piher Sensing Systems",
+    "cpc": "PTC10MV10-104A2020",
+    "pin_count": 3
+  },
+  {
+    "mpn": "Y97HT21A2EAFP",
+    "manufacturer": "C&K",
+    "cpc": "PTS645SM43-2 LFS",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PTS645SM43-2LFS",
+    "manufacturer": "C&K",
+    "cpc": "PTS645SM43-2LFS",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PTS645SM43SMTR92LFS",
+    "manufacturer": "C&K",
+    "cpc": "PTS645SM43SMTR92LFS",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PZ254-2-18-Z-8.5",
+    "manufacturer": null,
+    "cpc": "PZ254-2-18-Z-8.5",
+    "pin_count": 36
+  },
+  {
+    "mpn": "QPC02SXGN-RC",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "QPC02SXGN-RC",
+    "pin_count": 2
+  },
+  {
+    "mpn": "R4Y5I11505000K",
+    "manufacturer": "KEMET",
+    "cpc": "R4Y5I11505000K",
+    "pin_count": 2
+  },
+  {
+    "mpn": "R-78C15-1.0",
+    "manufacturer": "Recom Power",
+    "cpc": "R-78C15-1.0",
+    "pin_count": 3
+  },
+  {
+    "mpn": "R-78K5.0-0.5",
+    "manufacturer": "RECOM Power",
+    "cpc": "R-78K5.0-0.5",
+    "pin_count": 3
+  },
+  {
+    "mpn": "R-78K5.0-1.0",
+    "manufacturer": "Recom Power",
+    "cpc": "R-78K5.0-1.0",
+    "pin_count": 3
+  },
+  {
+    "mpn": "RBS070410",
+    "manufacturer": "OncQue",
+    "cpc": "RBS070410",
+    "pin_count": 3
+  },
+  {
+    "mpn": "RC07GF101J",
+    "manufacturer": null,
+    "cpc": "RC07GF101J",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V23047-A1024-A511",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "relay_2285",
+    "pin_count": 6
+  },
+  {
+    "mpn": "SQMW54R7J",
+    "manufacturer": "TE Connectivity Passive Product",
+    "cpc": "RES-0099",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WW3FT300R",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "RES-0121",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WW3FT100R",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "RES-0132",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WW3FT39R0",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "RES-0137",
+    "pin_count": 2
+  },
+  {
+    "mpn": "RFPC-SMA14-FN",
+    "manufacturer": "GCT",
+    "cpc": "RFPC-SMA14-FN",
+    "pin_count": 4
+  },
+  {
+    "mpn": "RFPC-SMA15-FN",
+    "manufacturer": "GCT",
+    "cpc": "RFPC-SMA15-FN",
+    "pin_count": 4
+  },
+  {
+    "mpn": "RJHSE-5380",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "RJHSE-5380",
+    "pin_count": 5
+  },
+  {
+    "mpn": "RK09D1130C3C",
+    "manufacturer": null,
+    "cpc": "RK09D1130C3C",
+    "pin_count": 6
+  },
+  {
+    "mpn": "RLB0914-471KL",
+    "manufacturer": "Bourns Inc.",
+    "cpc": "RLB0914-471KL",
+    "pin_count": 2
+  },
+  {
+    "mpn": "RNF14FTD1M00",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "RNF14FTD1M00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "RS02B1K000FS70W02",
+    "manufacturer": "Vishay Dale",
+    "cpc": "RS02B1K000FS70W02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "RS3-2412D",
+    "manufacturer": "Recom Power",
+    "cpc": "RS3-2412D",
+    "pin_count": 6
+  },
+  {
+    "mpn": "RS3-2412D/H3",
+    "manufacturer": "Recom Power",
+    "cpc": "RS3-2412D/H3",
+    "pin_count": 7
+  },
+  {
+    "mpn": "PTA3044-2010DPB253",
+    "manufacturer": "Bourns",
+    "cpc": "RV09A40-25KB25K",
+    "pin_count": 5
+  },
+  {
+    "mpn": "RV09AF-40-20K-B100K",
+    "manufacturer": "Alpha (Taiwan)",
+    "cpc": "RV09AF-40-20K-B100K",
+    "pin_count": 5
+  },
+  {
+    "mpn": "S2B-PH-K-S",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "S2B-PH-K-S",
+    "pin_count": 2
+  },
+  {
+    "mpn": "S2B-PH-K-S(LF)(SN)",
+    "manufacturer": null,
+    "cpc": "S2B-PH-K-S(LF)(SN)",
+    "pin_count": 2
+  },
+  {
+    "mpn": "S2P-VH",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "S2P-VH (Alt. B2PS-VH\u00a0)",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MTSW-110-09-G-S-475",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SAMTEC_MTSW-110-09-G-S-475",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TSW-118-24-L-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SAMTEC_TSW-118-24-L-D",
+    "pin_count": 36
+  },
+  {
+    "mpn": "SBH11-PBPC-D07-RA-BK",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "SBH11-PBPC-D07-RA-BK",
+    "pin_count": 14
+  },
+  {
+    "mpn": "SBH11-PBPC-D07-ST-BK",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "SBH11-PBPC-D07-ST-BK",
+    "pin_count": 14
+  },
+  {
+    "mpn": "SBH11-PBPC-D10-ST-BK",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "SBH11-PBPC-D10-ST-BK",
+    "pin_count": 20
+  },
+  {
+    "mpn": "SBH11-PBPC-D13-ST-BK",
+    "manufacturer": "Sullins Connector Solutions",
+    "cpc": "SBH11-PBPC-D13-ST-BK",
+    "pin_count": 26
+  },
+  {
+    "mpn": "SJ1-3523N",
+    "manufacturer": "Same Sky",
+    "cpc": "SJ1-3523N",
+    "pin_count": 3
+  },
+  {
+    "mpn": "SLW-102-01-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SLW-102-01-F-D",
+    "pin_count": 4
+  },
+  {
+    "mpn": "SLW-104-01-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SLW-104-01-F-D",
+    "pin_count": 8
+  },
+  {
+    "mpn": "SM10B-SHLS-TF(LF)(SN)",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "SM10B-SHLS-TF",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SMA-11V21-TGN",
+    "manufacturer": null,
+    "cpc": "SMA-11V21-TGN",
+    "pin_count": 4
+  },
+  {
+    "mpn": "SMA-J-P-H-ST-TH1",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SMA-J-P-X-ST-TH1",
+    "pin_count": 4
+  },
+  {
+    "mpn": "SMC-1-02-1-GT",
+    "manufacturer": "Adam Tech",
+    "cpc": "SMC-1-02-1-GT",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SMC-1A-03-1-GT-HT",
+    "manufacturer": "Adam Tech",
+    "cpc": "SMC-1-03-1-GT",
+    "pin_count": 3
+  },
+  {
+    "mpn": "SO-0575-01-01-02-N",
+    "manufacturer": null,
+    "cpc": "SO-0575-01-01-02-N",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SPA06B",
+    "manufacturer": "C&K",
+    "cpc": "SPA06B",
+    "pin_count": 6
+  },
+  {
+    "mpn": "SQT-112-01-L-T",
+    "manufacturer": null,
+    "cpc": "SQT-112-01-L-T",
+    "pin_count": 36
+  },
+  {
+    "mpn": "SRH05S12",
+    "manufacturer": "XP Power",
+    "cpc": "SRH05S12",
+    "pin_count": 3
+  },
+  {
+    "mpn": "SRS6-8-01",
+    "manufacturer": "Essentra Components",
+    "cpc": "SRS6-8-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSSS811101",
+    "manufacturer": "Alps Alpine",
+    "cpc": "SS-22D01-G",
+    "pin_count": 10
+  },
+  {
+    "mpn": "2MM-HSD-S05-HT-02-H-TB",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "SS-2MM-05-T",
+    "pin_count": 5
+  },
+  {
+    "mpn": "201KD07",
+    "manufacturer": "YAGEO",
+    "cpc": "SSA-201KD07",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSF-LXHM250IGIGW",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "SSF-LXHM250IGIGW",
+    "pin_count": 4
+  },
+  {
+    "mpn": "SSL-LX5093AD",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "SSL-LX5093AD",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSL-LX5093GD",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "SSL-LX5093GD",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSL-LX5093ID",
+    "manufacturer": "Lumex",
+    "cpc": "SSL-LX5093ID",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSL-LX5093YD",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "SSL-LX5093YD",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSQ-105-01-L-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SSQ-105-02-L-D",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SSQ-110-03-F-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SSQ-110-03-F-S",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SSW-103-01-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SSW-103-01-F-D",
+    "pin_count": 6
+  },
+  {
+    "mpn": "SSW-105-22-F-D-VS",
+    "manufacturer": null,
+    "cpc": "SSW-105-22-F-D-VS",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SSW11101GS",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SSW11101GS",
+    "pin_count": 11
+  },
+  {
+    "mpn": "SSW-113-01-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SSW-113-01-F-D",
+    "pin_count": 4
+  },
+  {
+    "mpn": "SSW-115-01-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "SSW-115-01-F-D",
+    "pin_count": 4
+  },
+  {
+    "mpn": "97C04SRT",
+    "manufacturer": "Grayhill Inc.",
+    "cpc": "switch_1268",
+    "pin_count": 4
+  },
+  {
+    "mpn": "SX1100-B",
+    "manufacturer": "Kycon, Inc.",
+    "cpc": "SX1100-B",
+    "pin_count": 2
+  },
+  {
+    "mpn": "T3610Z10",
+    "manufacturer": null,
+    "cpc": "T3610Z10",
+    "pin_count": 20
+  },
+  {
+    "mpn": "T3620Z11",
+    "manufacturer": null,
+    "cpc": "T3620Z11",
+    "pin_count": 20
+  },
+  {
+    "mpn": "571-T4141012041-000",
+    "manufacturer": "TE Connectivity",
+    "cpc": "T4141012041-000",
+    "pin_count": 4
+  },
+  {
+    "mpn": "T4141012051-000",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "T4141012051-000",
+    "pin_count": 5
+  },
+  {
+    "mpn": "T9AS1D12-5",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "T9AS1D12-5",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TBL002A-350-12GY-2GY",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "TBL002A-350-12GY-2GY",
+    "pin_count": 12
+  },
+  {
+    "mpn": "TBL004V-508-03BE-2GY",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "TBL004V-508-03BE-2GY",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TDA02H0SB1",
+    "manufacturer": "C&K",
+    "cpc": "TDA02H0SB1",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TFM-104-01-L-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TFM-104-01-L-D-RA",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TFM-105-01-L-S-A",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TFM-105-01-L-S-A",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TFM-105-02-L-D-WT",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TFM-105-02-L-D-WT",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TFM-105-02-S-D-P-TR",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TFM-105-02-S-D-P-TR",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TFM-115-01-L-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TFM-115-01-L-D-RA",
+    "pin_count": 30
+  },
+  {
+    "mpn": "TFM-115-02-S-D-WT",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TFM-115-02-S-D-WT",
+    "pin_count": 30
+  },
+  {
+    "mpn": "TFM-120-02-S-D-P-TR",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TFM-120-02-S-D-P-TR",
+    "pin_count": 40
+  },
+  {
+    "mpn": "TG-A1250-20-20-1.0",
+    "manufacturer": "t-Global Technology",
+    "cpc": "TG-A1250-20-20-1.0",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TGS5141",
+    "manufacturer": null,
+    "cpc": "TGS5141",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TIL194BXSM",
+    "manufacturer": "Isocom Components 2004 LTD",
+    "cpc": "TIL194BXSM",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TL126-5601-000",
+    "manufacturer": null,
+    "cpc": "TL126-5601-000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL126-5602-000",
+    "manufacturer": null,
+    "cpc": "TL126-5602-000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL159-5001-002",
+    "manufacturer": "TECHNOLOGIES LANKA INC.",
+    "cpc": "TL159-5001-002",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL159-5611-000",
+    "manufacturer": "TECHNOLOGIES LANKA INC.",
+    "cpc": "TL159-5611-000",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL159-5613-000",
+    "manufacturer": null,
+    "cpc": "TL159-5613-000",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL168-5602-000",
+    "manufacturer": null,
+    "cpc": "TL168-5602-000",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL175-5070-102",
+    "manufacturer": null,
+    "cpc": "TL175-5070-102",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL177-5009-000",
+    "manufacturer": null,
+    "cpc": "TL177-5009-000",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL188-5020-100",
+    "manufacturer": null,
+    "cpc": "TL188-5020-100",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TL188-5024-001",
+    "manufacturer": null,
+    "cpc": "TL188-5024-001",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TL190-5003-000",
+    "manufacturer": "TECHNOLOGIES LANKA INC.",
+    "cpc": "TL190-5003-000",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TL242-5003 - INSTRUCTIONS",
+    "manufacturer": null,
+    "cpc": "TL242-5003 - INSTRUCTIONS",
+    "pin_count": 100
+  },
+  {
+    "mpn": "TL242-5005 - INSTRUCTIONS",
+    "manufacturer": null,
+    "cpc": "TL242-5005 - INSTRUCTIONS",
+    "pin_count": 1
+  },
+  {
+    "mpn": "TL242-5011-000",
+    "manufacturer": "TECHNOLOGIES LANKA INC.",
+    "cpc": "TL242-5011-000",
+    "pin_count": 5
+  },
+  {
+    "mpn": "C503B-RCN-CW0Z0AA1",
+    "manufacturer": "Cree LED",
+    "cpc": "TL242-5103 - INSTRUCTIONS",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL242-5105 - INSTRUCTIONS",
+    "manufacturer": null,
+    "cpc": "TL242-5105 - INSTRUCTIONS",
+    "pin_count": 1
+  },
+  {
+    "mpn": "TL242-5613-000",
+    "manufacturer": null,
+    "cpc": "TL242-5613-000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL261-5054-000",
+    "manufacturer": "TECHNOLOGIES LANKA INC.",
+    "cpc": "TL261-5054-000",
+    "pin_count": 15
+  },
+  {
+    "mpn": "TL265-5004-000",
+    "manufacturer": null,
+    "cpc": "TL265-5004-000",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL277-5605-000",
+    "manufacturer": null,
+    "cpc": "TL277-5605-000",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL380-5014-000",
+    "manufacturer": null,
+    "cpc": "TL380-5014-000",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL386-5004-000",
+    "manufacturer": null,
+    "cpc": "TL386-5004-000",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TX63/38/25-3E6",
+    "manufacturer": "Ferroxcube",
+    "cpc": "TL419-5070-100",
+    "pin_count": 15
+  },
+  {
+    "mpn": "534202B02853G",
+    "manufacturer": "Aavid",
+    "cpc": "TL-A0000026",
+    "pin_count": 10
+  },
+  {
+    "mpn": "RJHSE-5481",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "TL-A0000105",
+    "pin_count": 8
+  },
+  {
+    "mpn": "HXC30G",
+    "manufacturer": "BEI",
+    "cpc": "TL-A0000156",
+    "pin_count": 8
+  },
+  {
+    "mpn": "HXSC36K",
+    "manufacturer": "BEI",
+    "cpc": "TL-A0000158",
+    "pin_count": 8
+  },
+  {
+    "mpn": "0ZRC0110FF1A",
+    "manufacturer": "Bel Fuse",
+    "cpc": "TL-A0000166",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0000167",
+    "manufacturer": null,
+    "cpc": "TL-A0000167",
+    "pin_count": 2
+  },
+  {
+    "mpn": "0ZRC0030FF1E",
+    "manufacturer": "Bel Fuse Inc.",
+    "cpc": "TL-A0000170",
+    "pin_count": 2
+  },
+  {
+    "mpn": "BK/1A1907-03-R",
+    "manufacturer": "Eaton - Electronics Division",
+    "cpc": "TL-A0000214",
+    "pin_count": 2
+  },
+  {
+    "mpn": "BK/1A3400-09-R",
+    "manufacturer": "Eaton - Electronics Division",
+    "cpc": "TL-A0000217",
+    "pin_count": 4
+  },
+  {
+    "mpn": "BK/MDA-2-R",
+    "manufacturer": "Eaton - Electronics Division",
+    "cpc": "TL-A0000227",
+    "pin_count": 2
+  },
+  {
+    "mpn": "BK/1A1907-05",
+    "manufacturer": "Bussmann / Eaton",
+    "cpc": "TL-A0000232",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TDA06H0SB1R",
+    "manufacturer": "C&K",
+    "cpc": "TL-A0000243",
+    "pin_count": 6
+  },
+  {
+    "mpn": "MD-80SM",
+    "manufacturer": "CUI Devices",
+    "cpc": "TL-A0000287",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL-A0000423",
+    "manufacturer": null,
+    "cpc": "TL-A0000423",
+    "pin_count": 6
+  },
+  {
+    "mpn": "CST-1005",
+    "manufacturer": "Triad Magnetics",
+    "cpc": "TL-A0000470",
+    "pin_count": 3
+  },
+  {
+    "mpn": "B66288F2204X000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TL-A0000539",
+    "pin_count": 5
+  },
+  {
+    "mpn": "CLM-E22/PLT22",
+    "manufacturer": "Ferroxcube",
+    "cpc": "TL-A0000573",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL-A0000580",
+    "manufacturer": null,
+    "cpc": "TL-A0000580",
+    "pin_count": 5
+  },
+  {
+    "mpn": "E22/6/16/R-3F3-A2700-P",
+    "manufacturer": "Ferroxcube",
+    "cpc": "TL-A0000581",
+    "pin_count": 5
+  },
+  {
+    "mpn": "ATMR25",
+    "manufacturer": "Mersen",
+    "cpc": "TL-A0000597",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PLT22/16/2.5/S-3F3",
+    "manufacturer": "Ferroxcube",
+    "cpc": "TL-A0000626",
+    "pin_count": 5
+  },
+  {
+    "mpn": "RL1005-5744-103-SA",
+    "manufacturer": "Amphenol Thermometrics",
+    "cpc": "TL-A0000647",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DF11-6DP-2DSA(01)",
+    "manufacturer": "Hirose Connector",
+    "cpc": "TL-A0000691",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TL-A0000697",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "TL-A0000697",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL-A0000795",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0000795",
+    "pin_count": 2
+  },
+  {
+    "mpn": "4901",
+    "manufacturer": "Keystone",
+    "cpc": "TL-A0000806",
+    "pin_count": 3
+  },
+  {
+    "mpn": "5000",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0000808",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5002",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0000809",
+    "pin_count": 2
+  },
+  {
+    "mpn": "8922",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0000820",
+    "pin_count": 2
+  },
+  {
+    "mpn": "91",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0000821",
+    "pin_count": 4
+  },
+  {
+    "mpn": "K85X-ED-9S-BRJ",
+    "manufacturer": "Kycon, Inc.",
+    "cpc": "TL-A0000826",
+    "pin_count": 9
+  },
+  {
+    "mpn": "0350-0-15-15-07-27-10-0",
+    "manufacturer": "Mill-Max",
+    "cpc": "TL-A0000894",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0000901",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0000901",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PTCCL11H251HBE",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TL-A0000920",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PTCCL11H251HBE",
+    "manufacturer": "Vishay / BC Components",
+    "cpc": "TL-A0000922",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B3F-3120",
+    "manufacturer": "Omron Electronics Inc-EMC Div",
+    "cpc": "TL-A0000944",
+    "pin_count": 4
+  },
+  {
+    "mpn": "B3F-4055",
+    "manufacturer": "Omron Electronics Inc-EMC Div",
+    "cpc": "TL-A0000952",
+    "pin_count": 2
+  },
+  {
+    "mpn": "G4W-2214P-US-HP DC24",
+    "manufacturer": "Omron Electronics Inc-EMC Div",
+    "cpc": "TL-A0000957",
+    "pin_count": 6
+  },
+  {
+    "mpn": "G6B-1114P-US DC24",
+    "manufacturer": "Omron Electronics Inc-EMC Div",
+    "cpc": "TL-A0000961",
+    "pin_count": 5
+  },
+  {
+    "mpn": "G6B-1114P-US-DC6",
+    "manufacturer": "Omron Electronics",
+    "cpc": "TL-A0000963",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL-A0001030",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0001030",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1985218",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0001031",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1985234",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0001033",
+    "pin_count": 6
+  },
+  {
+    "mpn": "PCIA60W36F300A1/AA",
+    "manufacturer": "Amphenol Positronic",
+    "cpc": "TL-A0001074",
+    "pin_count": 60
+  },
+  {
+    "mpn": "TL-A0001076",
+    "manufacturer": "Positronic",
+    "cpc": "TL-A0001076",
+    "pin_count": 60
+  },
+  {
+    "mpn": "PCIA60W36M300A1",
+    "manufacturer": "POSITRONIC",
+    "cpc": "TL-A0001077",
+    "pin_count": 60
+  },
+  {
+    "mpn": "PCIA60W36M300C1",
+    "manufacturer": "POSITRONIC",
+    "cpc": "TL-A0001079",
+    "pin_count": 60
+  },
+  {
+    "mpn": "PCIC16W7M400A1",
+    "manufacturer": "Amphenol Positronic",
+    "cpc": "TL-A0001083",
+    "pin_count": 16
+  },
+  {
+    "mpn": "BSW-110-04-G-D",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0001190",
+    "pin_count": 20
+  },
+  {
+    "mpn": "FWJ-06-01-T-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001197",
+    "pin_count": 6
+  },
+  {
+    "mpn": "FWJ-07-01-T-S",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0001198",
+    "pin_count": 7
+  },
+  {
+    "mpn": "SNT-100-BK-G",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0001202",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSW-103-01-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001212",
+    "pin_count": 6
+  },
+  {
+    "mpn": "SSW-103-01-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001213",
+    "pin_count": 6
+  },
+  {
+    "mpn": "SSW-105-01-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001219",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SSW-105-01-G-D",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0001220",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SSW-107-01-F-D-LL",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001223",
+    "pin_count": 14
+  },
+  {
+    "mpn": "TSM-106-01-T-SV",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001240",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TSW-101-07-L-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001241",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-102-07-L-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001247",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-102-07-T-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001248",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-103-14-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001250",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TSW-114-15-T-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001285",
+    "pin_count": 14
+  },
+  {
+    "mpn": "TL-5101/P",
+    "manufacturer": "TADIRAN",
+    "cpc": "TL-A0001459",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5103308-5",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0001478",
+    "pin_count": 20
+  },
+  {
+    "mpn": "RXEF110-2",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-A0001507",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CST-1025",
+    "manufacturer": "Triad Magnetics",
+    "cpc": "TL-A0001510",
+    "pin_count": 3
+  },
+  {
+    "mpn": "VPP12-800",
+    "manufacturer": "Triad Magnetics",
+    "cpc": "TL-A0001515",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TSM-103-02-L-DH-LC",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001521",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TSM-103-02-T-DV-LC",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001528",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TSW-120-08-G-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0001555",
+    "pin_count": 40
+  },
+  {
+    "mpn": "292304-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0001595",
+    "pin_count": 4
+  },
+  {
+    "mpn": "350787-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0001621",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5520259-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0001634",
+    "pin_count": 6
+  },
+  {
+    "mpn": "5650858-5",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0001641",
+    "pin_count": 32
+  },
+  {
+    "mpn": "TL-A0001644",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0001644",
+    "pin_count": 9
+  },
+  {
+    "mpn": "RT444024",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0001673",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1-1393210-3",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0001677",
+    "pin_count": 5
+  },
+  {
+    "mpn": "T9AS1D12-24",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0001678",
+    "pin_count": 5
+  },
+  {
+    "mpn": "T9AS1D12-48",
+    "manufacturer": "TE Connectivity / P&B",
+    "cpc": "TL-A0001679",
+    "pin_count": 5
+  },
+  {
+    "mpn": "V23079A1003B301",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0001684",
+    "pin_count": 5
+  },
+  {
+    "mpn": "769-673/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001746",
+    "pin_count": 13
+  },
+  {
+    "mpn": "256-410",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001847",
+    "pin_count": 2
+  },
+  {
+    "mpn": "256-502",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001850",
+    "pin_count": 2
+  },
+  {
+    "mpn": "256-503",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001853",
+    "pin_count": 2
+  },
+  {
+    "mpn": "733-333",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001902",
+    "pin_count": 3
+  },
+  {
+    "mpn": "733-336",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001903",
+    "pin_count": 6
+  },
+  {
+    "mpn": "733-338",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001904",
+    "pin_count": 8
+  },
+  {
+    "mpn": "733-363",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001905",
+    "pin_count": 3
+  },
+  {
+    "mpn": "733-364",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001906",
+    "pin_count": 4
+  },
+  {
+    "mpn": "733-366",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001907",
+    "pin_count": 6
+  },
+  {
+    "mpn": "734-132",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001919",
+    "pin_count": 2
+  },
+  {
+    "mpn": "734-133",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001920",
+    "pin_count": 3
+  },
+  {
+    "mpn": "734-134",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001921",
+    "pin_count": 4
+  },
+  {
+    "mpn": "734-136",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001922",
+    "pin_count": 6
+  },
+  {
+    "mpn": "734-138",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001923",
+    "pin_count": 8
+  },
+  {
+    "mpn": "734-142",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001924",
+    "pin_count": 12
+  },
+  {
+    "mpn": "734-162",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001925",
+    "pin_count": 2
+  },
+  {
+    "mpn": "734-163",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001926",
+    "pin_count": 3
+  },
+  {
+    "mpn": "734-164",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001927",
+    "pin_count": 4
+  },
+  {
+    "mpn": "734-166",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001928",
+    "pin_count": 6
+  },
+  {
+    "mpn": "734-168",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001929",
+    "pin_count": 8
+  },
+  {
+    "mpn": "734-172",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001930",
+    "pin_count": 12
+  },
+  {
+    "mpn": "745-124",
+    "manufacturer": "WAGO",
+    "cpc": "TL-A0001941",
+    "pin_count": 24
+  },
+  {
+    "mpn": "745-16806",
+    "manufacturer": "WAGO",
+    "cpc": "TL-A0001942",
+    "pin_count": 10
+  },
+  {
+    "mpn": "745-202",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001943",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0001944",
+    "manufacturer": null,
+    "cpc": "TL-A0001944",
+    "pin_count": 2
+  },
+  {
+    "mpn": "745-602/006-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001945",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0001947",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001947",
+    "pin_count": 4
+  },
+  {
+    "mpn": "769-662/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001959",
+    "pin_count": 2
+  },
+  {
+    "mpn": "769-666/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001962",
+    "pin_count": 6
+  },
+  {
+    "mpn": "769-667/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001963",
+    "pin_count": 7
+  },
+  {
+    "mpn": "769-668/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001964",
+    "pin_count": 8
+  },
+  {
+    "mpn": "769-669/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001966",
+    "pin_count": 9
+  },
+  {
+    "mpn": "769-672/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001968",
+    "pin_count": 12
+  },
+  {
+    "mpn": "769-675/003-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0001970",
+    "pin_count": 15
+  },
+  {
+    "mpn": "160-1026-02-01-00",
+    "manufacturer": "CAMBION",
+    "cpc": "TL-A0001984",
+    "pin_count": 2
+  },
+  {
+    "mpn": "910 NC005",
+    "manufacturer": "Alpha Wire",
+    "cpc": "TL-A0002001",
+    "pin_count": 20
+  },
+  {
+    "mpn": "WH1601A-NYG-JT#",
+    "manufacturer": "Winstar",
+    "cpc": "TL-A0002004",
+    "pin_count": 25
+  },
+  {
+    "mpn": "ZSS-103-09-L-D-1290",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002015",
+    "pin_count": 6
+  },
+  {
+    "mpn": "ZSS-105-09-L-D-1290",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002021",
+    "pin_count": 10
+  },
+  {
+    "mpn": "ZSS-107-08-L-D-1240",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0002024",
+    "pin_count": 14
+  },
+  {
+    "mpn": "ZSS-107-09-L-D-1290",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002026",
+    "pin_count": 14
+  },
+  {
+    "mpn": "ZSS-111-09-L-D-1340",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002035",
+    "pin_count": 22
+  },
+  {
+    "mpn": "ZSS-112-08-L-D-1240",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002038",
+    "pin_count": 24
+  },
+  {
+    "mpn": "SSW-120-01-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002072",
+    "pin_count": 40
+  },
+  {
+    "mpn": "745-1403",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002089",
+    "pin_count": 3
+  },
+  {
+    "mpn": "HTC-15M",
+    "manufacturer": "Eaton Electronics",
+    "cpc": "TL-A0002116",
+    "pin_count": 4
+  },
+  {
+    "mpn": "HTC-150M",
+    "manufacturer": "Eaton Electronics",
+    "cpc": "TL-A0002118",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TL-A0002152",
+    "manufacturer": null,
+    "cpc": "TL-A0002152",
+    "pin_count": 12
+  },
+  {
+    "mpn": "ZSS-120-01-L-D-530",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002153",
+    "pin_count": 40
+  },
+  {
+    "mpn": "734-140",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002175",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TL-A0002201",
+    "manufacturer": null,
+    "cpc": "TL-A0002201",
+    "pin_count": 5
+  },
+  {
+    "mpn": "43650-0628",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0002229",
+    "pin_count": 6
+  },
+  {
+    "mpn": "V23047-A1024-A501",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0002270",
+    "pin_count": 5
+  },
+  {
+    "mpn": "733-362",
+    "manufacturer": "WAGO",
+    "cpc": "TL-A0002283",
+    "pin_count": 2
+  },
+  {
+    "mpn": "733-365",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002284",
+    "pin_count": 5
+  },
+  {
+    "mpn": "733-368",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002285",
+    "pin_count": 8
+  },
+  {
+    "mpn": "733-332",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002287",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0002296",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002296",
+    "pin_count": 4
+  },
+  {
+    "mpn": "21033814430",
+    "manufacturer": "HARTING",
+    "cpc": "TL-A0002304",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TL-A0002307",
+    "manufacturer": "Littelfuse",
+    "cpc": "TL-A0002307",
+    "pin_count": 1
+  },
+  {
+    "mpn": "TL-A0002348",
+    "manufacturer": null,
+    "cpc": "TL-A0002348",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL-A0002349",
+    "manufacturer": null,
+    "cpc": "TL-A0002349",
+    "pin_count": 12
+  },
+  {
+    "mpn": "TL-A0002350",
+    "manufacturer": null,
+    "cpc": "TL-A0002350",
+    "pin_count": 12
+  },
+  {
+    "mpn": "TL-A0002351",
+    "manufacturer": null,
+    "cpc": "TL-A0002351",
+    "pin_count": 8
+  },
+  {
+    "mpn": "V23047-A1012-A501",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0002379",
+    "pin_count": 5
+  },
+  {
+    "mpn": "734-135",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002385",
+    "pin_count": 5
+  },
+  {
+    "mpn": "721-162/001-000",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002396",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0002414",
+    "manufacturer": null,
+    "cpc": "TL-A0002414",
+    "pin_count": 32
+  },
+  {
+    "mpn": "TL-A0002436",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002436",
+    "pin_count": 96
+  },
+  {
+    "mpn": "TL-A0002448",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002448",
+    "pin_count": 20
+  },
+  {
+    "mpn": "3566",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0002456",
+    "pin_count": 3
+  },
+  {
+    "mpn": "350824-4",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002470",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0002484",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002484",
+    "pin_count": 14
+  },
+  {
+    "mpn": "SSW-107-02-F-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002490",
+    "pin_count": 14
+  },
+  {
+    "mpn": "SSW-130-02-F-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002491",
+    "pin_count": 60
+  },
+  {
+    "mpn": "CT-1100",
+    "manufacturer": "Amgis, LLC",
+    "cpc": "TL-A0002502",
+    "pin_count": 5
+  },
+  {
+    "mpn": "LTSR 15-NP",
+    "manufacturer": "LEM",
+    "cpc": "TL-A0002545",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL-A0002563",
+    "manufacturer": null,
+    "cpc": "TL-A0002563",
+    "pin_count": 5
+  },
+  {
+    "mpn": "ZSS-120-02-L-D-615",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0002580",
+    "pin_count": 40
+  },
+  {
+    "mpn": "TL-A0002583",
+    "manufacturer": null,
+    "cpc": "TL-A0002583",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TL-A0002591",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002591",
+    "pin_count": 40
+  },
+  {
+    "mpn": "SR4D4012",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0002596",
+    "pin_count": 8
+  },
+  {
+    "mpn": "V23050A1012A542",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0002597",
+    "pin_count": 8
+  },
+  {
+    "mpn": "ZW-04-09-L-D-350-140",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002619",
+    "pin_count": 8
+  },
+  {
+    "mpn": "ZW-07-09-L-D-350-140",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002620",
+    "pin_count": 14
+  },
+  {
+    "mpn": "TSW-105-08-L-D-RA",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0002635",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TSW-104-08-L-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002636",
+    "pin_count": 8
+  },
+  {
+    "mpn": "FC-211 BRIGHT TIN",
+    "manufacturer": "Bel Fuse Inc.",
+    "cpc": "TL-A0002638",
+    "pin_count": 4
+  },
+  {
+    "mpn": "612",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0002682",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1-207216-7",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002693",
+    "pin_count": 28
+  },
+  {
+    "mpn": "734-146",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002696",
+    "pin_count": 16
+  },
+  {
+    "mpn": "734-144",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0002720",
+    "pin_count": 14
+  },
+  {
+    "mpn": "0ZRC0075FF1E",
+    "manufacturer": "Bel Fuse",
+    "cpc": "TL-A0002738",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MTLW-106-07-G-S-240",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002744",
+    "pin_count": 6
+  },
+  {
+    "mpn": "MTLW-124-07-F-S-240",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002745",
+    "pin_count": 24
+  },
+  {
+    "mpn": "BCS-106-F-S-HE",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0002746",
+    "pin_count": 6
+  },
+  {
+    "mpn": "BCS-124-F-S-HE",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0002747",
+    "pin_count": 24
+  },
+  {
+    "mpn": "350786-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002814",
+    "pin_count": 2
+  },
+  {
+    "mpn": "350789-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002815",
+    "pin_count": 3
+  },
+  {
+    "mpn": "350792-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002816",
+    "pin_count": 4
+  },
+  {
+    "mpn": "641831-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002817",
+    "pin_count": 6
+  },
+  {
+    "mpn": "350711-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002818",
+    "pin_count": 6
+  },
+  {
+    "mpn": "641828-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002819",
+    "pin_count": 8
+  },
+  {
+    "mpn": "350713-1",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002820",
+    "pin_count": 12
+  },
+  {
+    "mpn": "850010036",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0002837",
+    "pin_count": 64
+  },
+  {
+    "mpn": "929647-09-01-I",
+    "manufacturer": "3M",
+    "cpc": "TL-A0002885",
+    "pin_count": 1
+  },
+  {
+    "mpn": "SSW-108-01-L-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002891",
+    "pin_count": 16
+  },
+  {
+    "mpn": "178328-2",
+    "manufacturer": "TE Connectivity",
+    "cpc": "TL-A0002898",
+    "pin_count": 20
+  },
+  {
+    "mpn": "178327-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0002899",
+    "pin_count": 16
+  },
+  {
+    "mpn": "ESQT-108-03-L-D-350",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002939",
+    "pin_count": 16
+  },
+  {
+    "mpn": "ZSS-105-02-L-D-570",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0002961",
+    "pin_count": 10
+  },
+  {
+    "mpn": "G5V-2-H1 DC5",
+    "manufacturer": "Omron Electronics Inc-EMC Div",
+    "cpc": "TL-A0003009",
+    "pin_count": 4
+  },
+  {
+    "mpn": "ZSS-108-08-L-D-1240",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003016",
+    "pin_count": 16
+  },
+  {
+    "mpn": "CLT-109-02-L-D-A",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003023",
+    "pin_count": 18
+  },
+  {
+    "mpn": "SMM-109-02-L-D-LC",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003025",
+    "pin_count": 18
+  },
+  {
+    "mpn": "T4141512041-000",
+    "manufacturer": "TE Connectivity",
+    "cpc": "TL-A0003026",
+    "pin_count": 4
+  },
+  {
+    "mpn": "ZSS-104-09-L-D-1260",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003095",
+    "pin_count": 8
+  },
+  {
+    "mpn": "SSW-104-22-F-D-VS-K-TR",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003097",
+    "pin_count": 8
+  },
+  {
+    "mpn": "ZSS-120-04-L-D-750",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003099",
+    "pin_count": 40
+  },
+  {
+    "mpn": "734-137",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003120",
+    "pin_count": 7
+  },
+  {
+    "mpn": "734-139",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003121",
+    "pin_count": 9
+  },
+  {
+    "mpn": "734-143",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003123",
+    "pin_count": 13
+  },
+  {
+    "mpn": "1534630",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003126",
+    "pin_count": 5
+  },
+  {
+    "mpn": "745-1402",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003133",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5151105F",
+    "manufacturer": "Dialight",
+    "cpc": "TL-A0003149",
+    "pin_count": 5
+  },
+  {
+    "mpn": "0ZRM0100FF1E",
+    "manufacturer": "Bel Fuse Inc.",
+    "cpc": "TL-A0003150",
+    "pin_count": 2
+  },
+  {
+    "mpn": "178308-2",
+    "manufacturer": "TE Connectivity",
+    "cpc": "TL-A0003183",
+    "pin_count": 20
+  },
+  {
+    "mpn": "178305-2",
+    "manufacturer": "TE Connectivity",
+    "cpc": "TL-A0003186",
+    "pin_count": 10
+  },
+  {
+    "mpn": "178306-2",
+    "manufacturer": "TE Connectivity",
+    "cpc": "TL-A0003187",
+    "pin_count": 12
+  },
+  {
+    "mpn": "178307-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003188",
+    "pin_count": 16
+  },
+  {
+    "mpn": "178323-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003198",
+    "pin_count": 6
+  },
+  {
+    "mpn": "TL-A0003230",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003230",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V23047-A1048-A501",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0003233",
+    "pin_count": 8
+  },
+  {
+    "mpn": "178326-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003267",
+    "pin_count": 12
+  },
+  {
+    "mpn": "1-178313-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003277",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1-178315-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003278",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1-178317-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003280",
+    "pin_count": 8
+  },
+  {
+    "mpn": "DW-03-09-L-S-470",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003343",
+    "pin_count": 3
+  },
+  {
+    "mpn": "DW-04-09-L-S-470",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003344",
+    "pin_count": 4
+  },
+  {
+    "mpn": "178325-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003350",
+    "pin_count": 10
+  },
+  {
+    "mpn": "ESQ-103-44-L-D",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0003399",
+    "pin_count": 6
+  },
+  {
+    "mpn": "ZSS-103-09-L-D-1250",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003400",
+    "pin_count": 6
+  },
+  {
+    "mpn": "E32/6/20/R-3F36",
+    "manufacturer": "Ferroxcube",
+    "cpc": "TL-A0003403",
+    "pin_count": 5
+  },
+  {
+    "mpn": "100SP1T1B1M2QEH",
+    "manufacturer": "E-Switch",
+    "cpc": "TL-A0003413",
+    "pin_count": 3
+  },
+  {
+    "mpn": "2604-3303",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003439",
+    "pin_count": 3
+  },
+  {
+    "mpn": "2604-3110",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003440",
+    "pin_count": 10
+  },
+  {
+    "mpn": "5103308-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0003441",
+    "pin_count": 14
+  },
+  {
+    "mpn": "PLT32/20/3.2/R-3F36",
+    "manufacturer": "Ferroxcube",
+    "cpc": "TL-A0003443",
+    "pin_count": 5
+  },
+  {
+    "mpn": "2604-3302",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003455",
+    "pin_count": 2
+  },
+  {
+    "mpn": "9056482921",
+    "manufacturer": "HARTING",
+    "cpc": "TL-A0003477",
+    "pin_count": 48
+  },
+  {
+    "mpn": "9051482921",
+    "manufacturer": "HARTING",
+    "cpc": "TL-A0003478",
+    "pin_count": 48
+  },
+  {
+    "mpn": "ESW-132-33-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003502",
+    "pin_count": 64
+  },
+  {
+    "mpn": "734-165",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003573",
+    "pin_count": 5
+  },
+  {
+    "mpn": "734-170",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0003574",
+    "pin_count": 10
+  },
+  {
+    "mpn": "FTSH-105-01-F-DV",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003610",
+    "pin_count": 10
+  },
+  {
+    "mpn": "47219-2001",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0003611",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL-A0003630",
+    "manufacturer": "Panasonic",
+    "cpc": "TL-A0003630",
+    "pin_count": 4
+  },
+  {
+    "mpn": "USB3145-30-1-A",
+    "manufacturer": "GCT",
+    "cpc": "TL-A0003631",
+    "pin_count": 5
+  },
+  {
+    "mpn": "0ZRM0090FF1E",
+    "manufacturer": "Bel Fuse Inc.",
+    "cpc": "TL-A0003633",
+    "pin_count": 2
+  },
+  {
+    "mpn": "909-235 NT",
+    "manufacturer": "Bivar Inc.",
+    "cpc": "TL-A0003658",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ZSS-103-07-L-D-1100",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003667",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1984633",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003672",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1984675",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003686",
+    "pin_count": 8
+  },
+  {
+    "mpn": "RKEF500K-2",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-A0003732",
+    "pin_count": 2
+  },
+  {
+    "mpn": "0ZRE0055FF1A",
+    "manufacturer": "Bel Fuse Inc.",
+    "cpc": "TL-A0003845",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0003853",
+    "manufacturer": "Amphenol",
+    "cpc": "TL-A0003853",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0003854",
+    "manufacturer": "Amphenol",
+    "cpc": "TL-A0003854",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL-A0003855",
+    "manufacturer": "Amphenol",
+    "cpc": "TL-A0003855",
+    "pin_count": 4
+  },
+  {
+    "mpn": "39291107",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0003856",
+    "pin_count": 10
+  },
+  {
+    "mpn": "70543-0054",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0003857",
+    "pin_count": 20
+  },
+  {
+    "mpn": "S98979",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-A0003901",
+    "pin_count": 5
+  },
+  {
+    "mpn": "S93514",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-A0003902",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1755846",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003908",
+    "pin_count": 13
+  },
+  {
+    "mpn": "ELM 2-3MM",
+    "manufacturer": "Bivar",
+    "cpc": "TL-A0003912",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1755817",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003933",
+    "pin_count": 10
+  },
+  {
+    "mpn": "1755778",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003934",
+    "pin_count": 6
+  },
+  {
+    "mpn": "0218002.HXP",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-A0003943",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-A0003951",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003951",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL-A0003952",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003952",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TL-A0003953",
+    "manufacturer": "Eaton",
+    "cpc": "TL-A0003953",
+    "pin_count": 4
+  },
+  {
+    "mpn": "RUEF250",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-A0003964",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1757488",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003971",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1757608",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003972",
+    "pin_count": 16
+  },
+  {
+    "mpn": "1846467",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0003974",
+    "pin_count": 24
+  },
+  {
+    "mpn": "1289-ST",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-A0003979",
+    "pin_count": 2
+  },
+  {
+    "mpn": "BB15AH-FA",
+    "manufacturer": "NKK Switches",
+    "cpc": "TL-A0003982",
+    "pin_count": 4
+  },
+  {
+    "mpn": "BCS-103-L-D-PE-BE",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003985",
+    "pin_count": 6
+  },
+  {
+    "mpn": "HW-03-09-L-D-250-SM",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0003989",
+    "pin_count": 6
+  },
+  {
+    "mpn": "VF7-11F12",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0003999",
+    "pin_count": 5
+  },
+  {
+    "mpn": "1757682",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004005",
+    "pin_count": 24
+  },
+  {
+    "mpn": "1777086",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004006",
+    "pin_count": 3
+  },
+  {
+    "mpn": "1777170",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004007",
+    "pin_count": 12
+  },
+  {
+    "mpn": "1777183",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004008",
+    "pin_count": 13
+  },
+  {
+    "mpn": "1777196",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004009",
+    "pin_count": 14
+  },
+  {
+    "mpn": "1777206",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004010",
+    "pin_count": 15
+  },
+  {
+    "mpn": "1777219",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004011",
+    "pin_count": 16
+  },
+  {
+    "mpn": "2-640497-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0004049",
+    "pin_count": 2
+  },
+  {
+    "mpn": "2-640501-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0004050",
+    "pin_count": 9
+  },
+  {
+    "mpn": "CST-1030",
+    "manufacturer": "Triad Magnetics",
+    "cpc": "TL-A0004053",
+    "pin_count": 3
+  },
+  {
+    "mpn": "2086-3102/700-000/997-604",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0004062",
+    "pin_count": 2
+  },
+  {
+    "mpn": "2086-3103/700-000/997-605",
+    "manufacturer": "WAGO Corporation",
+    "cpc": "TL-A0004063",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LXSR 25-NPS",
+    "manufacturer": "LEM",
+    "cpc": "TL-A0004104",
+    "pin_count": 9
+  },
+  {
+    "mpn": "44428-1602",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0004112",
+    "pin_count": 16
+  },
+  {
+    "mpn": "SCPBH030YMTL-28-15P-A95-1.6",
+    "manufacturer": "SPACECRAFT",
+    "cpc": "TL-A0004113",
+    "pin_count": 28
+  },
+  {
+    "mpn": "SCPBH030YMTL-28-15PW-A95-1.6",
+    "manufacturer": "SPACECRAFT",
+    "cpc": "TL-A0004114",
+    "pin_count": 28
+  },
+  {
+    "mpn": "SCPBH030YMTL-14S-5P-A95-1.6",
+    "manufacturer": "SPACECRAFT",
+    "cpc": "TL-A0004115",
+    "pin_count": 14
+  },
+  {
+    "mpn": "SCPBH030YMTL-18-1P-A95-1.6",
+    "manufacturer": "SPACECRAFT",
+    "cpc": "TL-A0004116",
+    "pin_count": 18
+  },
+  {
+    "mpn": "SCPBH030YMTL-18-1PW-A95-1.6",
+    "manufacturer": "SPACECRAFT",
+    "cpc": "TL-A0004117",
+    "pin_count": 18
+  },
+  {
+    "mpn": "SCPBH030YMTL-36-10P-A95-1.6",
+    "manufacturer": "SPACECRAFT",
+    "cpc": "TL-A0004120",
+    "pin_count": 36
+  },
+  {
+    "mpn": "MJ3240-66-2",
+    "manufacturer": "GCT",
+    "cpc": "TL-A0004121",
+    "pin_count": 6
+  },
+  {
+    "mpn": "353180420",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0004122",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1759114",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004123",
+    "pin_count": 12
+  },
+  {
+    "mpn": "1759127",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004124",
+    "pin_count": 13
+  },
+  {
+    "mpn": "447691602",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0004127",
+    "pin_count": 16
+  },
+  {
+    "mpn": "LEDM-3-04",
+    "manufacturer": "Essentra",
+    "cpc": "TL-A0004128",
+    "pin_count": 1
+  },
+  {
+    "mpn": "DW-20-11-L-S-665",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004144",
+    "pin_count": 20
+  },
+  {
+    "mpn": "SSW-120-01-L-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004145",
+    "pin_count": 20
+  },
+  {
+    "mpn": "TSW-130-08-G-D-RA",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0004148",
+    "pin_count": 60
+  },
+  {
+    "mpn": "SSW-130-01-F-D",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0004151",
+    "pin_count": 60
+  },
+  {
+    "mpn": "TL-A0004152",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0004152",
+    "pin_count": 14
+  },
+  {
+    "mpn": "705820025",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-A0004155",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ZSS-103-04-L-G-780",
+    "manufacturer": null,
+    "cpc": "TL-A0004178",
+    "pin_count": 6
+  },
+  {
+    "mpn": "ZSS-105-04-L-G-780",
+    "manufacturer": null,
+    "cpc": "TL-A0004179",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TL-A0004202",
+    "manufacturer": null,
+    "cpc": "TL-A0004202",
+    "pin_count": 64
+  },
+  {
+    "mpn": "TL-A0004222",
+    "manufacturer": "Essentra Components",
+    "cpc": "TL-A0004222",
+    "pin_count": 20
+  },
+  {
+    "mpn": "V23050-A1024-A533",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0004242",
+    "pin_count": 20
+  },
+  {
+    "mpn": "TSS-108-01-G-D",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0004268",
+    "pin_count": 16
+  },
+  {
+    "mpn": "1147520000",
+    "manufacturer": "Weidmuller",
+    "cpc": "TL-A0004269",
+    "pin_count": 14
+  },
+  {
+    "mpn": "1-178298-2",
+    "manufacturer": "TE Connectivity",
+    "cpc": "TL-A0004292",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TSW-105-06-G-S",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0004295",
+    "pin_count": 5
+  },
+  {
+    "mpn": "A31ASP24VDC2R",
+    "manufacturer": "CIT Relay and Switch",
+    "cpc": "TL-A0004362",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SR4D4024",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "TL-A0004364",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SSW-116-01-L-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004366",
+    "pin_count": 32
+  },
+  {
+    "mpn": "TL-A0004367",
+    "manufacturer": null,
+    "cpc": "TL-A0004367",
+    "pin_count": 32
+  },
+  {
+    "mpn": "SSW-112-01-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004370",
+    "pin_count": 24
+  },
+  {
+    "mpn": "AB11AH-HA",
+    "manufacturer": "NKK Switches",
+    "cpc": "TL-A0004372",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL-A0004373",
+    "manufacturer": null,
+    "cpc": "TL-A0004373",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-120-07-L-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004376",
+    "pin_count": 40
+  },
+  {
+    "mpn": "TL-A0004377",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004377",
+    "pin_count": 20
+  },
+  {
+    "mpn": "ZW-12-11-L-D-570-120",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0004380",
+    "pin_count": 24
+  },
+  {
+    "mpn": "9052486831",
+    "manufacturer": "HARTING",
+    "cpc": "TL-A0004392",
+    "pin_count": 48
+  },
+  {
+    "mpn": "9051486921",
+    "manufacturer": "HARTING",
+    "cpc": "TL-A0004394",
+    "pin_count": 48
+  },
+  {
+    "mpn": "AZ9403-1C-5DE",
+    "manufacturer": "American Zettler",
+    "cpc": "TL-A0004395",
+    "pin_count": 6
+  },
+  {
+    "mpn": "1-206934-7",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0004404",
+    "pin_count": 37
+  },
+  {
+    "mpn": "DW-05-14-L-D-1165",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004423",
+    "pin_count": 10
+  },
+  {
+    "mpn": "DW-20-14-L-D-1115",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004424",
+    "pin_count": 40
+  },
+  {
+    "mpn": "ESW-120-33-L-D",
+    "manufacturer": "Samtec",
+    "cpc": "TL-A0004425",
+    "pin_count": 40
+  },
+  {
+    "mpn": "1776689",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "TL-A0004446",
+    "pin_count": 20
+  },
+  {
+    "mpn": "1-353081-2",
+    "manufacturer": "TE Connectivity AMP Connectors",
+    "cpc": "TL-A0004462",
+    "pin_count": 3
+  },
+  {
+    "mpn": "T60403-Y4021-X123",
+    "manufacturer": "Vacuumschmelze",
+    "cpc": "TL-A0004472",
+    "pin_count": 8
+  },
+  {
+    "mpn": "L177TSEG09SOL2RM8",
+    "manufacturer": "Amphenol Commercial Products",
+    "cpc": "TL-A0004473",
+    "pin_count": 9
+  },
+  {
+    "mpn": "L777TSEG09POL2RM8",
+    "manufacturer": "Amphenol ICC (Commercial Products)",
+    "cpc": "TL-A0004474",
+    "pin_count": 9
+  },
+  {
+    "mpn": "MSDS-04PFFP-SF8001",
+    "manufacturer": "Amphenol LTW",
+    "cpc": "TL-A0004475",
+    "pin_count": 4
+  },
+  {
+    "mpn": "MTSW-116-07-L-S-210",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004490",
+    "pin_count": 16
+  },
+  {
+    "mpn": "DB25-PT-1-BL-JS",
+    "manufacturer": "Adam Tech",
+    "cpc": "TL-A0004492",
+    "pin_count": 25
+  },
+  {
+    "mpn": "440680046",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0004493",
+    "pin_count": 6
+  },
+  {
+    "mpn": "15246181",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0004494",
+    "pin_count": 18
+  },
+  {
+    "mpn": "15246242",
+    "manufacturer": "Molex",
+    "cpc": "TL-A0004495",
+    "pin_count": 24
+  },
+  {
+    "mpn": "TSW-116-08-L-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TL-A0004572",
+    "pin_count": 32
+  },
+  {
+    "mpn": "BB15AH-FC",
+    "manufacturer": "NKK Switches",
+    "cpc": "TL-A0004626",
+    "pin_count": 3
+  },
+  {
+    "mpn": "LXSR 15-NPS",
+    "manufacturer": "LEM",
+    "cpc": "TL-A0004640",
+    "pin_count": 10
+  },
+  {
+    "mpn": "1514-Y",
+    "manufacturer": "Curtis Industries",
+    "cpc": "TL-A0004648",
+    "pin_count": 14
+  },
+  {
+    "mpn": "1515-Y",
+    "manufacturer": "Curtis Industries",
+    "cpc": "TL-A0004649",
+    "pin_count": 15
+  },
+  {
+    "mpn": "RUEF250",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-A003964",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CDV16FF101JO3F",
+    "manufacturer": "Cornell Dubilier - CDE",
+    "cpc": "TLCTRJ01000UVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H12102JV",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRJ11000LWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "FKP1-1000/1250/5P15",
+    "manufacturer": "WIMA",
+    "cpc": "TLCTRJ11000LWX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "R73TI1100SE00K",
+    "manufacturer": "KEMET",
+    "cpc": "TLCTRJ11000NWX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H16102JV",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ11000NWX-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H16152JV",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRJ11500NWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-HA3C152JB",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRJ11500NWX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H16222JV",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRJ12200NWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H16472JV",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ14700NWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32652A1472J000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TLCTRJ14700NWX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H12103JV",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ21000LWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H16103JV",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ21000NWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32652J1103J000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TLCTRJ21000NWX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-HA3C103J",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ21000NWX-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECWHA3C153J",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ21500NWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H16473JV",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ24700NWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-HA3C473J",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRJ24700NWX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-H12104JV",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ31000LWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "R75II333050H4J",
+    "manufacturer": "KEMET",
+    "cpc": "TLCTRJ33300NVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32522C1225K000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TLCTRJ42200NVC-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-F2225JA",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRJ42200NVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECW-F2475JA",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRJ44700NVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "C4AQQBW5400A3NJ",
+    "manufacturer": "KEMET",
+    "cpc": "TLCTRJ54000KWX-00",
+    "pin_count": 4
+  },
+  {
+    "mpn": "FKP1T004704B00KSSD",
+    "manufacturer": "WIMA",
+    "cpc": "TLCTRK04700NWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "S471K25Y5PN63J5R",
+    "manufacturer": "Vishay / BC Components",
+    "cpc": "TLCTRK04700UVX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "S102K43Y5PR63K7R",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TLCTRK11000VVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "S102K43Y5PR63K7R",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TLCTRK11000VVX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32529C3472K000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TLCTRK14700NVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "R46KI31000001K",
+    "manufacturer": "KEMET",
+    "cpc": "TLCTRK31000DWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32653A7104K000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TLCTRK31000LWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECQ-E2104KF",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRK31000NVX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECQ-E4104KF",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRK31000RVX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECQ-E4474KF",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRK34700RVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECQ-E4474JF3",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRK34700RVX-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECQ-E2105KF",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRK41000NVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B32774D0705K000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TLCTRK47000KWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "106MMR250K",
+    "manufacturer": "Cornell Dubilier Knowles",
+    "cpc": "TLCTRK51000NVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DCP4R254009JD4KSSD",
+    "manufacturer": "WIMA",
+    "cpc": "TLCTRK54000PWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECQ-UBAF472K",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM14700DWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DE2E3SA103MN7AT02F",
+    "manufacturer": "Murata Electronics",
+    "cpc": "TLCTRM21000NVX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DE2E3SA103MA3BT02F",
+    "manufacturer": "Murata Electronics",
+    "cpc": "TLCTRM21000NVX-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "C981U103MZVDAA7317",
+    "manufacturer": "KEMET",
+    "cpc": "TLCTRM21000QWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECQ-UAAF104M",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM31000DWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "R46KI322000M2M",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM32200DWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "890324025031",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TLCTRM32700DWX-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECA-2CHG100",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM51000LVE-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECA-2EM100",
+    "manufacturer": "PANASONIC",
+    "cpc": "TLCTRM51000NVE-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-EB1H220S",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM52200IVE-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EKXE161ELL220MJC5S",
+    "manufacturer": "Chemi-Con",
+    "cpc": "TLCTRM52200LVE-03",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UCS2D470MHD1TO",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM54700MVE-05",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EKXG401ELL470MM20S",
+    "manufacturer": "Chemi-Con",
+    "cpc": "TLCTRM54700RVE-05",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC1V101",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRM61000HVE-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC2A101",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM61000KVE-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FR2A101",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM61000KVE-03",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-EE2C101S",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM61000LVE-03",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UCS2D101MHD1TN",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM61000MVE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UCY2D101MHD3TN",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM61000MVE-06",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC1E221",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM62200GVE-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ESW227M050AH2AA",
+    "manufacturer": "KEMET",
+    "cpc": "TLCTRM62200IVE-04",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC2A221",
+    "manufacturer": "PANASONIC",
+    "cpc": "TLCTRM62200KVE-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECA-2AHG221",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM62200KVE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECA-1VHG331",
+    "manufacturer": "Panasonic",
+    "cpc": "TLCTRM63300HVE-03",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B41888C7337M000",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TLCTRM63300HVE-06",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC2A331S",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM63300KVE-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LGW2D331MELZ25",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM63300MVE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ECA-1VHG471",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TLCTRM64700HVE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EEU-FC1H471",
+    "manufacturer": null,
+    "cpc": "TLCTRM64700IVE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "400HXK470MEPASN25X50",
+    "manufacturer": "Rubycon",
+    "cpc": "TLCTRM64700RVE-06",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LGN2C821MELA30",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM68200LVE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "383LX821M400A062",
+    "manufacturer": "Cornell Dubilier Knowles",
+    "cpc": "TLCTRM68200RVE-07",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UVR1E102MPD",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM71000GVE-07",
+    "pin_count": 2
+  },
+  {
+    "mpn": "URZ1E222MHD1CV",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM72200GVE-03",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SLPX222M200H9P3",
+    "manufacturer": "Cornell Dubilier Knowles",
+    "cpc": "TLCTRM72200MVE-03",
+    "pin_count": 2
+  },
+  {
+    "mpn": "381LQ222M200K052",
+    "manufacturer": "Cornell Dubilier Knowles",
+    "cpc": "TLCTRM72200MVE-05",
+    "pin_count": 2
+  },
+  {
+    "mpn": "UVR1E472MHD",
+    "manufacturer": "Nichicon",
+    "cpc": "TLCTRM74700GVE-03",
+    "pin_count": 2
+  },
+  {
+    "mpn": "EKYA160ELL562ML25S",
+    "manufacturer": "Chemi-Con",
+    "cpc": "TLCTRM75600EVE-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DGH105Q5R5",
+    "manufacturer": "Knowles / Illinois Capacitor",
+    "cpc": "TLCTRMX1000AWE-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1N4007-TP",
+    "manufacturer": "MCC (Micro Commercial Components)",
+    "cpc": "TL-D0000006",
+    "pin_count": 4
+  },
+  {
+    "mpn": "1N5338B-TP",
+    "manufacturer": "MCC (Micro Commercial Components)",
+    "cpc": "TL-D0000024",
+    "pin_count": 2
+  },
+  {
+    "mpn": "VS-36MT160",
+    "manufacturer": "Vishay Semiconductors",
+    "cpc": "TL-D0000070",
+    "pin_count": 5
+  },
+  {
+    "mpn": "5KP70A",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-D0000110",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CG90L",
+    "manufacturer": "Littelfuse",
+    "cpc": "TL-D0000268",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DSEP12-12A",
+    "manufacturer": "IXYS",
+    "cpc": "TL-D0000340",
+    "pin_count": 3
+  },
+  {
+    "mpn": "HDSP-521G",
+    "manufacturer": "Broadcom Limited",
+    "cpc": "TL-D0000360",
+    "pin_count": 18
+  },
+  {
+    "mpn": "HLMP-1700",
+    "manufacturer": "Broadcom / Avago",
+    "cpc": "TL-D0000362",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HLMP-1719",
+    "manufacturer": "Broadcom / Avago",
+    "cpc": "TL-D0000363",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HLMP-1790",
+    "manufacturer": "Broadcom / Avago",
+    "cpc": "TL-D0000366",
+    "pin_count": 2
+  },
+  {
+    "mpn": "HLMP-EG08-WZ000",
+    "manufacturer": "Broadcom / Avago",
+    "cpc": "TL-D0000378",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LDD-A516RI",
+    "manufacturer": "Lumex",
+    "cpc": "TL-D0000381",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LDS-A516RI",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "TL-D0000382",
+    "pin_count": 19
+  },
+  {
+    "mpn": "LTL-307E",
+    "manufacturer": "Lite-On Inc.",
+    "cpc": "TL-D0000388",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LTL-307G",
+    "manufacturer": "Lite-On Inc.",
+    "cpc": "TL-D0000389",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LTL-307Y",
+    "manufacturer": "Lite-On Inc.",
+    "cpc": "TL-D0000390",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MUR420RLG",
+    "manufacturer": "onsemi",
+    "cpc": "TL-D0000476",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SSF-LXH103YD",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "TL-D0000975",
+    "pin_count": 3
+  },
+  {
+    "mpn": "SSF-LXH103GD",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "TL-D0000976",
+    "pin_count": 3
+  },
+  {
+    "mpn": "LTP-3784G",
+    "manufacturer": "Lite-On Inc.",
+    "cpc": "TL-D0000983",
+    "pin_count": 14
+  },
+  {
+    "mpn": "5530232300F",
+    "manufacturer": null,
+    "cpc": "TL-D0000992",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1N5817-TP",
+    "manufacturer": "MCC (Micro Commercial Components)",
+    "cpc": "TL-D0001002",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP7113LSECK/J3",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001036",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP7113LZGCK",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001037",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP7113LSYCK/J3",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001039",
+    "pin_count": 2
+  },
+  {
+    "mpn": "C503B-RCN-CW0Z0AA1",
+    "manufacturer": "Cree LED",
+    "cpc": "TL-D0001126",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-D0001131",
+    "manufacturer": "onsemi",
+    "cpc": "TL-D0001131",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP1503CB/ID",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001144",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP1503CB/GD",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001145",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP1503CB/YD",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001146",
+    "pin_count": 2
+  },
+  {
+    "mpn": "5KP70CA",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-D0001156",
+    "pin_count": 2
+  },
+  {
+    "mpn": "FES16BT-E3/45",
+    "manufacturer": "Vishay General Semiconductor - Diodes Division",
+    "cpc": "TL-D0001158",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP934EB/2GD",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001181",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP934EB/2ID",
+    "manufacturer": "Kingbright",
+    "cpc": "TL-D0001182",
+    "pin_count": 2
+  },
+  {
+    "mpn": "LDS-A512RI",
+    "manufacturer": "Lumex Opto/Components Inc.",
+    "cpc": "TL-D0001185",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TL-D0002010",
+    "manufacturer": null,
+    "cpc": "TL-D0002010",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-D0002011",
+    "manufacturer": null,
+    "cpc": "TL-D0002011",
+    "pin_count": 2
+  },
+  {
+    "mpn": "4534-632-AL",
+    "manufacturer": "RAF Electronic Hardware",
+    "cpc": "TL-HARD-0000134",
+    "pin_count": 2
+  },
+  {
+    "mpn": "CSP8-01",
+    "manufacturer": "Essentra Components",
+    "cpc": "TL-HARD-0000148",
+    "pin_count": 3
+  },
+  {
+    "mpn": "CSR8-295-01",
+    "manufacturer": "Essentra Components",
+    "cpc": "TL-HARD-0000149",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL-HARD-0000283",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0000283",
+    "pin_count": 3
+  },
+  {
+    "mpn": "656-B37-2y",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0000689",
+    "pin_count": 3
+  },
+  {
+    "mpn": "658-B06-2T",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0000694",
+    "pin_count": 5
+  },
+  {
+    "mpn": "658-B08-2W",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0000696",
+    "pin_count": 4
+  },
+  {
+    "mpn": "659-F05-1C",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0000726",
+    "pin_count": 2
+  },
+  {
+    "mpn": "656-034",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0000740",
+    "pin_count": 3
+  },
+  {
+    "mpn": "155-P07-1N",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0001342",
+    "pin_count": 3
+  },
+  {
+    "mpn": "HN-2000",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001344",
+    "pin_count": 4
+  },
+  {
+    "mpn": "159-W03-2P",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001348",
+    "pin_count": 5
+  },
+  {
+    "mpn": "159-W05-2K",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0001351",
+    "pin_count": 4
+  },
+  {
+    "mpn": "155-007",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001355",
+    "pin_count": 3
+  },
+  {
+    "mpn": "B-1521",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001357",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL-HARD-0001468",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0001468",
+    "pin_count": 3
+  },
+  {
+    "mpn": "663-W04-2X",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0001482",
+    "pin_count": 3
+  },
+  {
+    "mpn": "667-P08-2N",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001483",
+    "pin_count": 2
+  },
+  {
+    "mpn": "667-P03-2X",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001485",
+    "pin_count": 5
+  },
+  {
+    "mpn": "663-W13-1K",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001487",
+    "pin_count": 5
+  },
+  {
+    "mpn": "667-P04-2A",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0001488",
+    "pin_count": 4
+  },
+  {
+    "mpn": "KFH-032-12ET",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0001530",
+    "pin_count": 2
+  },
+  {
+    "mpn": "KFH-032-8ET",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0001532",
+    "pin_count": 5
+  },
+  {
+    "mpn": "KFS2-440",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0001535",
+    "pin_count": 4
+  },
+  {
+    "mpn": "KFSE-632-4",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0001536",
+    "pin_count": 3
+  },
+  {
+    "mpn": "424-F06-2T",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001632",
+    "pin_count": 5
+  },
+  {
+    "mpn": "385-B71-2P",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001648",
+    "pin_count": 5
+  },
+  {
+    "mpn": "385-B51-1y",
+    "manufacturer": "SPAENAUR",
+    "cpc": "TL-HARD-0001680",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL-HARD-0001719",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0001719",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TY23MX",
+    "manufacturer": "THOMAS&BETTS",
+    "cpc": "TL-HARD-0002396",
+    "pin_count": 5
+  },
+  {
+    "mpn": "TL-HARD-0002398",
+    "manufacturer": "THOMAS&BETTS",
+    "cpc": "TL-HARD-0002398",
+    "pin_count": 5
+  },
+  {
+    "mpn": "BT2M-M0",
+    "manufacturer": "Panduit",
+    "cpc": "TL-HARD-0002399",
+    "pin_count": 5
+  },
+  {
+    "mpn": "424-F08-2W",
+    "manufacturer": null,
+    "cpc": "TL-HARD-0002604",
+    "pin_count": 4
+  },
+  {
+    "mpn": "KF2-M2.5-ET",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0002982",
+    "pin_count": 2
+  },
+  {
+    "mpn": "8860",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "TL-HARD-0003067",
+    "pin_count": 3
+  },
+  {
+    "mpn": "KFSE-440-20",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0003479",
+    "pin_count": 10
+  },
+  {
+    "mpn": "KFH-M5-12ET",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0003498",
+    "pin_count": 10
+  },
+  {
+    "mpn": "KFS2-M4",
+    "manufacturer": "PEM",
+    "cpc": "TL-HARD-0003501",
+    "pin_count": 3
+  },
+  {
+    "mpn": "14240R",
+    "manufacturer": "ECHELON",
+    "cpc": "TL-IC0000002",
+    "pin_count": 6
+  },
+  {
+    "mpn": "ECHELON",
+    "manufacturer": "50051R",
+    "cpc": "TL-IC0000013",
+    "pin_count": 6
+  },
+  {
+    "mpn": "ACS758KCB-150B-PFF-T",
+    "manufacturer": "Allegro MicroSystems",
+    "cpc": "TL-IC0000055",
+    "pin_count": 5
+  },
+  {
+    "mpn": "IR2125PBF",
+    "manufacturer": "Infineon Technologies",
+    "cpc": "TL-IC0000160",
+    "pin_count": 6
+  },
+  {
+    "mpn": "IRM30-12",
+    "manufacturer": "MEAN WELL USA Inc.",
+    "cpc": "TL-IC0000684",
+    "pin_count": 5
+  },
+  {
+    "mpn": "LM2940CT-12/NOPB",
+    "manufacturer": "Texas Instruments",
+    "cpc": "TL-IC0000718",
+    "pin_count": 3
+  },
+  {
+    "mpn": "MIC5209-5.0YS-TR",
+    "manufacturer": "Microchip Technology",
+    "cpc": "TL-IC0000719",
+    "pin_count": 3
+  },
+  {
+    "mpn": "PSK-10D-5",
+    "manufacturer": "CUI Inc.",
+    "cpc": "TL-IC0000723",
+    "pin_count": 18
+  },
+  {
+    "mpn": "TL-IC0000754",
+    "manufacturer": "MEAN WELL USA Inc.",
+    "cpc": "TL-IC0000754",
+    "pin_count": 6
+  },
+  {
+    "mpn": "LM317MABTG",
+    "manufacturer": "onsemi",
+    "cpc": "TL-IC0000775",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL-IC0000802",
+    "manufacturer": "Wurth Elektronik",
+    "cpc": "TL-IC0000802",
+    "pin_count": 4
+  },
+  {
+    "mpn": "ACS770ECB-200U-PFF-T",
+    "manufacturer": "Allegro MicroSystems",
+    "cpc": "TL-IC0000844",
+    "pin_count": 5
+  },
+  {
+    "mpn": "PCL-063-23900CI.A3",
+    "manufacturer": "Phytec",
+    "cpc": "TL-IC0000847",
+    "pin_count": 25
+  },
+  {
+    "mpn": "ACS758ECB-200B-PFF-T",
+    "manufacturer": "Allegro MicroSystems",
+    "cpc": "TL-IC0000865",
+    "pin_count": 6
+  },
+  {
+    "mpn": "PRQE75W-E12-S24-D",
+    "manufacturer": "CUI Inc.",
+    "cpc": "TL-IC0000900",
+    "pin_count": 10
+  },
+  {
+    "mpn": "RFM-0505S",
+    "manufacturer": "Recom Power",
+    "cpc": "TL-IC0000924",
+    "pin_count": 4
+  },
+  {
+    "mpn": "RAC10E-24SK/277",
+    "manufacturer": "RECOM Power",
+    "cpc": "TL-IC0000934",
+    "pin_count": 4
+  },
+  {
+    "mpn": "CM3440Z171B-10",
+    "manufacturer": "Laird Technologies",
+    "cpc": "TL-L0000007",
+    "pin_count": 4
+  },
+  {
+    "mpn": "RL-7999",
+    "manufacturer": "Renco",
+    "cpc": "TL-L0000044",
+    "pin_count": 4
+  },
+  {
+    "mpn": "32864",
+    "manufacturer": "SCHOTT",
+    "cpc": "TL-L0000046",
+    "pin_count": 20
+  },
+  {
+    "mpn": "33527",
+    "manufacturer": "Schott",
+    "cpc": "TL-L0000049",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TL-L0000050",
+    "manufacturer": null,
+    "cpc": "TL-L0000050",
+    "pin_count": 50
+  },
+  {
+    "mpn": "TL-L0000085",
+    "manufacturer": "Triad Magnetics",
+    "cpc": "TL-L0000085",
+    "pin_count": 6
+  },
+  {
+    "mpn": "32552",
+    "manufacturer": null,
+    "cpc": "TL-L0000108",
+    "pin_count": 10
+  },
+  {
+    "mpn": "744821150",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-L0000113",
+    "pin_count": 2
+  },
+  {
+    "mpn": "7448031501",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-L0000121",
+    "pin_count": 2
+  },
+  {
+    "mpn": "7448041801",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-L0000128",
+    "pin_count": 2
+  },
+  {
+    "mpn": "7448040707",
+    "manufacturer": "Wurth Elektronik",
+    "cpc": "TL-L0000163",
+    "pin_count": 2
+  },
+  {
+    "mpn": "7448030509",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-L0000165",
+    "pin_count": 4
+  },
+  {
+    "mpn": "74275023",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-L0000171",
+    "pin_count": 2
+  },
+  {
+    "mpn": "DSS1NB32A471Q91A",
+    "manufacturer": "Murata Electronics",
+    "cpc": "TL-L0000175",
+    "pin_count": 3
+  },
+  {
+    "mpn": "74275043",
+    "manufacturer": "W\u00fcrth Elektronik",
+    "cpc": "TL-L0000190",
+    "pin_count": 2
+  },
+  {
+    "mpn": "32989",
+    "manufacturer": "Schott",
+    "cpc": "TL-L0000202",
+    "pin_count": 350
+  },
+  {
+    "mpn": "SCR38B-350-1R8B008JH-BK",
+    "manufacturer": "KEMET",
+    "cpc": "TL-L0000212",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SS11VL-03550",
+    "manufacturer": "KEMET",
+    "cpc": "TL-L0000221",
+    "pin_count": 4
+  },
+  {
+    "mpn": "IRGP20B120UD-EP",
+    "manufacturer": "IR",
+    "cpc": "TL-Q0000068",
+    "pin_count": 3
+  },
+  {
+    "mpn": "OP593A",
+    "manufacturer": "TT Electronics/Optek Technology",
+    "cpc": "TL-Q0000121",
+    "pin_count": 3
+  },
+  {
+    "mpn": "STP4N150",
+    "manufacturer": "STMicroelectronics",
+    "cpc": "TL-Q0000133",
+    "pin_count": 3
+  },
+  {
+    "mpn": "IKW25N120H3FKSA1",
+    "manufacturer": "Infineon Technologies",
+    "cpc": "TL-Q0000200",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TL-Q0000207",
+    "manufacturer": "WeEn Semiconductors",
+    "cpc": "TL-Q0000207",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TIP47",
+    "manufacturer": "STMicroelectronics",
+    "cpc": "TL-Q0000234",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SFR25000Z0000ZA500",
+    "manufacturer": "VISHAY",
+    "cpc": "TL-RTAF-00000-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-RTAF-00500-00",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAF-00500-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ALSR03R1500FE12",
+    "manufacturer": "Vishay Dale",
+    "cpc": "TL-RTAF-01500-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ALSR03R2500FE12",
+    "manufacturer": "Vishay Dale",
+    "cpc": "TL-RTAF-02500-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "620HR005E",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAH-00050-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-RTAJ-05000-01",
+    "manufacturer": "TE Connectivity Passive Product",
+    "cpc": "TL-RTAJ-05000-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "RSF2JT2R00",
+    "manufacturer": "Stackpole Electronics Inc",
+    "cpc": "TL-RTAJ-12000-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AC05000001009JAC00",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TL-RTAJ-21000-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "MOS3CT631R150J",
+    "manufacturer": "KOA Speer",
+    "cpc": "TL-RTAJ-21500-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PR03000202009JAC00",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TL-RTAJ-22000-04",
+    "pin_count": 2
+  },
+  {
+    "mpn": "SQP500JB-33R",
+    "manufacturer": "YAGEO",
+    "cpc": "TL-RTAJ-23300-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PR02000201000JR500",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TL-RTAJ-31000-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-RTAJ-32200-01",
+    "manufacturer": "YAGEO",
+    "cpc": "TL-RTAJ-32200-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "FMP200JR-52-330R",
+    "manufacturer": "YAGEO",
+    "cpc": "TL-RTAJ-33300-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PR02000204700JR500",
+    "manufacturer": "Vishay",
+    "cpc": "TL-RTAJ-34700-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-RTAJ-34700-04",
+    "manufacturer": "YAGEO",
+    "cpc": "TL-RTAJ-34700-04",
+    "pin_count": 2
+  },
+  {
+    "mpn": "FMP200JR-52-1K5",
+    "manufacturer": "YAGEO",
+    "cpc": "TL-RTAJ-41500-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "FMP200JR-52-2K2",
+    "manufacturer": "YAGEO",
+    "cpc": "TL-RTAJ-42200-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PR02000202401JR500",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TL-RTAJ-42400-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PR02000203601JR500",
+    "manufacturer": "Vishay",
+    "cpc": "TL-RTAJ-43600-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "FMP200JR-52-7K5",
+    "manufacturer": "YAGEO",
+    "cpc": "TL-RTAJ-47500-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "PR02000201002JR500",
+    "manufacturer": "Vishay Beyschlag/Draloric/BC Components",
+    "cpc": "TL-RTAJ-51000-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "RR03J1M0TB",
+    "manufacturer": "TE Connectivity Passive Product",
+    "cpc": "TL-RTAJ-71000-02",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AY22GKE",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAK-12200-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "OY47GKE",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAK-14700-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "OY68GKE",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAK-16800-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AY100KE",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAK-21000-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AV470KE",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAK-24700-00",
+    "pin_count": 2
+  },
+  {
+    "mpn": "AZ101KE",
+    "manufacturer": "Ohmite",
+    "cpc": "TL-RTAK-31000-01",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TLwire8-27-24",
+    "manufacturer": null,
+    "cpc": "TLwire8-27-24",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ERZ-V10D820",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TL-Z0000005",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ERZ-V20D121",
+    "manufacturer": "PANASONIC",
+    "cpc": "TL-Z0000010",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ERZ-V20D680",
+    "manufacturer": "Panasonic Electronic Components",
+    "cpc": "TL-Z0000015",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-Z0000017",
+    "manufacturer": null,
+    "cpc": "TL-Z0000017",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B72210S0250K101",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TL-Z0000018",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B72220S0321K101",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TL-Z0000030",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B72220S0381K101",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TL-Z0000031",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V1000LA160BP",
+    "manufacturer": "Littelfuse",
+    "cpc": "TL-Z0000036",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V120ZA6P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000037",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V130LA5P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000038",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V150LA10AP",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000039",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V150ZA8P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000041",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V150ZA8P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000042",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V250LA40BP",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000044",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V660LA100BP",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000055",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V82ZA4P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000059",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V150LA10CP",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000062",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B72214S0681K101",
+    "manufacturer": "EPCOS / TDK",
+    "cpc": "TL-Z0000077",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V130LA5P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000078",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V47ZA3P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000079",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V100ZA4P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000081",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-Z0000082",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TL-Z0000082",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-Z0000083",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000083",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-Z0000084",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000084",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V180ZA20P",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000086",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TL-Z0000087",
+    "manufacturer": "EPCOS - TDK Electronics",
+    "cpc": "TL-Z0000087",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V275LA20AP",
+    "manufacturer": "Littelfuse Inc.",
+    "cpc": "TL-Z0000089",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TMP6131DECR",
+    "manufacturer": null,
+    "cpc": "TMP6131DECR",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TR05S3V3",
+    "manufacturer": "XP Power",
+    "cpc": "TR05S3V3",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TR10S05",
+    "manufacturer": "XP Power",
+    "cpc": "TR10S05",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TS02-66-55-BK-160-LCR-D",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "TS02-66-55-BK-160-LCR-D",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TSR2-2433",
+    "manufacturer": null,
+    "cpc": "TSR2-2433",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TSR 2-2450",
+    "manufacturer": "Traco Power",
+    "cpc": "TSR2-2450",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TSW-101-07-F-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-101-07-F-D",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-101-07-L-T",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-101-07-L-T",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TSW-102-05-T-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-102-05-T-D",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TSW-102-07-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-102-07-G-S",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-103-07-F-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-103-07-F-S",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TSW-104-05-T-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-104-05-T-D",
+    "pin_count": 8
+  },
+  {
+    "mpn": "TSW-104-07-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-104-07-G-S",
+    "pin_count": 4
+  },
+  {
+    "mpn": "TSW-105-07-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-105-07-G-D",
+    "pin_count": 10
+  },
+  {
+    "mpn": "TSW-112-08-G-D-RA",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "TSW-112-08-G-D-RA",
+    "pin_count": 24
+  },
+  {
+    "mpn": "TSW-118-24-L-D",
+    "manufacturer": null,
+    "cpc": "TSW-118-24-L-D",
+    "pin_count": 36
+  },
+  {
+    "mpn": "UBT2A220MPD",
+    "manufacturer": "Nichicon",
+    "cpc": "UBT2A220MPD",
+    "pin_count": 2
+  },
+  {
+    "mpn": "USB3145-30-1-A",
+    "manufacturer": "GCT",
+    "cpc": "USB3145-30-1-A",
+    "pin_count": 5
+  },
+  {
+    "mpn": "USB4085-GF-A",
+    "manufacturer": null,
+    "cpc": "USB4085-GF-A",
+    "pin_count": 16
+  },
+  {
+    "mpn": "USB4120-03-C",
+    "manufacturer": "GCT",
+    "cpc": "USB4120-03-C",
+    "pin_count": 16
+  },
+  {
+    "mpn": "USB4151-GF-C",
+    "manufacturer": "GCT",
+    "cpc": "USB4151-GF-C",
+    "pin_count": 6
+  },
+  {
+    "mpn": "USB-A1VSW60",
+    "manufacturer": "On Shore Technology Inc.",
+    "cpc": "USB-A1VSW60",
+    "pin_count": 4
+  },
+  {
+    "mpn": "USB-AP-S-RA-SMT",
+    "manufacturer": "Adam Tech",
+    "cpc": "USB-AP-S-RA-SMT",
+    "pin_count": 4
+  },
+  {
+    "mpn": "USB-A-S-RA-SMT",
+    "manufacturer": "Adam Tech",
+    "cpc": "USB-A-S-RA-SMT",
+    "pin_count": 4
+  },
+  {
+    "mpn": "USB-B-S-F-B-TH-TR",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "USB-B-S-F-B-TH-TR",
+    "pin_count": 4
+  },
+  {
+    "mpn": "UVR2A101MPD",
+    "manufacturer": "Nichicon",
+    "cpc": "UVR2A101MPD",
+    "pin_count": 2
+  },
+  {
+    "mpn": "V7805-1000R",
+    "manufacturer": "Bel Power Solutions",
+    "cpc": "V7805-1000R",
+    "pin_count": 3
+  },
+  {
+    "mpn": "VCF4-1000",
+    "manufacturer": "TE Connectivity Potter & Brumfield Relays",
+    "cpc": "VCF4-1000",
+    "pin_count": 5
+  },
+  {
+    "mpn": "OSTVN04A150",
+    "manufacturer": "On Shore Technology Inc.",
+    "cpc": "VIS053",
+    "pin_count": 4
+  },
+  {
+    "mpn": "VX7803-1000R",
+    "manufacturer": "Bel Power Solutions",
+    "cpc": "VX7803-1000R",
+    "pin_count": 3
+  },
+  {
+    "mpn": "W-2712-A",
+    "manufacturer": null,
+    "cpc": "W-2712-A",
+    "pin_count": 10
+  },
+  {
+    "mpn": "W508R-40-04T",
+    "manufacturer": null,
+    "cpc": "W508R-40-04T",
+    "pin_count": 4
+  },
+  {
+    "mpn": "WP710A10LSECK/J4",
+    "manufacturer": "Kingbright",
+    "cpc": "WP710A10LSECK/J4",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP710A10LZGCK",
+    "manufacturer": "Kingbright",
+    "cpc": "WP710A10LZGCK",
+    "pin_count": 2
+  },
+  {
+    "mpn": "WP7113LSECK/J3",
+    "manufacturer": "Kingbright",
+    "cpc": "WP7113LSECK/J3",
+    "pin_count": 2
+  },
+  {
+    "mpn": "X6511WV-08H-C30D60",
+    "manufacturer": null,
+    "cpc": "X6511WV-08H-C30D60",
+    "pin_count": 8
+  },
+  {
+    "mpn": "X6511WV-10H-C30D60",
+    "manufacturer": null,
+    "cpc": "X6511WV-10H-C30D60",
+    "pin_count": 10
+  },
+  {
+    "mpn": "RK73H1ETTP6492F",
+    "manufacturer": "KOA Speer",
+    "cpc": "XL-F326-56499",
+    "pin_count": 2
+  },
+  {
+    "mpn": "1503-2",
+    "manufacturer": "Keystone Electronics",
+    "cpc": "XL-F660-00009",
+    "pin_count": 10
+  },
+  {
+    "mpn": "SNT-100-BK-G",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "XL-F700-00000",
+    "pin_count": 2
+  },
+  {
+    "mpn": "TSW-103-08-G-S",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "XL-F700-00078",
+    "pin_count": 3
+  },
+  {
+    "mpn": "USBR-B-S-F-O-VT",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "XL-F712-04162",
+    "pin_count": 4
+  },
+  {
+    "mpn": "PJ-102AH",
+    "manufacturer": "Same Sky (Formerly CUI Devices)",
+    "cpc": "XL-F712-08070",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TSW-120-07-G-D",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "XL-F716-40072",
+    "pin_count": 40
+  },
+  {
+    "mpn": "1725656",
+    "manufacturer": "Phoenix Contact",
+    "cpc": "XL-F761-02001",
+    "pin_count": 2
+  },
+  {
+    "mpn": "398900303",
+    "manufacturer": "Molex",
+    "cpc": "XL-F761-03001",
+    "pin_count": 3
+  },
+  {
+    "mpn": "TDA04H0SB1",
+    "manufacturer": "C&K",
+    "cpc": "XL-F820-00049",
+    "pin_count": 4
+  },
+  {
+    "mpn": "M2012TXG30-DA",
+    "manufacturer": "NKK Switches",
+    "cpc": "XL-F820-20123",
+    "pin_count": 4
+  },
+  {
+    "mpn": "GST60A24-P1J",
+    "manufacturer": "MEAN WELL USA Inc.",
+    "cpc": "XL-F910-60240",
+    "pin_count": 5
+  },
+  {
+    "mpn": "YE0032AA",
+    "manufacturer": "Quectel",
+    "cpc": "YE0032AA",
+    "pin_count": 2
+  },
+  {
+    "mpn": "B5P-VH-FB-B",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "YY-2500-W05ST",
+    "pin_count": 5
+  },
+  {
+    "mpn": "B8P-VH-FB-B",
+    "manufacturer": "JST Sales America Inc.",
+    "cpc": "YY-2500-W08ST",
+    "pin_count": 8
+  },
+  {
+    "mpn": "Z340-133-001BOM_311461_P5",
+    "manufacturer": null,
+    "cpc": "Z340-133-001BOM_311461_P5",
+    "pin_count": 30
+  },
+  {
+    "mpn": "ZOR-12-B-52-0R",
+    "manufacturer": "YAGEO",
+    "cpc": "ZOR-12-B-52-0R",
+    "pin_count": 2
+  },
+  {
+    "mpn": "ZSS-107-08-L-D-1240",
+    "manufacturer": "Samtec Inc.",
+    "cpc": "ZSS-107-08-L-D-1240",
+    "pin_count": 14
+  },
+  {
+    "mpn": "MDF7-16P-2.54DSA(95)",
+    "manufacturer": "Hirose Electric Co Ltd",
+    "cpc": "MDF7-16P-2.54DSA(95)",
+    "pin_count": 16
+  }
+]

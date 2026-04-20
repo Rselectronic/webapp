@@ -272,6 +272,25 @@ export async function POST(req: NextRequest) {
     settings.pcb_markup_pct = body.pcb_markup_pct;
   }
 
+  // --- Load per-tier pricing selections from the Component Pricing Review page ---
+  // Map shape: bom_line_id → (tier_qty → unit_price_cad). Empty when the user
+  // hasn't picked any suppliers yet — engine then falls back to cache prices.
+  const bomLineIds = bomLines.map((l) => l.id);
+  const { data: selectionRows } = bomLineIds.length > 0
+    ? await supabase
+        .from("bom_line_pricing")
+        .select("bom_line_id, tier_qty, selected_unit_price_cad")
+        .in("bom_line_id", bomLineIds)
+    : { data: [] };
+
+  const pricingOverrides = new Map<string, Map<number, number>>();
+  for (const row of selectionRows ?? []) {
+    if (row.selected_unit_price_cad == null) continue;
+    const inner = pricingOverrides.get(row.bom_line_id) ?? new Map<number, number>();
+    inner.set(row.tier_qty, Number(row.selected_unit_price_cad));
+    pricingOverrides.set(row.bom_line_id, inner);
+  }
+
   // --- Calculate pricing ---
   const pricing = calculateQuote({
     lines: pricingLines,
@@ -280,6 +299,7 @@ export async function POST(req: NextRequest) {
     settings,
     tier_inputs: resolvedTiers,
     assembly_type: body.assembly_type,
+    pricing_overrides: pricingOverrides,
   });
 
   return NextResponse.json({

@@ -23,7 +23,7 @@ export async function POST(
   const { data: lines, error } = await supabase
     .from("bom_lines")
     .select(
-      "id, mpn, description, cpc, manufacturer, m_code, m_code_source, is_pcb, is_dni"
+      "id, mpn, description, cpc, manufacturer, quantity, m_code, m_code_source, is_pcb, is_dni"
     )
     .eq("bom_id", bomId)
     .order("line_number", { ascending: true });
@@ -32,13 +32,33 @@ export async function POST(
     return NextResponse.json({ error: "BOM not found" }, { status: 404 });
   }
 
+  // Qty-0 lines are effectively not-installed components. They stay in the
+  // BOM so the production print-out shows the empty designators, but they
+  // must not be M-coded (they don't go through any machine / manual step).
+  // Also clear any stale m_code that was set before the line was zeroed out,
+  // so the UI stays consistent.
+  const zeroQtyLinesNeedingClear = lines.filter(
+    (l) => l.quantity === 0 && l.m_code != null && !l.is_pcb
+  );
+  for (const l of zeroQtyLinesNeedingClear) {
+    await supabase
+      .from("bom_lines")
+      .update({
+        m_code: null,
+        m_code_confidence: null,
+        m_code_source: null,
+        m_code_reasoning: null,
+      })
+      .eq("id", l.id);
+  }
+
   // -----------------------------------------------------------
   // AI batch mode: classify unclassified lines using Claude AI
   // 10 components in parallel per batch instead of sequential
   // -----------------------------------------------------------
   if (mode === "ai-batch") {
     const unclassified = lines.filter(
-      (l) => !l.m_code && !l.is_pcb && !l.is_dni && l.mpn
+      (l) => !l.m_code && !l.is_pcb && !l.is_dni && l.quantity > 0 && l.mpn
     );
 
     // Parallel AI classification (10 at a time)
@@ -85,7 +105,11 @@ export async function POST(
   // -----------------------------------------------------------
   // Default mode: rule-based classification (already fast with batched lookups)
   // -----------------------------------------------------------
-  const toClassify = lines.filter((l) => l.m_code_source !== "manual");
+  // Skip qty=0 lines: they're not-installed placeholders kept only for the
+  // production print-out to show which designators stay empty.
+  const toClassify = lines.filter(
+    (l) => l.m_code_source !== "manual" && l.quantity > 0
+  );
 
   const ruleResults = await classifyBomLines(
     toClassify.map((l) => ({

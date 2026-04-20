@@ -1,5 +1,45 @@
 import type { MCode } from "@/lib/mcode/types";
 
+// ---------------------------------------------------------------------------
+// Unified supplier quote shape — every distributor client normalizes to this.
+// Used by the Component Pricing Review page to render apples-to-apples rows
+// across DigiKey, Mouser, Avnet, Arrow, TTI, Newark, Samtec, TI, TME, Future,
+// e-Sonic, and LCSC.
+// ---------------------------------------------------------------------------
+
+export interface PriceBreak {
+  min_qty: number;
+  /** null = open-ended upper bound (e.g. "10000+") */
+  max_qty: number | null;
+  unit_price: number;
+  currency: string;
+}
+
+export interface SupplierQuote {
+  source: string;                      // supplier name (digikey, mouser, avnet, ...)
+  mpn: string;
+  manufacturer: string | null;
+  supplier_part_number: string | null;
+  /** Unit price at smallest qty tier, in the supplier's native currency */
+  unit_price: number;
+  currency: string;
+  price_breaks: PriceBreak[];
+  stock_qty: number | null;
+  moq: number | null;
+  order_multiple: number | null;
+  /** Normalized to days. null if the supplier doesn't expose lead time. */
+  lead_time_days: number | null;
+  /** Distributor-specific warehouse identifier — only populated by multi-warehouse suppliers (Arrow, Newark). */
+  warehouse_code: string | null;
+  /** Non-Cancelable / Non-Returnable flag */
+  ncnr: boolean | null;
+  /** True when the distributor sources this part through authorized manufacturer channels */
+  franchised: boolean | null;
+  lifecycle_status: string | null;     // "ACTIVE" / "OBSOLETE" / "Production" / etc.
+  datasheet_url: string | null;
+  product_url: string | null;
+}
+
 export interface PricingLine {
   bom_line_id: string;
   mpn: string;
@@ -151,6 +191,15 @@ export interface QuoteInput {
   tier_inputs?: TierInput[];
   /** Assembly type for programming fee lookup: TB=double-sided, TS=single-sided, etc. */
   assembly_type?: string;
+  /**
+   * Per-BOM-line per-tier unit-price overrides in CAD, from the Component
+   * Pricing Review page (`bom_line_pricing` table). When present for a given
+   * (line_id, tier_qty) pair, takes precedence over `line.unit_price`. Absent
+   * entries fall back to the supplier-cache price as before.
+   *
+   * Shape: bom_line_id → (tier_qty → unit_price_cad).
+   */
+  pricing_overrides?: Map<string, Map<number, number>>;
 }
 
 export interface MissingPriceComponent {

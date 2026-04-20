@@ -173,6 +173,11 @@ export function NewQuoteForm({
 
     return () => {
       cancelled = true;
+      // Reset so a StrictMode double-mount (dev only) re-runs the prefill.
+      // Without this, mount #1's fetch resolves after cancelled=true, skips
+      // setPrefilling(false), and mount #2 bails on the ref guard — leaving
+      // the BOM step stuck on "Loading BOMs..." locally.
+      prefillRan.current = false;
     };
   }, [initialCustomerId, initialBomId, handleBomChange]);
 
@@ -361,6 +366,27 @@ export function NewQuoteForm({
                 </SelectContent>
               </Select>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Review Component Pricing (optional — opens the dedicated page) */}
+      {bomId && (
+        <Card className="border-blue-200 bg-blue-50/40 dark:border-blue-900/40 dark:bg-blue-950/20">
+          <CardHeader>
+            <CardTitle className="text-base">Review Component Pricing (optional)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm text-gray-600 dark:text-gray-400 flex-1 min-w-[240px]">
+                Pull live prices from up to 12 distributors, compare lead times / stock / MOQ, and pin a supplier per tier before calculating the quote. Your picks flow directly into the pricing preview below.
+              </p>
+              <a href={`/bom/${bomId}/pricing`} target="_blank" rel="noreferrer">
+                <Button type="button" variant="outline" size="sm">
+                  Open Pricing Review
+                </Button>
+              </a>
+            </div>
           </CardContent>
         </Card>
       )}
