@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Users,
-  FileSpreadsheet,
+  CircuitBoard,
   Calculator,
   Briefcase,
   ShoppingCart,
@@ -20,15 +20,21 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Truck,
+  Search,
+  Layers,
 } from "lucide-react";
 
-const navigation = [
+const fullNavigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Customers", href: "/customers", icon: Users },
-  { name: "BOMs", href: "/bom", icon: FileSpreadsheet },
+  { name: "GMPs", href: "/gmp", icon: CircuitBoard },
+  { name: "Part Search", href: "/parts", icon: Search },
   { name: "Quotes", href: "/quotes", icon: Calculator },
-  { name: "Jobs", href: "/jobs", icon: Briefcase },
-  { name: "Procurement", href: "/procurement", icon: ShoppingCart },
+  { name: "Job Queue", href: "/jobs", icon: Briefcase },
+  { name: "Pending Orders", href: "/proc/pending", icon: ShoppingCart },
+  { name: "PROC Batches", href: "/proc", icon: ShoppingCart },
+  { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
+  { name: "Stencil Library", href: "/stencils", icon: Layers },
   { name: "Production", href: "/production", icon: Factory },
   { name: "Shipping", href: "/shipping", icon: Truck },
   { name: "Invoices", href: "/invoices", icon: FileText },
@@ -38,7 +44,23 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar() {
+// Production users see Production + Shipping. The home page `/` shows
+// admin KPIs they shouldn't see; the middleware redirects `/` →
+// `/production` for them. Shipping is included because the production
+// user also handles outbound shipments in this shop.
+const productionNavigation = [
+  { name: "Production", href: "/production", icon: Factory },
+  { name: "Shipping", href: "/shipping", icon: Truck },
+  { name: "Stencil Library", href: "/stencils", icon: Layers },
+];
+
+interface SidebarProps {
+  role?: string | null;
+}
+
+export function Sidebar({ role }: SidebarProps) {
+  const isProduction = role === "production";
+  const navigation = isProduction ? productionNavigation : fullNavigation;
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -73,12 +95,30 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 px-2 py-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
         {navigation.map((item) => {
-          const isActive =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+          // Active-state check. Naive `startsWith` highlights both
+          // `/proc` and `/proc/pending` when the user is on the latter,
+          // because `/proc/pending` starts with `/proc`. Defer to the
+          // longer match: an item is active iff (a) pathname is an
+          // exact match, OR (b) pathname is a sub-path AND no other
+          // nav item with a longer href also matches.
+          let isActive: boolean;
+          if (item.href === "/") {
+            isActive = pathname === "/";
+          } else if (pathname === item.href) {
+            isActive = true;
+          } else if (pathname.startsWith(item.href + "/")) {
+            isActive = !navigation.some(
+              (other) =>
+                other.href !== item.href &&
+                other.href.startsWith(item.href + "/") &&
+                (pathname === other.href ||
+                  pathname.startsWith(other.href + "/"))
+            );
+          } else {
+            isActive = false;
+          }
 
           return (
             <Link

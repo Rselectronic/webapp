@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatDate as formatMontrealDate } from "@/lib/utils/format";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Plus, ChevronLeft, ChevronRight, Loader2, Trash2, Check, X, Pencil } from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, Loader2, Trash2, Check, X, Pencil, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 const M_CODES = [
   "0201", "0402", "CP", "CPEXP", "IP", "TH", "MANSMT", "MEC", "Accs", "CABLE", "DEV B",
@@ -38,7 +40,8 @@ const M_CODE_SOURCES = ["manual", "database", "rules", "api"];
 
 interface Component {
   id: string;
-  mpn: string;
+  cpc: string | null;
+  mpn: string | null;
   manufacturer: string | null;
   description: string | null;
   category: string | null;
@@ -64,12 +67,7 @@ interface ApiResponse {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "--";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-CA", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatMontrealDate(iso);
 }
 
 export default function ComponentsPage() {
@@ -220,6 +218,12 @@ export default function ComponentsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      <Link href="/settings">
+        <Button variant="ghost" size="sm">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Settings
+        </Button>
+      </Link>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Component Database</h2>
@@ -378,7 +382,7 @@ export default function ComponentsPage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
-            placeholder="Search by MPN..."
+            placeholder="Search CPC, MPN, description…"
             className="pl-8"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -427,6 +431,7 @@ export default function ComponentsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>CPC</TableHead>
                 <TableHead>MPN</TableHead>
                 <TableHead className="w-28">M-Code</TableHead>
                 <TableHead className="w-24">Source</TableHead>
@@ -438,7 +443,10 @@ export default function ComponentsPage() {
               {items.map((comp) => (
                 <TableRow key={comp.id}>
                   <TableCell className="font-mono text-xs font-medium">
-                    {comp.mpn}
+                    {comp.cpc ?? "—"}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-gray-700 dark:text-gray-300">
+                    {comp.mpn ?? "—"}
                   </TableCell>
                   <TableCell>
                     {editingId === comp.id ? (
@@ -517,7 +525,7 @@ export default function ComponentsPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={() => deleteComponent(comp.id, comp.mpn)}
+                        onClick={() => deleteComponent(comp.id, comp.cpc ?? comp.mpn ?? "")}
                         title="Delete component"
                       >
                         <Trash2 className="h-3.5 w-3.5 text-gray-400 hover:text-red-500" />

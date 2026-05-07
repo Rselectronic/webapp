@@ -1,6 +1,11 @@
 export type MCode =
   | "0201" | "0402" | "CP" | "CPEXP" | "IP" | "TH"
-  | "MANSMT" | "MEC" | "Accs" | "CABLE" | "DEV B";
+  | "MANSMT" | "MEC" | "Accs" | "CABLE" | "DEV B"
+  // RS-specific extras preserved from the legacy DM Common File. These
+  // aren't produced by the rules engine but show up in BOM data, in the AI
+  // classifier output (notably APCB), and in the pricing engine. Listed
+  // here so string comparisons (`m_code === "APCB"` etc.) typecheck.
+  | "APCB" | "PCB" | "EA" | "AEA" | "FUSE" | "LABEL" | "WIRE" | "PRESSFIT";
 
 export interface ClassificationResult {
   m_code: MCode | null;

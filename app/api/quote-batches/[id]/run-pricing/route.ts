@@ -122,11 +122,17 @@ export async function POST(
   let outOfStockCount = 0;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Pre-fetch historical prices and component supplier PNs in bulk
+  // Pre-fetch historical prices and component supplier PNs in bulk.
+  // Historical price lookup is mpn-keyed (procurement_lines.mpn). Components
+  // lookup is cpc-keyed (see lib/pricing/historical.ts) so we pass {mpn, cpc}
+  // pairs and let the bulk helper do the join.
   const allMpns = lines.map((l: { mpn: string }) => l.mpn).filter(Boolean);
+  const mpnCpcPairs = lines
+    .filter((l: { mpn?: string | null }) => Boolean(l.mpn))
+    .map((l: { mpn: string; cpc?: string | null }) => ({ mpn: l.mpn, cpc: l.cpc ?? null }));
   const [historicalMap, supplierPNsMap] = await Promise.all([
     lookupHistoricalPricesBulk(admin, allMpns),
-    lookupComponentSupplierPNsBulk(admin, allMpns),
+    lookupComponentSupplierPNsBulk(admin, mpnCpcPairs),
   ]);
 
   for (const line of lines) {
@@ -217,7 +223,7 @@ export async function POST(
             currency: r.currency,
             expires_at: expiresAt,
           },
-          { onConflict: "source,search_key" }
+          { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
         );
       }
 
@@ -243,7 +249,7 @@ export async function POST(
             currency: r.currency,
             expires_at: expiresAt,
           },
-          { onConflict: "source,search_key" }
+          { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
         );
       }
 
@@ -269,7 +275,7 @@ export async function POST(
             currency: r.currency,
             expires_at: expiresAt,
           },
-          { onConflict: "source,search_key" }
+          { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
         );
       }
 

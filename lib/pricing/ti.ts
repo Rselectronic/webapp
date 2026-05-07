@@ -178,6 +178,7 @@ export async function searchTiPrice(
       lifecycle_status: lifecycle,
       datasheet_url: null, // not returned by the store/products endpoint
       product_url: buyUrl,
+      description: null, // TI store endpoint doesn't carry a product description
     },
   ];
 }

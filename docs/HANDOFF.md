@@ -6,6 +6,32 @@
 
 ---
 
+## Pre-Launch Cleanup Items
+
+> One-liner punch-list of things to revisit before cutting over from the
+> Excel workflow to the web app in production. Keep this at the top so it's
+> the first thing a fresh session sees.
+
+### Global Part Search — streaming vs. batched fetch (added 2026-04-24)
+
+The `/api/parts/search` route currently streams results via NDJSON
+(one `{type:"supplier", result}` event per distributor as each resolves).
+Earlier it used `Promise.allSettled` + a single `NextResponse.json` payload —
+both approaches hit the same 12 suppliers in parallel; only the transport
+differs.
+
+**Before launch:** decide which to keep and delete the other. The batched
+variant is simpler (fewer moving parts, no streaming reader on the client,
+no placeholder supplier state). The streamed variant feels faster because
+LCSC / Mouser land before DigiKey / Arrow.
+
+- Streamed path: [app/api/parts/search/route.ts](../app/api/parts/search/route.ts) stream handler + [app/(dashboard)/parts/page.tsx](<../app/(dashboard)/parts/page.tsx>) NDJSON reader + `InFlightSupplierFooter` component.
+- Reverting to batched = swap the stream back for `Promise.allSettled` + `NextResponse.json`; drop the `SupplierStatus` `"loading"` variant + the footer component + the reader loop in `handleSubmit`.
+
+Anas + Piyush to field-test a week's worth of searches, then decide.
+
+---
+
 ## Project Identity
 
 - **App:** Custom ERP replacing 11 Excel/VBA workbooks for RS PCB Assembly (Montreal)
@@ -604,7 +630,7 @@ Full API implementation details: **ABDULS_WIKI.md Part 16**.
 - Standard (single-sided) vs double-sided pricing ($100 difference)
 - New API: `GET /api/bom/[id]/line-count` — returns line count + auto-calculated programming cost
 - Quote form auto-fills NRE Programming when a BOM is selected (all tiers updated)
-- Double-sided detection: checks job assembly_type (TB = double-sided, default)
+- Double-sided detection: reads `gmps.board_side` ('double' = double-sided, default when unset). Migration 091 dropped the legacy `assembly_type` columns on jobs/quotes — physical layout now lives only on the GMP, billing model lives on `procurement_mode`.
 - Extrapolation for 300+ lines at $75/10-line tier
 
 **8. Dead code audit + cleanup:**
@@ -1474,7 +1500,7 @@ Impact: any quote generated today under commit `042c366` that used the fallback 
 **Part A — New `programming_fees` table:**
 - 28 rows from DM V11 Programming sheet.
 - Schema: `bom_lines (PK) | additional_cost | standard_price | double_side_price | source`.
-- Query pattern: `SELECT * FROM programming_fees WHERE bom_lines <= $1 ORDER BY bom_lines DESC LIMIT 1; pick standard_price or double_side_price based on assembly_type`.
+- Query pattern: `SELECT * FROM programming_fees WHERE bom_lines <= $1 ORDER BY bom_lines DESC LIMIT 1`; pick `standard_price` or `double_side_price` based on `gmps.board_side` (single → standard, double → double_side). _Historical: prior to migration 091 this used `quotes.assembly_type` (TB/TS)._
 - Coverage: 1 line → $300/$400 up to 300 lines → $2250/$2350. Incremental: $50/10 lines below 70 lines, $75/10 lines above.
 - RLS: read-only for any authenticated user (reference data, not transactional).
 
@@ -1544,7 +1570,7 @@ TypeScript clean (`tsc --noEmit` exit 0).
 ### What's still open
 
 - **SMT time model port** (4-6 hrs) — described above. The biggest remaining gap between web app quotes and DM Excel.
-- **Use `programming_fees` in engine.ts** — right now the table exists but `engine.ts` still uses `settings.programming_time_hours × labour_rate`. Should switch to a DB lookup based on `bomLines` + `assembly_type`. 30-60 min wire-up.
+- **Use `programming_fees` in engine.ts** — right now the table exists but `engine.ts` still uses `settings.programming_time_hours × labour_rate`. Should switch to a DB lookup based on `bomLines` + `gmps.board_side` (single → standard, double → double_side). 30-60 min wire-up.
 - **Keyword suffix variants** (from entry 47 follow-up list) — 1206L, SOD323F, HTSSOP-16, STQFP100 — trivial data migration to push classification from 90.5% → 95%+.
 - **Settings → AI Usage page** — once `ai_call_log` has a few days of data.
 

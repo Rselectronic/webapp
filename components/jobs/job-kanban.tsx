@@ -11,8 +11,10 @@ interface KanbanJob {
   job_number: string;
   status: string;
   quantity: number;
+  procurement_id?: string | null;
   customers: { code: string; company_name: string } | null;
   gmps: { gmp_number: string } | null;
+  procurements?: { id: string; proc_code: string | null } | null;
 }
 
 interface JobKanbanProps {
@@ -186,44 +188,86 @@ export function JobKanban({ jobs: initialJobs }: JobKanbanProps) {
                   </span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-2 px-2">
-                {columnJobs.map((job) => {
-                  const isDragging = draggedJobId === job.id;
-                  const isUpdating = updatingJobId === job.id;
-
-                  return (
-                    <Link
-                      key={job.id}
-                      href={`/jobs/${job.id}`}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, job.id)}
-                      onDragEnd={handleDragEnd}
-                      onClick={(e) => {
-                        // Prevent navigation when dropping
-                        if (draggedJobId) {
-                          e.preventDefault();
-                        }
-                      }}
-                      className={`block cursor-grab rounded-md border bg-card p-3 transition-all duration-200 hover:bg-accent active:cursor-grabbing ${
-                        isDragging ? "opacity-50 scale-95" : ""
-                      } ${isUpdating ? "animate-pulse" : ""}`}
-                    >
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-sm font-semibold">
-                          {job.job_number}
+              <CardContent className="flex flex-col gap-3 px-2">
+                {(() => {
+                  // Sub-group the column's jobs by PROC batch code. Jobs
+                  // without a procurement_id fall under "Unassigned".
+                  type Sub = { proc_id: string | null; proc_code: string | null; jobs: KanbanJob[] };
+                  const sub = new Map<string, Sub>();
+                  for (const j of columnJobs) {
+                    const k = j.procurement_id ?? "__unassigned__";
+                    let s = sub.get(k);
+                    if (!s) {
+                      s = {
+                        proc_id: j.procurements?.id ?? null,
+                        proc_code: j.procurements?.proc_code ?? null,
+                        jobs: [],
+                      };
+                      sub.set(k, s);
+                    }
+                    s.jobs.push(j);
+                  }
+                  const ordered = Array.from(sub.entries()).sort(([ka, a], [kb, b]) => {
+                    if (ka === "__unassigned__") return 1;
+                    if (kb === "__unassigned__") return -1;
+                    return (b.proc_code ?? "").localeCompare(a.proc_code ?? "");
+                  });
+                  return ordered.map(([k, s]) => (
+                    <div key={k} className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between px-1">
+                        {s.proc_id ? (
+                          <Link
+                            href={`/proc/${s.proc_id}`}
+                            className="font-mono text-[10px] font-semibold text-blue-600 hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {s.proc_code ?? "(unnamed)"}
+                          </Link>
+                        ) : (
+                          <span className="text-[10px] italic text-muted-foreground">
+                            Unassigned
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">
+                          {s.jobs.length}
                         </span>
-                        <JobStatusBadge status={job.status} />
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {job.customers?.code ?? "N/A"}
-                        {job.gmps ? ` - ${job.gmps.gmp_number}` : ""}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Qty: {job.quantity}
-                      </div>
-                    </Link>
-                  );
-                })}
+                      {s.jobs.map((job) => {
+                        const isDragging = draggedJobId === job.id;
+                        const isUpdating = updatingJobId === job.id;
+                        return (
+                          <Link
+                            key={job.id}
+                            href={`/jobs/${job.id}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, job.id)}
+                            onDragEnd={handleDragEnd}
+                            onClick={(e) => {
+                              if (draggedJobId) e.preventDefault();
+                            }}
+                            className={`block cursor-grab rounded-md border bg-card p-3 transition-all duration-200 hover:bg-accent active:cursor-grabbing ${
+                              isDragging ? "opacity-50 scale-95" : ""
+                            } ${isUpdating ? "animate-pulse" : ""}`}
+                          >
+                            <div className="mb-1 flex items-center justify-between">
+                              <span className="text-sm font-semibold">
+                                {job.job_number}
+                              </span>
+                              <JobStatusBadge status={job.status} />
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {job.customers?.code ?? "N/A"}
+                              {job.gmps ? ` - ${job.gmps.gmp_number}` : ""}
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Qty: {job.quantity}
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ));
+                })()}
                 {columnJobs.length === 0 && (
                   <p className={`py-4 text-center text-xs text-muted-foreground ${
                     isDropTarget ? "text-blue-500" : ""

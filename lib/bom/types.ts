@@ -11,6 +11,14 @@ export interface ColumnMapping {
   description?: string | number;
   mpn: string | number;
   manufacturer?: string | number;
+  /**
+   * Extra MPN columns the customer uses for second-source / cross-ref parts.
+   * Each entry is aligned 1:1 with `alt_manufacturers` (same length, same
+   * index = same alternate). Stored as column names or indices, same as the
+   * primary fields.
+   */
+  alt_mpns?: Array<string | number>;
+  alt_manufacturers?: Array<string | number>;
 }
 
 /** A BOM line after parsing and normalization (before M-Code classification) */
@@ -26,6 +34,17 @@ export interface ParsedLine {
   manufacturer: string;
   is_pcb: boolean;
   is_dni: boolean;
+  /**
+   * Customer-supplied alternate MPNs for this line (second-source, cross-ref).
+   * Ordered as they appeared in the BOM columns. Does not include the primary
+   * MPN; duplicates of the primary are filtered out during parsing.
+   */
+  alternates?: ParsedAlternate[];
+}
+
+export interface ParsedAlternate {
+  mpn: string;
+  manufacturer: string;
 }
 
 /** Log entry tracking what happened to each raw row */
@@ -71,5 +90,21 @@ export interface BomConfig {
   use_raw_xml?: boolean;             // Infinition: Excel breaks SheetJS, parse raw XML
   gerber_search_path?: string;       // Where to look for Gerber files relative to BOM
   gerber_sibling_pattern?: string;   // Infinition: "PANEL - */Gerber & NC Drills/"
+  /**
+   * Additional MPN columns (beyond the primary `mpn` column) for customers
+   * that list second-source parts, e.g. "Alternate 1", "Sub MPN", "Second
+   * Source". Parser captures these into bom_line_alternates so the pricing
+   * review step can quote every alternate.
+   *
+   * Leave undefined to auto-detect via header keywords (alt/alternate/second
+   * source/sub mpn patterns). Explicitly set to [] to disable auto-detect.
+   */
+  alt_mpn_columns?: string[];
+  /**
+   * Manufacturer columns paired with alt_mpn_columns. Same length/order when
+   * present; when shorter, alternates without a matching mfr column fall back
+   * to the primary manufacturer.
+   */
+  alt_manufacturer_columns?: string[];
   notes?: string;
 }

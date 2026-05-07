@@ -122,6 +122,7 @@ export async function searchEsonicPrice(mpn: string): Promise<SupplierQuote[]> {
       lifecycle_status: null,
       datasheet_url: null,
       product_url: typeof p.productUrl === "string" ? p.productUrl : null,
+      description: typeof p.description === "string" ? (p.description as string) : null,
     });
   }
 

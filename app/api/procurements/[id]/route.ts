@@ -1,6 +1,6 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -8,10 +8,14 @@ export async function GET(
   const { id } = await params;
   const supabase = await createClient();
 
+  // procurements â†” jobs has TWO FKs (procurements.job_id and jobs.procurement_id),
+  // so PostgREST can't disambiguate. Hint with the constraint name; without
+  // the hint PostgREST returns a 300 ambiguity error and `procurement` ends
+  // up null, which the page then treats as a "not found".
   const { data: procurement, error } = await supabase
     .from("procurements")
     .select(
-      "id, proc_code, job_id, status, total_lines, lines_ordered, lines_received, notes, created_at, updated_at, jobs(job_number, status, quantity, customers(code, company_name), gmps(gmp_number, board_name))"
+      "id, proc_code, job_id, status, total_lines, lines_ordered, lines_received, notes, created_at, updated_at, jobs!procurements_job_id_fkey(job_number, status, quantity, customers(code, company_name), gmps(gmp_number, board_name))"
     )
     .eq("id", id)
     .single();
@@ -45,10 +49,20 @@ export async function PATCH(
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Admin-only â€” receive/order/status mutations all touch sourcing state.
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await req.json();
   const action: string = body.action ?? "receive_line"; // backward compat
 
-  // ── action: order_line ──────────────────────────────────────────────
+  // â”€â”€ action: order_line â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (action === "order_line") {
     const lineId: string | undefined = body.line_id;
     if (!lineId)
@@ -88,7 +102,7 @@ export async function PATCH(
       );
   }
 
-  // ── action: order_all ───────────────────────────────────────────────
+  // â”€â”€ action: order_all â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   else if (action === "order_all") {
     const { data: pendingLines, error: fetchError } = await supabase
       .from("procurement_lines")
@@ -115,7 +129,7 @@ export async function PATCH(
     }
   }
 
-  // ── action: receive_line (original behavior) ───────────────────────
+  // â”€â”€ action: receive_line (original behavior) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   else if (action === "receive_line") {
     const lineId: string | undefined = body.line_id;
     const qtyReceived: number | undefined = body.qty_received;
@@ -161,7 +175,7 @@ export async function PATCH(
       );
   }
 
-  // ── action: update_status ──────────────────────────────────────────
+  // â”€â”€ action: update_status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   else if (action === "update_status") {
     const newStatus: string | undefined = body.status;
     if (!newStatus)
@@ -204,7 +218,7 @@ export async function PATCH(
     return NextResponse.json(updated);
   }
 
-  // ── unknown action ─────────────────────────────────────────────────
+  // â”€â”€ unknown action â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   else {
     return NextResponse.json(
       { error: `Unknown action: ${action}` },
@@ -212,7 +226,7 @@ export async function PATCH(
     );
   }
 
-  // ── Recalculate procurement-level counts (shared by order/receive) ─
+  // â”€â”€ Recalculate procurement-level counts (shared by order/receive) â”€
   const { data: allLines } = await supabase
     .from("procurement_lines")
     .select("qty_ordered, qty_received, order_status")
@@ -270,7 +284,7 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: profile } = await supabase.from("users").select("role").eq("id", user.id).single();
-  if (profile?.role !== "ceo" && profile?.role !== "operations_manager") {
+  if (!isAdminRole(profile?.role)) {
     return NextResponse.json({ error: "Permission denied" }, { status: 403 });
   }
 
@@ -290,7 +304,7 @@ export async function DELETE(
   if ((blockingPOs ?? []).length > 0) {
     return NextResponse.json(
       {
-        error: `Cannot delete — ${blockingPOs!.length} supplier PO(s) reference this procurement. Delete the POs first.`,
+        error: `Cannot delete â€” ${blockingPOs!.length} supplier PO(s) reference this procurement. Delete the POs first.`,
         blocking: {
           supplier_pos: blockingPOs,
         },
@@ -299,8 +313,37 @@ export async function DELETE(
     );
   }
 
-  // Delete procurement_lines first
-  await admin.from("procurement_lines").delete().eq("procurement_id", procId);
+  // P7 cascade: block delete if any inventory_movements reference this PROC
+  // (consume_proc / buy_for_proc movements). Those FKs are NO ACTION, so
+  // letting the delete attempt fall through would surface a raw constraint
+  // violation. Operators should release / void the PROC's stock impact first.
+  const { count: movementCount } = await admin
+    .from("inventory_movements")
+    .select("id", { count: "exact", head: true })
+    .eq("proc_id", procId);
+  if ((movementCount ?? 0) > 0) {
+    return NextResponse.json(
+      {
+        error: `Cannot delete â€” ${movementCount} inventory movement(s) reference this PROC. The stock effect (consumption / buys) needs to be undone before the PROC can be removed.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  // P7 cascade: explicitly release any reserved inventory_allocations before
+  // the FK CASCADE wipes them. The CASCADE alone leaves no trace; releasing
+  // first means available_qty rebounds correctly even if a downstream observer
+  // (audit log, telemetry) reads the row before it's deleted.
+  const nowIso = new Date().toISOString();
+  await admin
+    .from("inventory_allocations")
+    .update({ status: "released", released_at: nowIso })
+    .eq("procurement_id", procId)
+    .eq("status", "reserved");
+
+  // procurement_lines / procurement_line_selections / inventory_allocations /
+  // pcb_orders / stencil_orders / supplier_quotes all CASCADE off procurements.id,
+  // so the single DELETE below is enough â€” no manual fan-out needed.
 
   // Delete the procurement record
   const { error } = await admin.from("procurements").delete().eq("id", procId);

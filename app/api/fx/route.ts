@@ -1,11 +1,11 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { fetchLiveRates, setManualRate, getRate } from "@/lib/pricing/fx";
-
 // Common distributor currencies we may need to convert from.
 const DEFAULT_CURRENCIES = ["USD", "EUR", "GBP", "CNY", "JPY", "AUD", "CHF", "HKD", "PLN"];
 
-/** GET — read current cached rates for a set of currency pairs (to=CAD by default). */
+/** GET â€” read current cached rates for a set of currency pairs (to=CAD by default). */
 export async function GET(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 }
 
 /**
- * POST — either fetch live rates from the provider, or save a manual override.
+ * POST â€” either fetch live rates from the provider, or save a manual override.
  * Body: { action: "fetch_live", currencies?: string[], to?: string }
  *     | { action: "manual", from: string, to: string, rate: number }
  */
@@ -34,8 +34,8 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: profile } = await supabase
     .from("users").select("role").eq("id", user.id).single();
-  if (!profile || (profile.role !== "ceo" && profile.role !== "operations_manager")) {
-    return NextResponse.json({ error: "CEO or operations manager role required" }, { status: 403 });
+  if (!profile || !isAdminRole(profile.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   let body: Record<string, unknown>;

@@ -30,11 +30,12 @@ interface BlockingInfo {
 interface DeleteBomButtonProps {
   bomId: string;
   bomName: string;
-  /** Where to redirect after delete. Defaults to /bom */
+  /** Where to redirect after delete. Defaults to /gmp (the BOM list index
+   *  was removed — BOMs now live under each GMP). */
   redirectTo?: string;
 }
 
-export function DeleteBomButton({ bomId, bomName, redirectTo = "/bom" }: DeleteBomButtonProps) {
+export function DeleteBomButton({ bomId, bomName, redirectTo = "/gmp" }: DeleteBomButtonProps) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);

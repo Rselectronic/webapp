@@ -34,7 +34,7 @@
 
 ### Dashboard (`/`)
 After login, the dashboard shows:
-- **8 KPI cards**: Active Customers, Open Quotes, Active Jobs, Outstanding Invoices, Quotes This Month, Jobs in Production, Avg Quote Value, Overdue Invoices
+- **7 KPI cards**: Active Customers, Open Quotes, Active Jobs, Outstanding Invoices, Quotes This Month, Jobs in Production, Overdue Invoices
 - **Recent Activity feed**: latest quotes, jobs, invoices created
 
 ### Navigation

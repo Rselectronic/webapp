@@ -11,6 +11,7 @@ interface InvoiceLineItem {
   quantity: number;
   per_unit: number;
   subtotal: number;
+  description?: string | null;
 }
 
 function fmt(n: number | null | undefined): string {
@@ -18,8 +19,10 @@ function fmt(n: number | null | undefined): string {
 }
 
 function fmtDate(iso?: string | null): string {
-  if (!iso) return new Date().toLocaleDateString("en-CA");
-  return new Date(iso).toLocaleDateString("en-CA");
+  // Pin to Montreal so a Vercel UTC server doesn't print "next day" for
+  // invoices issued after 8 PM ET.
+  const d = iso ? new Date(iso) : new Date();
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
 }
 
 function drawTextCenteredV(
@@ -124,7 +127,7 @@ export async function GET(
   const { data: invoice, error } = await supabase
     .from("invoices")
     .select(
-      "*, customers(code, company_name, contact_name, contact_email, contact_phone, billing_address, shipping_address, payment_terms), jobs(job_number, gmp_id, quantity, po_number, gmps(gmp_number, board_name), quotes(pricing))"
+      "*, customers(code, company_name, contact_name, contact_email, contact_phone, billing_address, shipping_address, payment_terms), jobs(job_number, gmp_id, quantity, po_number, gmps(gmp_number, board_name)), invoice_lines(id, quantity, unit_price, line_total, description, jobs(id, job_number, quantity, po_number, gmps(gmp_number, board_name)))"
     )
     .eq("id", id)
     .single();
@@ -158,91 +161,43 @@ export async function GET(
     quantity: number;
     po_number: string | null;
     gmps: { gmp_number: string; board_name: string | null } | null;
-    quotes: {
-      pricing: {
-        tiers?: { board_qty: number; subtotal: number; per_unit?: number }[];
-      };
-    } | null;
   } | null;
 
-  // Detect consolidated invoice by checking notes for the marker
-  let lineItems: InvoiceLineItem[] | undefined;
-  const notesStr = invoice.notes as string | null;
+  // Build line items directly from invoice_lines.  After migration 100 this
+  // is the canonical source of truth — single- vs multi-job invoices both
+  // resolve through the same path. "Consolidated" is determined by
+  // lines.length > 1, not a notes marker.
+  type EmbeddedLine = {
+    id: string;
+    quantity: number;
+    unit_price: number | string;
+    line_total: number | string;
+    description: string | null;
+    jobs: {
+      id: string;
+      job_number: string;
+      quantity: number;
+      po_number: string | null;
+      gmps: { gmp_number: string; board_name: string | null } | null;
+    } | null;
+  };
+  const rawLines = (invoice.invoice_lines as unknown as EmbeddedLine[]) ?? [];
+  let lineItems: InvoiceLineItem[] = rawLines.map((l) => ({
+    job_number: l.jobs?.job_number ?? "",
+    gmp_number: l.jobs?.gmps?.gmp_number ?? "",
+    board_name: l.jobs?.gmps?.board_name ?? null,
+    quantity: Number(l.quantity ?? 0),
+    per_unit: Math.round(Number(l.unit_price ?? 0) * 100) / 100,
+    subtotal: Math.round(Number(l.line_total ?? 0) * 100) / 100,
+    description: l.description ?? null,
+  }));
 
-  if (notesStr && notesStr.includes("Consolidated invoice for jobs:")) {
-    const jobListMatch = notesStr.match(
-      /Consolidated invoice for jobs:\s*(.+?)$/m
-    );
-    if (jobListMatch) {
-      const jobEntries = jobListMatch[1].split(",").map((s) => s.trim());
-      const jobNumbers = jobEntries.map((entry) => {
-        const match = entry.match(/^([^\s(]+)/);
-        return match ? match[1] : entry;
-      });
-
-      const { data: relatedJobs } = await supabase
-        .from("jobs")
-        .select(
-          "id, job_number, quantity, po_number, gmps(gmp_number, board_name), quotes(pricing)"
-        )
-        .in("job_number", jobNumbers);
-
-      if (relatedJobs && relatedJobs.length > 1) {
-        type RelatedJob = {
-          id: string;
-          job_number: string;
-          quantity: number;
-          po_number: string | null;
-          gmps: { gmp_number: string; board_name: string | null } | null;
-          quotes: {
-            pricing: {
-              tiers?: {
-                board_qty: number;
-                subtotal: number;
-                per_unit?: number;
-              }[];
-            };
-          } | null;
-        };
-
-        lineItems = (relatedJobs as unknown as RelatedJob[]).map((rj) => {
-          const tiers = rj.quotes?.pricing?.tiers;
-          let subtotal = 0;
-          let perUnit = 0;
-          if (tiers?.length) {
-            const matched =
-              tiers.find((t) => t.board_qty === rj.quantity) ?? tiers[0];
-            subtotal = matched.subtotal;
-            perUnit =
-              matched.per_unit ??
-              (rj.quantity > 0 ? matched.subtotal / rj.quantity : 0);
-          }
-          return {
-            job_number: rj.job_number,
-            gmp_number: rj.gmps?.gmp_number ?? "Unknown",
-            board_name: rj.gmps?.board_name,
-            quantity: rj.quantity,
-            per_unit: Math.round(perUnit * 100) / 100,
-            subtotal: Math.round(subtotal * 100) / 100,
-          };
-        });
-      }
-    }
-  }
-
-  // Build single-line items list if not a consolidated invoice.
-  if (!lineItems && job) {
-    const tiers = job.quotes?.pricing?.tiers;
-    let perUnit = 0;
-    let lineSubtotal = Number(invoice.subtotal) || 0;
-    if (tiers?.length) {
-      const matched = tiers.find((t) => t.board_qty === job.quantity) ?? tiers[0];
-      perUnit =
-        matched.per_unit ?? (job.quantity > 0 ? matched.subtotal / job.quantity : 0);
-      if (!lineSubtotal) lineSubtotal = matched.subtotal;
-    } else if (job.quantity > 0) {
-      perUnit = lineSubtotal / job.quantity;
-    }
+  // Defensive fallback: if the invoice somehow has no lines (shouldn't happen
+  // post-migration but belt-and-suspenders), synthesise a single line from
+  // the legacy job_id pointer.
+  if (lineItems.length === 0 && job) {
+    const lineSubtotal = Number(invoice.subtotal) || 0;
+    const perUnit = job.quantity > 0 ? lineSubtotal / job.quantity : 0;
     lineItems = [
       {
         job_number: job.job_number,
@@ -255,15 +210,26 @@ export async function GET(
     ];
   }
 
+  // Pull the PO number from the invoice line whose job carries one (multi-job
+  // invoices may have different POs per job; we render the one matching the
+  // first line, falling back to the legacy invoice.jobs.po_number).
+  const firstLineWithPO = rawLines.find((l) => l.jobs?.po_number);
+  const notesStr = invoice.notes as string | null;
+
   const invoiceNumber = invoice.invoice_number as string;
   const subtotalAmt = Number(invoice.subtotal) || 0;
   const tpsGst = Number(invoice.tps_gst) || 0;
   const tvqQst = Number(invoice.tvq_qst) || 0;
+  const hstAmt = Number(invoice.hst) || 0;
   const freight = Number(invoice.freight) || 0;
   const discount = Number(invoice.discount) || 0;
   const total = Number(invoice.total) || 0;
   const paymentTerms = customer?.payment_terms ?? "Net 30";
-  const poNumber = job?.po_number ?? "";
+  const poNumber = firstLineWithPO?.jobs?.po_number ?? job?.po_number ?? "";
+  const invoiceCurrency = (invoice.currency as string | null) ?? "CAD";
+  const invoiceTaxRegion =
+    (invoice.tax_region as string | null) ?? "QC";
+  const invoiceFxRate = Number(invoice.fx_rate_to_cad) || 1;
 
   // --- Build PDF with pdf-lib (pure JS, works on Vercel serverless) ---
   const pdfDoc = await PDFDocument.create();
@@ -599,14 +565,15 @@ export async function GET(
   // PO # | PRODUCT # | DESCRIPTION | QTY | UNIT PRICE | TOTAL AMOUNT
   // ============================================================
   const tableW = RM - LM;
-  // Column widths (proportional to Excel template):
-  // PO# 13% | Product# 22% | Description 34% | Qty 8% | Unit Price 11% | Total 12%
+  // Column widths — widened the right two columns so "UNIT PRICE" and
+  // "TOTAL AMOUNT" headers fit without clipping into each other.
+  // PO# 12% | Product# 18% | Description 30% | Qty 6% | Unit Price 14% | Total 20%
   const colPO = LM;
-  const colProd = LM + tableW * 0.13;
-  const colDesc = LM + tableW * 0.35;
-  const colQty = LM + tableW * 0.69;
-  const colUnit = LM + tableW * 0.77;
-  const colTotal = LM + tableW * 0.88;
+  const colProd = LM + tableW * 0.12;
+  const colDesc = LM + tableW * 0.30;
+  const colQty = LM + tableW * 0.60;
+  const colUnit = LM + tableW * 0.66;
+  const colTotal = LM + tableW * 0.80;
   const colEnd = RM;
 
   const tableHeaderH = 22;
@@ -724,12 +691,15 @@ export async function GET(
         color: darkText,
       });
 
-      // DESCRIPTION — board name / job number
-      const descParts: string[] = [];
-      if (item.board_name) descParts.push(item.board_name);
-      descParts.push(`PCB Assembly (Job ${item.job_number})`);
+      // DESCRIPTION — "PCB Assembly" by default. If the stored line
+      // description matches a non-recurring-charge marker (NRC or NRE),
+      // surface it verbatim so the engineering charge is clearly labelled.
+      // Job/GMP context is already in the PO# and PRODUCT# columns, so we
+      // deliberately don't repeat it here.
+      const storedDesc = (item.description ?? "").trim();
+      const isNreLine = /\bnr[ce]\b/i.test(storedDesc);
       const descText = truncateToWidth(
-        descParts.join(" — "),
+        isNreLine ? storedDesc : "PCB Assembly",
         colQty - colDesc - 10,
         helvetica,
         9
@@ -835,13 +805,32 @@ export async function GET(
 
   drawSummaryRow("Subtotal", fmt(subtotalAmt));
   drawSummaryRow("Discount", fmt(discount), { negate: discount > 0 });
-  drawSummaryRow("TPS/GST (5%)", fmt(tpsGst));
-  drawSummaryRow("TVQ/QST (9.975%)", fmt(tvqQst));
+  // Tax lines depend on the invoice's snapshotted region. Only render the
+  // lines that are actually populated — INTERNATIONAL invoices show no tax
+  // line at all, HST invoices show one HST line, QC shows the GST + QST split.
+  if (tpsGst > 0) {
+    drawSummaryRow("TPS/GST (5%)", fmt(tpsGst));
+  }
+  if (tvqQst > 0) {
+    drawSummaryRow("TVQ/QST (9.975%)", fmt(tvqQst));
+  }
+  if (hstAmt > 0) {
+    const hstRate = invoiceTaxRegion === "HST_15" ? "15%" : "13%";
+    drawSummaryRow(`HST (${hstRate})`, fmt(hstAmt));
+  }
   drawSummaryRow("Freight", fmt(freight));
   drawSummaryRow("TOTAL", fmt(total), { bold: true, double: true });
 
-  // Currency row
-  drawSummaryRow("Currency", "CAD");
+  // Currency row — shows the actual document currency. For USD, also surface
+  // the FX rate snapshot so accounting has the audit trail (the customer
+  // doesn't care, but the bank reconciliation does).
+  drawSummaryRow("Currency", invoiceCurrency);
+  if (invoiceCurrency === "USD" && invoiceFxRate > 0 && invoiceFxRate !== 1) {
+    drawSummaryRow(
+      "FX rate (CAD/USD)",
+      invoiceFxRate.toFixed(4)
+    );
+  }
 
   // --- Left panel: TERMS OF SALE AND OTHER COMMENTS / TAX ID ---
   const panelTop = summaryTop;
@@ -937,6 +926,10 @@ export async function GET(
 
   // Notes (if any) below the panel
   y -= 8;
+  // After migration 100, the legacy "Consolidated invoice for jobs: …"
+  // marker is no longer the source of truth for line items. We still skip
+  // rendering notes that contain it so old invoices with the marker baked
+  // into their notes don't show that boilerplate twice.
   if (notesStr && !notesStr.includes("Consolidated invoice for jobs:")) {
     page.drawText("NOTES", {
       x: LM,

@@ -1,8 +1,8 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { loadRsLogo } from "@/lib/pdf/helpers";
-
 interface POLine {
   mpn: string;
   description: string | null;
@@ -11,6 +11,10 @@ interface POLine {
   unit_price: number;
   line_total: number;
   dc?: string | null;
+  /** Internal RS reference (board letter + designator + M-Code + CPC). Helps
+   *  the supplier echo back our part identifier. NOT a CPC â€” suppliers don't
+   *  know our customer part codes. */
+  customer_ref?: string | null;
 }
 
 function fmtMoney(n: number): string {
@@ -21,8 +25,10 @@ function fmtMoney(n: number): string {
 }
 
 function fmtDate(iso?: string | null): string {
-  if (!iso) return new Date().toLocaleDateString("en-CA");
-  return new Date(iso).toLocaleDateString("en-CA");
+  // Pin to Montreal so the supplier PO date matches the day the buyer
+  // generated it, not whatever timezone the server happens to run in.
+  const d = iso ? new Date(iso) : new Date();
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
 }
 
 /** Truncate text to fit within a given pixel width. */
@@ -41,7 +47,7 @@ function truncate(
   return t + "\u2026";
 }
 
-// ── Colors (match the Excel template's restrained look) ────────────
+// â”€â”€ Colors (match the Excel template's restrained look) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const INK = rgb(0.08, 0.09, 0.11); // near-black
 const SUB = rgb(0.32, 0.36, 0.42); // muted slate
 const MUTED = rgb(0.55, 0.60, 0.66);
@@ -53,11 +59,16 @@ const WHITE = rgb(1, 1, 1);
 const ACCENT = rgb(0.78, 0.09, 0.14); // red title accent (classic PO look)
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const supabase = await createClient();
+  // ?json=1 â†’ return { pdf_url, pdf_path, po_number } instead of streaming
+  // the PDF binary. Used by the PROC page's "Generate PDF" button so it
+  // can patch a single row in local state instead of refetching the whole
+  // PO list (which collapses any expanded rows + flashes the loader).
+  const wantJson = req.nextUrl.searchParams.get("json") === "1";
 
   const {
     data: { user },
@@ -65,19 +76,49 @@ export async function GET(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Admin-only â€” supplier POs are financial documents (prices, suppliers,
+  // payment terms). RLS already blocks the row read for non-admins, but an
+  // explicit gate is clearer and avoids a confusing 404 when a production
+  // user hits this URL.
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (!profile || !isAdminRole(profile.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
-  // Fetch PO with related procurement -> job -> customer
+  // Fetch PO with related procurement -> job -> customer + supplier + contact.
+  // NOTE: there are TWO FKs between procurements and jobs (procurements.job_id
+  // and jobs.procurement_id). PostgREST cannot disambiguate the relationship
+  // automatically, so we hint the FK explicitly with `jobs!procurements_job_id_fkey`.
+  // We also pull procurements.customers directly because batch/procurement records
+  // may have customer_id set without a job_id.
   const { data: po, error } = await supabase
     .from("supplier_pos")
     .select(
-      "*, procurements(proc_code, jobs(job_number, customers(code, company_name)))"
+      `*,
+       procurements(
+         proc_code,
+         jobs!procurements_job_id_fkey(job_number, customers(code, company_name)),
+         customers(code, company_name)
+       ),
+       suppliers(id, code, legal_name, billing_address, payment_terms, default_currency),
+       supplier_contacts(id, name, email, phone)`
     )
     .eq("id", id)
     .single();
 
   if (error || !po) {
+    console.error("[supplier-pos PDF] PO lookup failed", {
+      id,
+      error: error?.message,
+      code: (error as { code?: string } | null)?.code,
+      details: (error as { details?: string } | null)?.details,
+    });
     return NextResponse.json(
-      { error: "Supplier PO not found" },
+      { error: "Supplier PO not found", details: error?.message },
       { status: 404 }
     );
   }
@@ -88,6 +129,25 @@ export async function GET(
       job_number: string;
       customers: { code: string; company_name: string } | null;
     } | null;
+    customers: { code: string; company_name: string } | null;
+  } | null;
+
+  const supplierFk = po.suppliers as unknown as {
+    id: string;
+    code: string;
+    legal_name: string;
+    billing_address: Record<string, string | undefined> | null;
+    // payment_terms is TEXT[] after migration 078. Postgrest serialises
+    // array-typed columns as JSON arrays; we still tolerate a legacy
+    // single-string value for any old code paths.
+    payment_terms: string[] | string | null;
+    default_currency: string | null;
+  } | null;
+  const supplierContact = po.supplier_contacts as unknown as {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
   } | null;
 
   const lines = (po.lines ?? []) as POLine[];
@@ -95,6 +155,16 @@ export async function GET(
 
   const procCode = procurement?.proc_code ?? null;
   const totalAmount = Number(po.total_amount) || 0;
+  // Currency: prefer the stored po.currency (added in migration 076), else CAD.
+  const currency = (po.currency as string | null) ?? "CAD";
+  // payment_terms can be an array (canonical) or a string (legacy). Render
+  // multiple terms as " Â· " separated for the PDF header.
+  const paymentTerms = (() => {
+    const pt = supplierFk?.payment_terms;
+    if (Array.isArray(pt) && pt.length > 0) return pt.join(" Â· ");
+    if (typeof pt === "string" && pt.trim().length > 0) return pt;
+    return "Net 30";
+  })();
 
   // Financial roll-ups
   const subtotal = lines.reduce(
@@ -106,7 +176,7 @@ export async function GET(
   const other = 0;
   const grandTotal = totalAmount > 0 ? totalAmount : subtotal + tax + shipping + other;
 
-  // ── Build PDF ────────────────────────────────────────────────────
+  // â”€â”€ Build PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const doc = await PDFDocument.create();
   const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -118,17 +188,23 @@ export async function GET(
   const MARGIN = 36;
   const CONTENT_W = PAGE_W - MARGIN * 2;
 
-  // Line-item table column layout (matches template: # | MPN | MFR | DC | QTY | UNIT | EXT)
+  // Line-item table column layout (template + Customer Ref):
+  //   # | CUSTOMER REF | MPN | MFR | DC | QTY | UNIT | EXT
+  // Customer Ref carries our internal "{board letters}{designator} {m_code} {cpc}"
+  // identifier so the supplier can echo it back on packing slips. We do NOT
+  // expose raw CPC values to suppliers â€” only the combined ref string.
   const COL = {
     num: { x: MARGIN, w: 26 },
-    mpn: { x: 0, w: 150 },
-    mfr: { x: 0, w: 120 },
-    dc: { x: 0, w: 36 },
-    qty: { x: 0, w: 40 },
-    unit: { x: 0, w: 70 },
+    ref: { x: 0, w: 88 },
+    mpn: { x: 0, w: 110 },
+    mfr: { x: 0, w: 92 },
+    dc: { x: 0, w: 32 },
+    qty: { x: 0, w: 36 },
+    unit: { x: 0, w: 60 },
     ext: { x: 0, w: 0 },
   };
-  COL.mpn.x = COL.num.x + COL.num.w;
+  COL.ref.x = COL.num.x + COL.num.w;
+  COL.mpn.x = COL.ref.x + COL.ref.w;
   COL.mfr.x = COL.mpn.x + COL.mpn.w;
   COL.dc.x = COL.mfr.x + COL.mfr.w;
   COL.qty.x = COL.dc.x + COL.dc.w;
@@ -139,7 +215,7 @@ export async function GET(
   let page = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
 
-  // ── Header: Company + PURCHASE ORDER title ──────────────────────
+  // â”€â”€ Header: Company + PURCHASE ORDER title â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Left: logo + company block
   let companyX = MARGIN;
   if (logo) {
@@ -188,7 +264,7 @@ export async function GET(
     color: ACCENT,
   });
 
-  // Meta box (Date / PO #) — two rows, right-aligned
+  // Meta box (Date / PO #) â€” two rows, right-aligned
   const metaBoxW = 200;
   const metaBoxX = PAGE_W - MARGIN - metaBoxW;
   const metaLabelW = 60;
@@ -267,7 +343,7 @@ export async function GET(
   // Advance y to whichever side is lower
   y = Math.min(y, metaY - metaRowH) - 18;
 
-  // ── SUPPLIER | SHIP TO blocks ───────────────────────────────────
+  // â”€â”€ SUPPLIER | SHIP TO blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const blockW = (CONTENT_W - 12) / 2;
   const blockH = 92;
   const supplierX = MARGIN;
@@ -322,10 +398,32 @@ export async function GET(
     }
   }
 
-  // Supplier block contents
+  // Supplier block contents â€” prefer the FK-linked supplier when present
+  // (modern POs created from supplier_quotes). Fall back to the legacy
+  // supplier_name/email snapshot for older POs.
   const supplierBody: string[] = [];
-  supplierBody.push(po.supplier_name || "");
-  if (po.supplier_email) supplierBody.push(po.supplier_email);
+  const displayName = supplierFk?.legal_name ?? po.supplier_name ?? "";
+  if (displayName) supplierBody.push(displayName);
+  // "Attn: <name> â€” <email>" for the chosen contact.
+  if (supplierContact?.name) {
+    let attn = `Attn: ${supplierContact.name}`;
+    if (supplierContact.email) attn += ` â€” ${supplierContact.email}`;
+    supplierBody.push(attn);
+  } else if (po.supplier_email) {
+    supplierBody.push(po.supplier_email);
+  }
+  // Address from billing_address JSONB.
+  const addr = supplierFk?.billing_address ?? null;
+  if (addr) {
+    if (addr.line1) supplierBody.push(addr.line1);
+    if (addr.line2) supplierBody.push(addr.line2);
+    const cityLine = [addr.city, addr.state_province, addr.postal_code]
+      .filter(Boolean)
+      .join(", ");
+    if (cityLine) supplierBody.push(cityLine);
+    if (addr.country) supplierBody.push(addr.country);
+  }
+  if (supplierContact?.phone) supplierBody.push(supplierContact.phone);
 
   drawBlock(
     page,
@@ -348,13 +446,13 @@ export async function GET(
 
   y = blockTop - blockH - 12;
 
-  // ── Order meta row: REQUISITIONER | SHIP VIA | CURRENCY | F.O.B. | PAYMENT TERMS ──
+  // â”€â”€ Order meta row: REQUISITIONER | SHIP VIA | CURRENCY | F.O.B. | PAYMENT TERMS â”€â”€
   const metaCols = [
     { label: "REQUISITIONER", value: "Anas Patel" },
     { label: "SHIP VIA", value: "Supplier Shipping" },
-    { label: "CURRENCY", value: "CAD" },
+    { label: "CURRENCY", value: currency },
     { label: "F.O.B.", value: "R.S. \u00C9lectronique Inc." },
-    { label: "PAYMENT TERMS", value: "Net 30" },
+    { label: "PAYMENT TERMS", value: paymentTerms },
   ];
   const colW = CONTENT_W / metaCols.length;
   const metaHeaderH = 16;
@@ -402,7 +500,7 @@ export async function GET(
   }
   y -= metaHeaderH + metaValueH + 14;
 
-  // ── Line item table ────────────────────────────────────────────
+  // â”€â”€ Line item table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const tableTop = y;
   const rowH = 18;
   const headerRowH = 20;
@@ -417,6 +515,7 @@ export async function GET(
     });
     const headers: [string, keyof typeof COL, "left" | "center" | "right"][] = [
       ["#", "num", "center"],
+      ["CUSTOMER REF", "ref", "left"],
       ["MANUFACTURER PN", "mpn", "left"],
       ["MANUFACTURER", "mfr", "left"],
       ["DC", "dc", "center"],
@@ -441,7 +540,7 @@ export async function GET(
     // Vertical column separators
     const sepYTop = yTop;
     const sepYBot = yTop - headerRowH;
-    for (const key of ["mpn", "mfr", "dc", "qty", "unit", "ext"] as const) {
+    for (const key of ["ref", "mpn", "mfr", "dc", "qty", "unit", "ext"] as const) {
       const c = COL[key];
       pg.drawLine({
         start: { x: c.x, y: sepYTop },
@@ -472,7 +571,7 @@ export async function GET(
       borderWidth: 1,
     });
     // Redraw vertical separators from top to bottom
-    for (const key of ["mpn", "mfr", "dc", "qty", "unit", "ext"] as const) {
+    for (const key of ["ref", "mpn", "mfr", "dc", "qty", "unit", "ext"] as const) {
       const c = COL[key];
       pg.drawLine({
         start: { x: c.x, y: top },
@@ -532,6 +631,21 @@ export async function GET(
     });
 
     if (line) {
+      // Customer Ref (RS internal identifier â€” not a CPC)
+      const refStr = line.customer_ref ?? "";
+      if (refStr) {
+        page.drawText(
+          truncate(refStr, COL.ref.w - 10, fontRegular, size),
+          {
+            x: COL.ref.x + 6,
+            y: textY,
+            size,
+            font: fontRegular,
+            color: INK,
+          }
+        );
+      }
+
       // MPN
       page.drawText(
         truncate(line.mpn || "", COL.mpn.w - 10, fontRegular, size),
@@ -608,7 +722,7 @@ export async function GET(
   drawTableBorder(page, pageTableTop, rowY);
   y = rowY - 10;
 
-  // ── Totals panel (right side) ─────────────────────────────────
+  // â”€â”€ Totals panel (right side) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const totalsW = 220;
   const totalsX = PAGE_W - MARGIN - totalsW;
   const totalRowH = 16;
@@ -617,7 +731,7 @@ export async function GET(
     { label: "TAX", value: fmtMoney(tax) },
     { label: "SHIPPING", value: fmtMoney(shipping) },
     { label: "OTHER", value: fmtMoney(other) },
-    { label: "TOTAL", value: fmtMoney(grandTotal), emphasize: true },
+    { label: `TOTAL (${currency})`, value: fmtMoney(grandTotal), emphasize: true },
   ];
 
   let ty = y;
@@ -663,7 +777,7 @@ export async function GET(
     ty -= totalRowH;
   }
 
-  // ── Comments / Special Instructions (left side, same vertical band as totals) ──
+  // â”€â”€ Comments / Special Instructions (left side, same vertical band as totals) â”€â”€
   const commentsW = CONTENT_W - totalsW - 12;
   const commentsH = totalRowH * totalsRows.length;
   const commentsX = MARGIN;
@@ -702,7 +816,7 @@ export async function GET(
   commentsBody.push(
     `All shipments must reference PO # ${po.po_number} on packing slip and invoice.`
   );
-  commentsBody.push(`All amounts in Canadian Dollars (CAD).`);
+  commentsBody.push(`All amounts in ${currency}.`);
 
   let cy = commentsTop - 16 - 12;
   for (const cl of commentsBody) {
@@ -718,7 +832,7 @@ export async function GET(
 
   y = ty - 18;
 
-  // ── Authorized signature block ───────────────────────────────
+  // â”€â”€ Authorized signature block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const sigLineW = 200;
   page.drawLine({
     start: { x: MARGIN, y: y },
@@ -765,7 +879,7 @@ export async function GET(
 
   y -= 30;
 
-  // ── Terms & conditions footer ─────────────────────────────────
+  // â”€â”€ Terms & conditions footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const termsY = Math.max(y, MARGIN + 40);
   page.drawLine({
     start: { x: MARGIN, y: termsY },
@@ -801,11 +915,15 @@ export async function GET(
     color: MUTED,
   });
 
-  // ── Serialize ─────────────────────────────────────────────────
+  // â”€â”€ Serialize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const pdfBytes = await doc.save();
 
-  // Upload to Supabase Storage
-  const customerCode = procurement?.jobs?.customers?.code ?? "unknown";
+  // Upload to Supabase Storage. Fall back to procurement.customers when the
+  // PROC has no job (e.g. batch procurements where job_id is null).
+  const customerCode =
+    procurement?.jobs?.customers?.code ??
+    procurement?.customers?.code ??
+    "unknown";
   const storagePath = `${customerCode}/${po.po_number}.pdf`;
 
   await supabase.storage.from("procurement").upload(storagePath, pdfBytes, {
@@ -818,6 +936,26 @@ export async function GET(
     .from("supplier_pos")
     .update({ pdf_path: storagePath })
     .eq("id", id);
+
+  // JSON mode: skip streaming the PDF and return a freshly-signed URL the
+  // client can plug into its existing "Open PDF" link without refetching.
+  if (wantJson) {
+    let pdf_url: string | null = null;
+    try {
+      const { data: signed } = await supabase.storage
+        .from("procurement")
+        .createSignedUrl(storagePath, 60 * 60 * 24);
+      pdf_url = signed?.signedUrl ?? null;
+    } catch {
+      pdf_url = null;
+    }
+    return NextResponse.json({
+      id,
+      po_number: po.po_number,
+      pdf_path: storagePath,
+      pdf_url,
+    });
+  }
 
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {

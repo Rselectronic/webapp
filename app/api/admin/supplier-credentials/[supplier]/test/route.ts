@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -7,7 +8,7 @@ import {
 } from "@/lib/supplier-credentials";
 import { testSupplierConnection } from "@/lib/supplier-tests";
 
-async function requireCeo() {
+async function requireAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -24,10 +25,10 @@ async function requireCeo() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
+  if (!isAdminRole(profile?.role)) {
     return {
       user: null,
-      error: NextResponse.json({ error: "CEO role required" }, { status: 403 }),
+      error: NextResponse.json({ error: "Admin role required" }, { status: 403 }),
     };
   }
 
@@ -56,7 +57,7 @@ async function validateSupplier(
  * Runs a live connection test against the supplier's API using the stored
  * (encrypted) credentials. Returns { ok, message, details? }.
  *
- * - HTTP 200 for a completed test (even if auth was rejected — that's a
+ * - HTTP 200 for a completed test (even if auth was rejected â€” that's a
  *   valid result, not an HTTP error).
  * - HTTP 400 if no credentials are configured.
  * - HTTP 401/403 for auth on the admin route itself.
@@ -65,7 +66,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ supplier: string }> }
 ) {
-  const { user, error } = await requireCeo();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   const { supplier } = await params;
@@ -85,7 +86,7 @@ export async function POST(
     );
   }
 
-  // Optional body: { mpn?: string }. Empty/missing → undefined → test
+  // Optional body: { mpn?: string }. Empty/missing â†’ undefined â†’ test
   // function uses its per-distributor default.
   const body = (await req.json().catch(() => ({}))) as { mpn?: unknown };
   const mpn =

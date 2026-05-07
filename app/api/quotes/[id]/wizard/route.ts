@@ -1,29 +1,28 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
 // ---------------------------------------------------------------------------
-// PATCH /api/quotes/[id]/wizard — generic step-by-step saver for the wizard.
+// PATCH /api/quotes/[id]/wizard â€” generic step-by-step saver for the wizard.
 //
 // Body allows any of the known wizard fields. Unknown fields are dropped.
-// Validation is permissive — the client only sends what the user just edited.
+// Validation is permissive â€” the client only sends what the user just edited.
 //
-//   { tier_quantities: [50, 100, 500] }      — Step 1
-//   { procurement_mode: 'turnkey' }          — Step 1
-//   { wizard_status: 'quantities_done' }     — Step 1 → Step 2 transition
-//   { boards_per_panel: 4 }                  — Step 3
-//   { ipc_class: 2 }                         — Step 3
-//   { solder_type: 'leaded' }                — Step 3
-//   { assembly_type: 'TB' }                  — Step 3 (legacy field kept for PDF)
-//   { pinned_preference: '<uuid>' }          — Step 2 auto-pick
-//   { tier_pcb_prices: [{ qty, pcb_unit_price }] }  — Step 3 (writes into quantities JSONB)
+//   { tier_quantities: [50, 100, 500] }      â€” Step 1
+//   { procurement_mode: 'turnkey' }          â€” Step 1
+//   { wizard_status: 'quantities_done' }     â€” Step 1 â†’ Step 2 transition
+//   { boards_per_panel: 4 }                  â€” Step 3
+//   { ipc_class: 2 }                         â€” Step 3
+//   { solder_type: 'leaded' }                â€” Step 3
+//   { board_side: 'single' | 'double' }      â€” Step 3 (writes onto gmps.board_side)
+//   { pinned_preference: '<uuid>' }          â€” Step 2 auto-pick
+//   { tier_pcb_prices: [{ qty, pcb_unit_price }] }  â€” Step 3 (writes into quantities JSONB)
 // ---------------------------------------------------------------------------
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const PROCUREMENT_MODES = new Set([
   "turnkey",
-  "consign_parts_supplied",
-  "consign_pcb_supplied",
+  "consignment",
   "assembly_only",
 ]);
 
@@ -34,7 +33,7 @@ const WIZARD_STATUSES = new Set([
   "complete",
 ]);
 
-const ASSEMBLY_TYPES = new Set(["TB", "TS", "CS", "CB", "AS"]);
+const BOARD_SIDES = new Set(["single", "double"]);
 const SOLDER_TYPES = new Set(["leaded", "leadfree", "lead-free", "lead_free"]);
 
 export async function PATCH(
@@ -59,8 +58,8 @@ export async function PATCH(
 
   const { data: profile } = await supabase
     .from("users").select("role").eq("id", user.id).single();
-  if (!profile || (profile.role !== "ceo" && profile.role !== "operations_manager")) {
-    return NextResponse.json({ error: "CEO or operations manager role required" }, { status: 403 });
+  if (!profile || !isAdminRole(profile.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   // Build the update payload from validated fields only.
@@ -89,14 +88,18 @@ export async function PATCH(
     }
   }
 
-  if ("assembly_type" in body) {
-    const v = body.assembly_type;
+  // board_side is stored on `gmps`, not on `quotes`. We collect it here and
+  // apply it to the linked GMP after the quote update succeeds (or before,
+  // if the quote update is a no-op for everything else).
+  let pendingGmpBoardSide: "single" | "double" | null | "INVALID" | undefined = undefined;
+  if ("board_side" in body) {
+    const v = body.board_side;
     if (v === null) {
-      update.assembly_type = null;
-    } else if (typeof v === "string" && ASSEMBLY_TYPES.has(v)) {
-      update.assembly_type = v;
+      pendingGmpBoardSide = null;
+    } else if (typeof v === "string" && BOARD_SIDES.has(v)) {
+      pendingGmpBoardSide = v as "single" | "double";
     } else {
-      return NextResponse.json({ error: "Invalid assembly_type" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid board_side (expected 'single' or 'double')" }, { status: 400 });
     }
   }
 
@@ -136,7 +139,7 @@ export async function PATCH(
     }
   }
 
-  // tier_quantities — stored inside `quantities` JSONB so we don't have to
+  // tier_quantities â€” stored inside `quantities` JSONB so we don't have to
   // change the DB schema for something this flexible.
   if ("tier_quantities" in body) {
     const raw = body.tier_quantities;
@@ -155,26 +158,45 @@ export async function PATCH(
     update.quantities = { tiers: unique };
   }
 
-  if (Object.keys(update).length === 0) {
+  if (Object.keys(update).length === 0 && pendingGmpBoardSide === undefined) {
     return NextResponse.json({ error: "No updatable fields provided" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from("quotes")
-    .update(update)
-    .eq("id", id)
-    .select()
-    .maybeSingle();
+  // Apply quotes update (if anything to update) and capture gmp_id either
+  // way so we can mirror board_side onto the GMP.
+  let quoteRow: Record<string, unknown> | null = null;
+  if (Object.keys(update).length > 0) {
+    const { data, error } = await supabase
+      .from("quotes")
+      .update(update)
+      .eq("id", id)
+      .select()
+      .maybeSingle();
 
-  if (error) {
-    return NextResponse.json(
-      { error: "Failed to update quote", details: error.message },
-      { status: 500 }
-    );
-  }
-  if (!data) {
-    return NextResponse.json({ error: "Quote not found" }, { status: 404 });
+    if (error) {
+      return NextResponse.json(
+        { error: "Failed to update quote", details: error.message },
+        { status: 500 }
+      );
+    }
+    if (!data) {
+      return NextResponse.json({ error: "Quote not found" }, { status: 404 });
+    }
+    quoteRow = data;
   }
 
-  return NextResponse.json({ ok: true, quote: data });
+  if (pendingGmpBoardSide !== undefined) {
+    const { data: q } = quoteRow
+      ? { data: quoteRow as { gmp_id?: string } }
+      : await supabase.from("quotes").select("gmp_id").eq("id", id).maybeSingle();
+    const gmpId = (q as { gmp_id?: string } | null)?.gmp_id;
+    if (gmpId) {
+      await supabase
+        .from("gmps")
+        .update({ board_side: pendingGmpBoardSide })
+        .eq("id", gmpId);
+    }
+  }
+
+  return NextResponse.json({ ok: true, quote: quoteRow });
 }

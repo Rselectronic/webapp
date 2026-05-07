@@ -2,7 +2,9 @@ import { getCredential } from "@/lib/supplier-credentials";
 import type { SupplierQuote, PriceBreak } from "./types";
 
 // ---------------------------------------------------------------------------
-// Newark / Element14 keyword-search client (Canada store).
+// Newark keyword-search client (Canada store). Hits element14.com's catalog
+// API — that's just the API's hostname, the brand we display and ship under
+// is always "Newark".
 // Endpoint: GET api.element14.com/catalog/products?...
 // Auth:     API key in the query string (callinfo.apiKey — lowercase "c" on
 //           purpose; the rest of the params use callInfo with capital I; this
@@ -116,9 +118,14 @@ export async function searchNewarkPrice(mpn: string): Promise<SupplierQuote[]> {
 
     const stock = p.stock as { level?: unknown; leastLeadTime?: unknown } | undefined;
     const level = stock ? Number(stock.level) : Number(p.inv);
-    const leadTimeDays = stock && Number.isFinite(Number(stock.leastLeadTime))
-      ? Number(stock.leastLeadTime)
-      : null;
+    // Element14 publishes leastLeadTime in days. A value of 0 means "in stock
+    // today" — not a real lead time, so normalize to null (matches the other
+    // adapters' treatment of the in-stock case).
+    const leastLeadTimeNum = stock ? Number(stock.leastLeadTime) : NaN;
+    const leadTimeDays =
+      Number.isFinite(leastLeadTimeNum) && leastLeadTimeNum > 0
+        ? Math.round(leastLeadTimeNum)
+        : null;
 
     // NB: Element14 field name has a typo — "translatedMinimumOrderQuality"
     // really means "Quantity". Don't "fix" it, match their schema.
@@ -143,6 +150,11 @@ export async function searchNewarkPrice(mpn: string): Promise<SupplierQuote[]> {
       lifecycle_status: (p.productStatus as string | null) ?? null,
       datasheet_url: getFirstDatasheet(p.datasheets),
       product_url: (p.productURL as string | null) ?? null,
+      description: typeof p.displayName === "string"
+        ? (p.displayName as string)
+        : typeof p.translatedManufacturerPartNumber === "string"
+          ? null
+          : null,
     });
   }
 

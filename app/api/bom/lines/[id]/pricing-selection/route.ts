@@ -1,7 +1,7 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRate } from "@/lib/pricing/fx";
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface SelectionBody {
@@ -14,15 +14,15 @@ interface SelectionBody {
   selected_stock_qty?: number | null;
   warehouse_code?: string | null;
   notes?: string | null;
-  /** Optional override — if not provided, we look up the cached FX rate. */
+  /** Optional override â€” if not provided, we look up the cached FX rate. */
   fx_rate?: number | null;
   /** Reporting currency (defaults to CAD). */
   reporting_currency?: string;
 }
 
 /**
- * POST — upsert a per-tier supplier pick for a BOM line.
- * DELETE — remove the pick for a specific tier.
+ * POST â€” upsert a per-tier supplier pick for a BOM line.
+ * DELETE â€” remove the pick for a specific tier.
  */
 export async function POST(
   req: Request,
@@ -53,13 +53,51 @@ export async function POST(
     return NextResponse.json({ error: "selected_currency required" }, { status: 400 });
   }
 
+  // Sanity check â€” cross-reference against api_pricing_cache for the same
+  // (supplier, supplier_part_number) and reject a unit price that's absurdly
+  // higher than the cheapest break on that cached quote. This catches cases
+  // where the client accidentally submits an extended price (unit Ã— order_qty)
+  // instead of a unit price, or any other data-corruption write. The ratio
+  // threshold (100Ã—) is deliberately loose â€” a legitimate price-break spread
+  // for the same part is almost always under 20Ã— (qty-1 vs qty-10000 reel).
+  const adminForCheck = await createClient(); // RLS-safe; same as main client
+  if (body.supplier_part_number) {
+    const { data: cacheRows } = await adminForCheck
+      .from("api_pricing_cache")
+      .select("price_breaks, unit_price")
+      .eq("source", body.supplier)
+      .eq("supplier_part_number", body.supplier_part_number)
+      .limit(1);
+    const cached = cacheRows?.[0];
+    if (cached) {
+      const breaks = (cached.price_breaks as { unit_price?: number }[] | null) ?? [];
+      const candidatePrices = [
+        ...breaks.map((b) => b?.unit_price).filter((p): p is number => Number.isFinite(p ?? NaN) && (p ?? 0) > 0),
+        ...(Number.isFinite(cached.unit_price ?? NaN) && (cached.unit_price ?? 0) > 0
+          ? [cached.unit_price as number]
+          : []),
+      ];
+      if (candidatePrices.length > 0) {
+        const minCached = Math.min(...candidatePrices);
+        if (body.selected_unit_price > minCached * 100) {
+          return NextResponse.json(
+            {
+              error: `Rejected: unit price ${body.selected_unit_price} is ${Math.round(body.selected_unit_price / minCached)}Ã— the smallest cached break (${minCached}) â€” likely an extended price by mistake. Re-pin from the pricing review panel.`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: profile } = await supabase
     .from("users").select("role").eq("id", user.id).single();
-  if (!profile || (profile.role !== "ceo" && profile.role !== "operations_manager")) {
-    return NextResponse.json({ error: "CEO or operations manager role required" }, { status: 403 });
+  if (!profile || !isAdminRole(profile.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   const reportingCurrency = body.reporting_currency ?? "CAD";
@@ -80,7 +118,7 @@ export async function POST(
     if (!fx) {
       return NextResponse.json(
         {
-          error: `No FX rate cached for ${body.selected_currency} → ${reportingCurrency}. Click "Fetch Live Rates" or pass fx_rate explicitly.`,
+          error: `No FX rate cached for ${body.selected_currency} â†’ ${reportingCurrency}. Click "Fetch Live Rates" or pass fx_rate explicitly.`,
         },
         { status: 400 }
       );
@@ -142,8 +180,8 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: profile } = await supabase
     .from("users").select("role").eq("id", user.id).single();
-  if (!profile || (profile.role !== "ceo" && profile.role !== "operations_manager")) {
-    return NextResponse.json({ error: "CEO or operations manager role required" }, { status: 403 });
+  if (!profile || !isAdminRole(profile.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   const { error } = await supabase

@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# local-only data dumps (customer CSVs, procurement exports, etc.)
+/data/
+
 # dependencies
 /node_modules
 /.pnp

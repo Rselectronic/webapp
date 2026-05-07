@@ -57,9 +57,18 @@ export async function loadRsLogo(doc: PDFDocument): Promise<PDFImage | null> {
   }
 }
 
+// Render a date in Montreal time. PDFs go out to customers and must show
+// the same calendar day regardless of where the server runs (Vercel = UTC)
+// — without `timeZone: "America/Toronto"` an invoice issued at 8 PM ET
+// would print the next day's date in production.
 export function fmtDate(iso?: string | null): string {
-  if (!iso) return new Date().toLocaleDateString("en-CA");
-  return new Date(iso).toLocaleDateString("en-CA");
+  const d = iso ? new Date(iso) : new Date();
+  return d.toLocaleDateString("en-CA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "America/Toronto",
+  });
 }
 
 /**
@@ -86,15 +95,22 @@ export function drawHeader(
   let y = pageHeight - margin;
   let textStartX = margin;
 
-  // Draw logo on the left if provided
+  // Draw logo on the left if provided. The text block on the right runs
+  // from the title's cap height (~y + 11) down to the bottom subtitle's
+  // descender (~y - 38), so its visual midline sits around y - 13.
+  // Anchoring the logo's center to that midline lines the two visual
+  // blocks up — without this the logo's top sits at the page margin
+  // while the title baseline is also at the page margin, leaving the
+  // logo dangling well below the last subtitle.
   if (logo) {
     const logoMaxH = 48;
     const scale = logoMaxH / logo.height;
     const logoW = logo.width * scale;
     const logoH = logoMaxH;
+    const textMidY = y - 13;
     page.drawImage(logo, {
       x: margin,
-      y: y - logoH,
+      y: textMidY - logoH / 2,
       width: logoW,
       height: logoH,
     });

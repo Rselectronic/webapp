@@ -82,29 +82,48 @@ async function fetchLcscProduct(
     signature,
   });
 
-  try {
-    const res = await fetch(`${LCSC_SEARCH_URL}?${params.toString()}`, {
-      method: "GET",
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) {
-      console.warn(`[lcsc] HTTP ${res.status} for mpn=${mpn}`);
+  const url = `${LCSC_SEARCH_URL}?${params.toString()}`;
+  // Retry transient network failures. LCSC drops a non-trivial share of
+  // requests when 3–4 calls hit concurrently ("fetch failed" / ECONNRESET).
+  // Two retries with small jittered backoff reliably clears those without
+  // masking real outages — API-level errors (HTTP non-2xx, code≠200) are
+  // still returned as null on the first attempt.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        console.warn(`[lcsc] HTTP ${res.status} for mpn=${mpn}`);
+        return null;
+      }
+      const data = (await res.json()) as {
+        success?: boolean;
+        code?: number;
+        result?: { product_list?: unknown[] };
+      };
+      if (data.code !== 200 || !data.success) return null;
+      const products = Array.isArray(data.result?.product_list) ? data.result.product_list : [];
+      return (products[0] as Record<string, unknown>) ?? null;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt < MAX_ATTEMPTS) {
+        // Silent retry — LCSC drops a small percentage of requests even when
+        // serialized, and the retry almost always succeeds. Logging every
+        // attempt was misleading (looked like a systemic outage when it was
+        // just the normal transient-failure floor).
+        const delay = 150 * attempt + Math.floor(Math.random() * 100);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      console.warn(`[lcsc] network error for mpn=${mpn} — ${msg} (gave up after ${MAX_ATTEMPTS} attempts)`);
       return null;
     }
-    const data = (await res.json()) as {
-      success?: boolean;
-      code?: number;
-      result?: { product_list?: unknown[] };
-    };
-    if (data.code !== 200 || !data.success) return null;
-    const products = Array.isArray(data.result?.product_list) ? data.result.product_list : [];
-    return (products[0] as Record<string, unknown>) ?? null;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn(`[lcsc] network error for mpn=${mpn} — ${msg}`);
-    return null;
   }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -187,8 +206,19 @@ export async function searchLcscQuotes(mpn: string): Promise<SupplierQuote[]> {
     warehouse_code: null,
     ncnr: null,
     franchised: null,
-    lifecycle_status: null,
+    lifecycle_status:
+      typeof product.status === "string" && product.status.trim().length > 0
+        ? product.status.trim()
+        : typeof product.lifecycle === "string" && product.lifecycle.trim().length > 0
+          ? product.lifecycle.trim()
+          : null,
     datasheet_url: typeof datasheet === "string" ? datasheet : null,
     product_url: null,
+    description:
+      typeof product.title === "string"
+        ? product.title
+        : typeof product.description === "string"
+          ? (product.description as string)
+          : null,
   }];
 }

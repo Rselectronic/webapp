@@ -39,16 +39,19 @@ async function getTtiCredentials(): Promise<TtiCreds | null> {
 function parseLeadTime(raw: unknown): number | null {
   if (typeof raw !== "string") return null;
   const t = raw.trim().toLowerCase();
-  if (t === "stock" || t === "in stock") return 0;
-  const m = t.match(/(\d+)\s*(day|week|month)/);
+  // "Stock" / "In Stock" means the part is available now — not a real lead
+  // time. Return null so downstream consumers treat it as "unknown" rather
+  // than "0 days shipping".
+  if (t === "stock" || t === "in stock") return null;
+  // Accept "12 Weeks", "12 Week", "60 Days", "60 days", or bare "60" (days).
+  const m = t.match(/(\d+)\s*(day|days|week|weeks|month|months)?/);
   if (!m) return null;
   const n = parseInt(m[1], 10);
-  if (!Number.isFinite(n)) return null;
-  switch (m[2]) {
-    case "day":   return n;
-    case "week":  return n * 7;
-    case "month": return n * 30;
-  }
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const unit = m[2];
+  if (!unit || unit.startsWith("day")) return n;
+  if (unit.startsWith("week")) return n * 7;
+  if (unit.startsWith("month")) return n * 30;
   return null;
 }
 
@@ -119,6 +122,7 @@ export async function searchTtiPrice(mpn: string): Promise<SupplierQuote[]> {
       lifecycle_status: null,
       datasheet_url: (p.datasheetURL as string | null) ?? null,
       product_url: (p.buyUrl as string | null) ?? null,
+      description: typeof p.description === "string" ? (p.description as string) : null,
     });
   }
 

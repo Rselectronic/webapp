@@ -45,6 +45,12 @@ export default async function EmailTemplatesPage({
   if (params.action === "new") {
     return (
       <div className="space-y-6">
+        <Link href="/settings">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Settings
+          </Button>
+        </Link>
         <Link href="/settings/email-templates">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -66,6 +72,12 @@ export default async function EmailTemplatesPage({
     if (!template) {
       return (
         <div className="space-y-6">
+          <Link href="/settings">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Settings
+            </Button>
+          </Link>
           <Link href="/settings/email-templates">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -79,6 +91,12 @@ export default async function EmailTemplatesPage({
 
     return (
       <div className="space-y-6">
+        <Link href="/settings">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Settings
+          </Button>
+        </Link>
         <Link href="/settings/email-templates">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="mr-2 h-4 w-4" />

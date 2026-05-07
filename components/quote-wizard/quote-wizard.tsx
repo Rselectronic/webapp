@@ -7,6 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Check, Loader2, X, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { PricingReviewPanel } from "@/components/pricing-review/pricing-review-panel";
@@ -14,8 +21,7 @@ import { PricingReviewPanel } from "@/components/pricing-review/pricing-review-p
 type WizardStatus = "draft" | "quantities_done" | "pricing_done" | "complete";
 type ProcurementMode =
   | "turnkey"
-  | "consign_parts_supplied"
-  | "consign_pcb_supplied"
+  | "consignment"
   | "assembly_only";
 
 interface WizardInitial {
@@ -25,8 +31,15 @@ interface WizardInitial {
   boards_per_panel: number | null;
   ipc_class: number | null;
   solder_type: string | null;
-  assembly_type: string | null;
+  /** Physical layout — sourced from gmps.board_side. */
+  board_side: "single" | "double" | null;
   pinned_preference: string | null;
+  tier_pcb_prices: Record<string, number>;
+  nre_programming: number | null;
+  nre_stencil: number | null;
+  nre_pcb_fab: number | null;
+  shipping_flat: number | null;
+  pcb_input_mode: "unit" | "extended" | null;
 }
 
 // Bundle of data the PricingReviewPanel needs, loaded by the server page so
@@ -40,6 +53,9 @@ interface PricingData {
   overages: Parameters<typeof PricingReviewPanel>[0]["overages"];
   preferences: NonNullable<Parameters<typeof PricingReviewPanel>[0]["initialPreferences"]>;
   customerSuppliedLineIds: string[];
+  priorCustomerSuppliedByLineId: NonNullable<
+    Parameters<typeof PricingReviewPanel>[0]["priorCustomerSuppliedByLineId"]
+  >;
   credentialStatus: Record<string, boolean>;
 }
 
@@ -61,16 +77,10 @@ const PROCUREMENT_OPTIONS: Array<{
     description: "RS procures all components AND the PCB, then assembles.",
   },
   {
-    value: "consign_parts_supplied",
-    label: "Consignment — customer supplies parts",
+    value: "consignment",
+    label: "Consignment (C)",
     description:
-      "Customer ships the components to RS. RS procures the PCB and does the assembly.",
-  },
-  {
-    value: "consign_pcb_supplied",
-    label: "Consignment — customer supplies PCB",
-    description:
-      "Customer ships the bare PCBs to RS. RS procures all components and does the assembly.",
+      "Customer supplies parts and/or PCBs. RS performs assembly and procures whatever the customer does not supply.",
   },
   {
     value: "assembly_only",
@@ -81,15 +91,17 @@ const PROCUREMENT_OPTIONS: Array<{
 ];
 
 /** Procurement modes that require the component pricing step. */
+// Consignment may or may not involve component procurement — treat it as
+// needing pricing (step 2) and let the operator zero-out lines as needed.
 const MODES_NEED_PRICING = new Set<ProcurementMode>([
   "turnkey",
-  "consign_pcb_supplied",
+  "consignment",
 ]);
 
 /** Procurement modes where RS charges for PCB fab (step 3 shows PCB inputs). */
 const MODES_NEED_PCB_PRICE = new Set<ProcurementMode>([
   "turnkey",
-  "consign_parts_supplied",
+  "consignment",
 ]);
 
 export function QuoteWizard({ quoteId, bomId: _bomId, initial, pricingData }: Props) {
@@ -318,6 +330,7 @@ export function QuoteWizard({ quoteId, bomId: _bomId, initial, pricingData }: Pr
             initialPreferences={pricingData.preferences}
             pinnedPreferenceId={initial.pinned_preference}
             initialCustomerSupplied={pricingData.customerSuppliedLineIds}
+            priorCustomerSuppliedByLineId={pricingData.priorCustomerSuppliedByLineId}
           />
 
           <div className="flex justify-between pt-2">
@@ -361,6 +374,22 @@ export function QuoteWizard({ quoteId, bomId: _bomId, initial, pricingData }: Pr
 // Step 3 — board details + per-tier PCB price + NRE + calculate
 // ---------------------------------------------------------------------------
 
+interface PricingLineBreakdown {
+  bom_line_id: string;
+  mpn: string;
+  cpc?: string | null;
+  m_code: string | null;
+  qty_per_board: number;
+  board_qty: number;
+  overage_extras: number;
+  order_qty: number;
+  unit_price: number;
+  unit_price_source: "override" | "cache" | "missing";
+  markup_pct: number;
+  extended_before_markup: number;
+  extended_after_markup: number;
+}
+
 interface PricingTierResult {
   board_qty: number;
   component_cost: number;
@@ -372,6 +401,7 @@ interface PricingTierResult {
   per_unit: number;
   components_with_price: number;
   components_missing_price: number;
+  line_breakdowns?: PricingLineBreakdown[];
 }
 
 interface PricingResult {
@@ -380,7 +410,9 @@ interface PricingResult {
   missing_price_components?: Array<{ mpn: string; description: string; qty_per_board: number }>;
 }
 
-const SKIP_PCB: Set<ProcurementMode> = new Set(["consign_pcb_supplied", "assembly_only"]);
+// Only assembly_only always skips PCB. Consignment is ambiguous (customer may
+// supply parts only, PCB only, or both) — the operator controls PCB pricing.
+const SKIP_PCB: Set<ProcurementMode> = new Set(["assembly_only"]);
 
 function Step3Form({
   quoteId,
@@ -397,34 +429,62 @@ function Step3Form({
   tiers: number[];
   onBack: () => void;
 }) {
+  const router = useRouter();
   const skipsPcb = procurementMode !== null && SKIP_PCB.has(procurementMode);
 
   // Board details — editable fields mirroring the quotes columns.
   const [boardsPerPanel, setBoardsPerPanel] = useState(
     initial.boards_per_panel?.toString() ?? "1"
   );
-  const [ipcClass, setIpcClass] = useState<1 | 2 | 3>(
-    (initial.ipc_class as 1 | 2 | 3) ?? 2
-  );
+  const [ipcClass, setIpcClass] = useState<1 | 2 | 3>(() => {
+    const n = Number(initial.ipc_class);
+    return n === 1 || n === 2 || n === 3 ? (n as 1 | 2 | 3) : 2;
+  });
   const [solderType, setSolderType] = useState<"leaded" | "leadfree">(
     initial.solder_type === "leaded" ? "leaded" : "leadfree"
   );
-  const [assemblyType, setAssemblyType] = useState<string>(initial.assembly_type ?? "TB");
+  const [boardSide, setBoardSide] = useState<"single" | "double">(
+    initial.board_side === "single" ? "single" : "double"
+  );
 
   // Per-tier PCB price — keyed by qty, stored as string while the user types.
+  // The dropdown lets the user enter either a per-board UNIT price or the
+  // tier's EXTENDED price (total for the full tier qty). Whichever mode is
+  // active, we normalize to unit price before sending to the backend so the
+  // calculate API contract is unchanged.
+  // Restore the user's preferred input mode. Stored unit prices are converted
+  // back to extended (×tier qty) for display when mode = "extended".
+  const [pcbInputMode, setPcbInputMode] = useState<"unit" | "extended">(
+    initial.pcb_input_mode === "extended" ? "extended" : "unit"
+  );
   const [tierPcb, setTierPcb] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
-    for (const t of tiers) m[String(t)] = "";
+    const savedMode = initial.pcb_input_mode === "extended" ? "extended" : "unit";
+    for (const t of tiers) {
+      const unit = initial.tier_pcb_prices?.[String(t)];
+      if (typeof unit === "number" && Number.isFinite(unit) && unit > 0) {
+        const display = savedMode === "extended" ? unit * t : unit;
+        m[String(t)] = String(display);
+      } else {
+        m[String(t)] = "";
+      }
+    }
     return m;
   });
 
   // NRE inputs — flat dollars added once, not per-tier.
-  const [nreProgramming, setNreProgramming] = useState("");
-  const [nreStencil, setNreStencil] = useState("");
-  const [nreSetup, setNreSetup] = useState("");
-  const [nrePcbFab, setNrePcbFab] = useState("");
-  const [nreMisc, setNreMisc] = useState("");
-  const [shippingFlat, setShippingFlat] = useState("");
+  const [nreProgramming, setNreProgramming] = useState(
+    initial.nre_programming != null && initial.nre_programming > 0 ? String(initial.nre_programming) : ""
+  );
+  const [nreStencil, setNreStencil] = useState(
+    initial.nre_stencil != null && initial.nre_stencil > 0 ? String(initial.nre_stencil) : ""
+  );
+  const [nrePcbFab, setNrePcbFab] = useState(
+    initial.nre_pcb_fab != null && initial.nre_pcb_fab > 0 ? String(initial.nre_pcb_fab) : ""
+  );
+  const [shippingFlat, setShippingFlat] = useState(
+    initial.shipping_flat != null && initial.shipping_flat > 0 ? String(initial.shipping_flat) : ""
+  );
 
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<PricingResult | null>(null);
@@ -445,7 +505,13 @@ function Step3Form({
           toast.error(`PCB price for tier ${t} must be a non-negative number.`);
           return;
         }
-        tierPcbNums[String(t)] = n;
+        // Normalize to unit price regardless of input mode: when the user
+        // entered an extended price, divide by the tier qty to get per-board.
+        // The backend always receives unit price, so all downstream math
+        // (engine, PDFs, recalculate) stays the same.
+        const unit =
+          pcbInputMode === "extended" && t > 0 ? n / t : n;
+        tierPcbNums[String(t)] = unit;
       }
     }
 
@@ -458,20 +524,32 @@ function Step3Form({
           boards_per_panel: panel,
           ipc_class: ipcClass,
           solder_type: solderType,
-          assembly_type: assemblyType,
+          board_side: boardSide,
           tier_pcb_prices: tierPcbNums,
+          pcb_input_mode: pcbInputMode,
           nre_programming: toNumOrZero(nreProgramming),
           nre_stencil: toNumOrZero(nreStencil),
-          nre_setup: toNumOrZero(nreSetup),
           nre_pcb_fab: toNumOrZero(nrePcbFab),
-          nre_misc: toNumOrZero(nreMisc),
           shipping_flat: toNumOrZero(shippingFlat),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setResult(data.pricing as PricingResult);
-      toast.success("Quote calculated & saved");
+      const dropped = (data as { corrupt_pins_dropped?: number }).corrupt_pins_dropped ?? 0;
+      if (dropped > 0) {
+        toast.success(
+          `Quote calculated & saved — ${dropped} corrupt pin(s) auto-removed. Opening quote…`
+        );
+      } else {
+        toast.success("Quote calculated & saved. Opening quote…");
+      }
+      // After Calculate & Save, send the operator straight to the quote
+      // detail page. The quote API has already flipped wizard_status to
+      // 'complete' and persisted the pricing, so the detail page renders
+      // the same per-tier breakdown shown inline in the wizard. Saves a
+      // round-trip through the quotes list.
+      router.push(`/quotes/${quoteId}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error("Calculate failed", { description: msg });
@@ -507,15 +585,32 @@ function Step3Form({
             />
           </div>
           <div>
-            <Label className="mb-1 block text-xs text-gray-500">Assembly Type</Label>
-            <select
-              value={assemblyType}
-              onChange={(e) => setAssemblyType(e.target.value)}
-              className="h-9 w-full rounded-md border bg-white dark:bg-gray-950 dark:border-gray-700 px-2 text-sm"
+            <Label className="mb-1 block text-xs text-gray-500">Board Sides</Label>
+            {/* Internal value matches gmps.board_side ("single" | "double")
+                — the calculate route writes it directly onto the GMP record
+                so every future quote/BOM under the same GMP picks it up. */}
+            <Select
+              value={boardSide}
+              onValueChange={(v) =>
+                v && setBoardSide(v as "single" | "double")
+              }
             >
-              <option value="TB">TB — Top + Bottom</option>
-              <option value="TS">TS — Top-side only</option>
-            </select>
+              <SelectTrigger className="h-9 w-full">
+                <SelectValue>
+                  {(v: string) =>
+                    v === "single"
+                      ? "Single Side"
+                      : v === "double"
+                        ? "Double Side"
+                        : ""
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="single">Single Side</SelectItem>
+                <SelectItem value="double">Double Side</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label className="mb-1 block text-xs text-gray-500">IPC Class</Label>
@@ -562,28 +657,80 @@ function Step3Form({
       {!skipsPcb && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">PCB Unit Price (per tier)</CardTitle>
-            <CardDescription>
-              Quoted PCB fab cost per bare board at each tier quantity. Get this from the PCB vendor
-              (WMD, Candor, PCBWay…).
-            </CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">
+                  PCB {pcbInputMode === "unit" ? "Unit" : "Extended"} Price (per tier)
+                </CardTitle>
+                <CardDescription>
+                  Quoted PCB fab cost at each tier quantity. Get this from the PCB vendor
+                  (WMD, Candor, PCBWay…).
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-gray-500">Enter as</Label>
+                <Select
+                  value={pcbInputMode}
+                  onValueChange={(v) =>
+                    v && setPcbInputMode(v as "unit" | "extended")
+                  }
+                >
+                  <SelectTrigger size="sm" className="text-xs min-w-[12rem]">
+                    <SelectValue>
+                      {(v: string) =>
+                        v === "unit"
+                          ? "Unit price ($/PCB)"
+                          : v === "extended"
+                            ? "Extended price ($/tier)"
+                            : ""
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unit">Unit price ($/PCB)</SelectItem>
+                    <SelectItem value="extended">Extended price ($/tier)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {tiers.map((t) => (
-              <div key={t}>
-                <Label className="mb-1 block text-xs text-gray-500">Qty {t} — $ per PCB</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="0.00"
-                  value={tierPcb[String(t)] ?? ""}
-                  onChange={(e) =>
-                    setTierPcb((prev) => ({ ...prev, [String(t)]: e.target.value }))
-                  }
-                />
-              </div>
-            ))}
+            {tiers.map((t) => {
+              const raw = tierPcb[String(t)] ?? "";
+              const n = Number(raw);
+              const valid = raw !== "" && Number.isFinite(n) && n >= 0;
+              // Derived value shown underneath the input: if the user is
+              // typing unit, show the extended total at this tier; if they're
+              // typing extended, show the per-board unit.
+              let derivedLabel: string | null = null;
+              if (valid) {
+                if (pcbInputMode === "unit") {
+                  derivedLabel = `Extended @ qty ${t}: $${(n * t).toFixed(2)}`;
+                } else if (t > 0) {
+                  derivedLabel = `Unit: $${(n / t).toFixed(4)} / PCB`;
+                }
+              }
+              return (
+                <div key={t}>
+                  <Label className="mb-1 block text-xs text-gray-500">
+                    Qty {t} — {pcbInputMode === "unit" ? "$ per PCB" : `$ for ${t} PCBs`}
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0.00"
+                    value={raw}
+                    onChange={(e) =>
+                      setTierPcb((prev) => ({ ...prev, [String(t)]: e.target.value }))
+                    }
+                  />
+                  {derivedLabel && (
+                    <p className="mt-1 text-[11px] text-gray-500">{derivedLabel}</p>
+                  )}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -600,9 +747,7 @@ function Step3Form({
           {[
             { label: "Programming", value: nreProgramming, set: setNreProgramming },
             { label: "Stencil", value: nreStencil, set: setNreStencil },
-            { label: "Setup", value: nreSetup, set: setNreSetup },
             { label: "PCB Fab (one-time)", value: nrePcbFab, set: setNrePcbFab, hide: skipsPcb },
-            { label: "Misc", value: nreMisc, set: setNreMisc },
             { label: "Shipping (flat)", value: shippingFlat, set: setShippingFlat },
           ]
             .filter((f) => !f.hide)
@@ -692,6 +837,72 @@ function Step3Form({
               <ul className="mt-3 text-xs text-amber-600 list-disc pl-4">
                 {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
+            )}
+
+            {/* Per-line math — lets you diff each BOM line against the Excel
+                system when the component totals don't match. Sorted by cost
+                descending so the biggest contributors sit at the top. */}
+            {result.tiers[0]?.line_breakdowns && result.tiers[0].line_breakdowns.length > 0 && (
+              <div className="mt-4 border-t pt-3 dark:border-gray-800">
+                <details open>
+                  <summary className="cursor-pointer text-sm font-medium text-blue-700 hover:text-blue-900 dark:text-blue-300">
+                    Per-line component math for tier {result.tiers[0].board_qty} ({result.tiers[0].line_breakdowns.length} lines)
+                  </summary>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-[11px]">
+                      <thead>
+                        <tr className="border-b text-gray-500 dark:border-gray-800">
+                          <th className="px-2 py-1 text-left">CPC</th>
+                          <th className="px-2 py-1 text-left">MPN</th>
+                          <th className="px-2 py-1 text-center">M-Code</th>
+                          <th className="px-2 py-1 text-right">Qty/Board</th>
+                          <th className="px-2 py-1 text-right">× Boards</th>
+                          <th className="px-2 py-1 text-right">+ Overage</th>
+                          <th className="px-2 py-1 text-right">= Order Qty</th>
+                          <th className="px-2 py-1 text-right">Unit $ CAD</th>
+                          <th className="px-2 py-1 text-center">Source</th>
+                          <th className="px-2 py-1 text-right">Before Markup</th>
+                          <th className="px-2 py-1 text-right">After Markup</th>
+                        </tr>
+                      </thead>
+                      <tbody className="font-mono">
+                        {[...result.tiers[0].line_breakdowns]
+                          .sort((a, b) => b.extended_after_markup - a.extended_after_markup)
+                          .map((lb) => (
+                            <tr
+                              key={lb.bom_line_id}
+                              className={`border-b dark:border-gray-900 ${
+                                lb.unit_price_source === "missing"
+                                  ? "bg-red-50 dark:bg-red-950/20"
+                                  : ""
+                              }`}
+                            >
+                              <td className="px-2 py-1 text-left">{lb.cpc ?? "—"}</td>
+                              <td className="px-2 py-1 text-left">{lb.mpn}</td>
+                              <td className="px-2 py-1 text-center text-gray-500">{lb.m_code ?? "—"}</td>
+                              <td className="px-2 py-1 text-right">{lb.qty_per_board}</td>
+                              <td className="px-2 py-1 text-right text-gray-500">{lb.board_qty}</td>
+                              <td className="px-2 py-1 text-right text-gray-500">{lb.overage_extras}</td>
+                              <td className="px-2 py-1 text-right font-semibold">{lb.order_qty}</td>
+                              <td className="px-2 py-1 text-right">
+                                {lb.unit_price > 0 ? `$${lb.unit_price.toFixed(4)}` : "—"}
+                              </td>
+                              <td className="px-2 py-1 text-center text-gray-500 uppercase text-[10px]">
+                                {lb.unit_price_source}
+                              </td>
+                              <td className="px-2 py-1 text-right">
+                                ${lb.extended_before_markup.toFixed(2)}
+                              </td>
+                              <td className="px-2 py-1 text-right font-semibold">
+                                ${lb.extended_after_markup.toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </div>
             )}
           </CardContent>
         </Card>

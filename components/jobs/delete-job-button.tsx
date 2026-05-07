@@ -94,7 +94,7 @@ export function DeleteJobButton({ jobId, jobNumber }: DeleteJobButtonProps) {
                   {blocking.procurements!.map((proc, i) => (
                     <span key={proc.id}>
                       {i > 0 && ", "}
-                      <Link href={`/procurement/${proc.id}`} className="text-blue-600 underline hover:text-blue-800">
+                      <Link href={`/proc/${proc.id}`} className="text-blue-600 underline hover:text-blue-800">
                         {proc.proc_code}
                       </Link>
                     </span>

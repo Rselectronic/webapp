@@ -9,6 +9,7 @@ import { searchFuturePrice } from "./future";
 import { searchTiPrice, looksLikeTiPart } from "./ti";
 import { searchAvnetPrice } from "./avnet";
 import { searchArrowPrice } from "./arrow";
+import { searchArrowComPrice, searchArrowComBatch } from "./arrow-com";
 import { searchTmePrice } from "./tme";
 import { searchSamtecPrice, looksLikeSamtecPart } from "./samtec";
 import { searchEsonicPrice } from "./esonic";
@@ -71,7 +72,7 @@ async function searchDigikeyQuotes(
   return [{
     source: "digikey",
     mpn: r.mpn,
-    manufacturer: null,        // not surfaced by the v4 keyword endpoint directly
+    manufacturer: r.manufacturer ?? null,
     supplier_part_number: r.digikey_pn || null,
     unit_price: breaks[0].unit_price,
     currency: breaks[0].currency,
@@ -79,13 +80,14 @@ async function searchDigikeyQuotes(
     stock_qty: r.stock_qty ?? null,
     moq: null,
     order_multiple: null,
-    lead_time_days: null,
+    lead_time_days: r.lead_time_days ?? null,
     warehouse_code: null,
     ncnr: null,
     franchised: true,           // DigiKey is always an authorized distributor
-    lifecycle_status: null,
+    lifecycle_status: r.lifecycle_status ?? null,
     datasheet_url: null,
     product_url: null,
+    description: r.description ?? null,
   }];
 }
 
@@ -105,7 +107,7 @@ async function searchMouserQuotes(
   return [{
     source: "mouser",
     mpn: r.mpn,
-    manufacturer: null,
+    manufacturer: r.manufacturer ?? null,
     supplier_part_number: r.mouser_pn || null,
     unit_price: breaks[0].unit_price,
     currency: breaks[0].currency,
@@ -113,13 +115,14 @@ async function searchMouserQuotes(
     stock_qty: r.stock_qty ?? null,
     moq: null,
     order_multiple: null,
-    lead_time_days: null,
+    lead_time_days: r.lead_time_days ?? null,
     warehouse_code: null,
     ncnr: null,
     franchised: true,
-    lifecycle_status: null,
+    lifecycle_status: r.lifecycle_status ?? null,
     datasheet_url: null,
     product_url: null,
+    description: r.description ?? null,
   }];
 }
 
@@ -133,6 +136,7 @@ export const SUPPLIER_REGISTRY: Record<BuiltInSupplierName, SupplierSearchFn> = 
   ti:      (ctx) => searchTiPrice(ctx.mpn, ctx.manufacturer),
   avnet:   (ctx) => searchAvnetPrice(ctx.mpn, ctx.quantity),
   arrow:   (ctx) => searchArrowPrice(ctx.mpn),
+  arrow_com: (ctx) => searchArrowComPrice(ctx.mpn, ctx.manufacturer),
   tme:     (ctx) => searchTmePrice(ctx.mpn),
   samtec:  (ctx) => searchSamtecPrice(ctx.mpn, ctx.manufacturer),
   esonic:  (ctx) => searchEsonicPrice(ctx.mpn),
@@ -154,18 +158,114 @@ export function supplierCanServiceMpn(
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Batch search — for suppliers whose API accepts many MPNs in a single call
+// (currently only arrow_com, which takes up to 1000 parts/request). The fetch
+// route prefers batch dispatch over the per-MPN registry when the supplier
+// is registered here.
+// ---------------------------------------------------------------------------
+
+export interface SupplierBatchSearchContext {
+  /** Parts to look up in one HTTP call. The supplier's batch limit is its own
+   *  concern — the fetch route chunks before calling. */
+  parts: Array<{ mpn: string; manufacturer?: string | null }>;
+  /** Optional cancel signal — implementations should pass it into fetch(). */
+  signal?: AbortSignal;
+}
+
+export interface SupplierBatchSearchResult {
+  /** Quotes keyed by uppercased MPN. A single MPN may map to many SupplierQuote
+   *  rows (one per warehouse / pack-size / source location). */
+  resultsByMpn: Map<string, SupplierQuote[]>;
+  /** Uppercased MPNs the API confirmed it tried but found nothing for —
+   *  these get negative-cached so subsequent runs skip them. MPNs that were
+   *  in the request but missing from this set are treated as "no result"
+   *  too (the supplier's response shape determines whether it bothers to
+   *  list misses explicitly). */
+  emptyMpns: Set<string>;
+  /** Batch-level failure (HTTP error, timeout, parse error). When non-null,
+   *  the caller MUST NOT negative-cache anything from this batch — the result
+   *  is unreliable, not a confirmed "no match". */
+  error: string | null;
+}
+
+export type SupplierBatchSearchFn = (
+  ctx: SupplierBatchSearchContext
+) => Promise<SupplierBatchSearchResult>;
+
+/** Suppliers that support a batch endpoint. Order doesn't matter. */
+export const SUPPLIER_BATCH_REGISTRY: Partial<Record<BuiltInSupplierName, SupplierBatchSearchFn>> = {
+  arrow_com: searchArrowComBatch,
+};
+
+export function isBatchableSupplier(supplier: string): boolean {
+  return Object.prototype.hasOwnProperty.call(SUPPLIER_BATCH_REGISTRY, supplier);
+}
+
+/** Maximum MPNs per batch HTTP call. Per-supplier override could be added later
+ *  if a future batchable supplier has a different cap. Arrow.com allows 1000
+ *  but 250 keeps batch latency bounded so SSE progress stays responsive. */
+export const SUPPLIER_BATCH_CHUNK_SIZE: Partial<Record<BuiltInSupplierName, number>> = {
+  arrow_com: 250,
+};
+
+/**
+ * Safe wrapper around a batch supplier call. Catches and reports throws as
+ * the batch-level error rather than letting them escape — matches the
+ * runSupplierSearchDiag contract.
+ */
+export async function runSupplierBatchDiag(
+  supplier: string,
+  ctx: SupplierBatchSearchContext
+): Promise<SupplierBatchSearchResult> {
+  const fn = (SUPPLIER_BATCH_REGISTRY as Record<string, SupplierBatchSearchFn>)[supplier];
+  if (!fn) {
+    return {
+      resultsByMpn: new Map(),
+      emptyMpns: new Set(),
+      error: `unknown batch supplier: ${supplier}`,
+    };
+  }
+  try {
+    return await fn(ctx);
+  } catch (e) {
+    const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    console.warn(`[pricing] batch supplier=${supplier} threw: ${msg}`);
+    return {
+      resultsByMpn: new Map(),
+      emptyMpns: new Set(),
+      error: msg,
+    };
+  }
+}
+
 /** Safe wrapper: returns [] if the supplier name isn't known or the call throws. */
 export async function runSupplierSearch(
   supplier: string,
   ctx: SupplierSearchContext
 ): Promise<SupplierQuote[]> {
+  const { quotes } = await runSupplierSearchDiag(supplier, ctx);
+  return quotes;
+}
+
+/**
+ * Same as runSupplierSearch but returns the caught error message too, so
+ * callers can distinguish "no match" (quotes=[], error=null) from a real
+ * failure (quotes=[], error="429 Too Many Requests"). Used by the
+ * pricing-review stream so the UI can surface per-supplier failures.
+ */
+export async function runSupplierSearchDiag(
+  supplier: string,
+  ctx: SupplierSearchContext
+): Promise<{ quotes: SupplierQuote[]; error: string | null }> {
   const fn = (SUPPLIER_REGISTRY as Record<string, SupplierSearchFn>)[supplier];
-  if (!fn) return [];
+  if (!fn) return { quotes: [], error: `unknown supplier: ${supplier}` };
   try {
-    return await fn(ctx);
+    const quotes = await fn(ctx);
+    return { quotes, error: null };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn(`[pricing] supplier=${supplier} mpn=${ctx.mpn} threw: ${msg}`);
-    return [];
+    return { quotes: [], error: msg };
   }
 }

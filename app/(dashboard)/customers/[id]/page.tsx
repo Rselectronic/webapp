@@ -15,6 +15,12 @@ import { ArrowLeft, Mail, Phone, User, MapPin, CircuitBoard, Plus, FileText } fr
 import { formatPhone, formatDate, formatCurrency } from "@/lib/utils/format";
 import { CustomerEditToggle } from "@/components/customers/customer-edit-toggle";
 import { DeleteCustomerButton } from "@/components/customers/delete-customer-button";
+import {
+  taxRegionForAddress,
+  currencyForAddress,
+  normalizeCountry,
+} from "@/lib/address/regions";
+import { TAX_REGION_LABELS } from "@/lib/tax/regions";
 
 export default async function CustomerDetailPage({
   params,
@@ -37,7 +43,18 @@ export default async function CustomerDetailPage({
   const bomConfig = customer.bom_config as Record<string, unknown> | null;
 
   interface ContactItem { name: string; email: string; phone: string; role: string; is_primary: boolean }
-  interface AddressItem { label: string; street: string; city: string; province: string; postal_code: string; country: string; is_default: boolean }
+  interface AddressItem {
+    label: string;
+    street: string;
+    city: string;
+    province: string;
+    postal_code: string;
+    country: string;
+    country_code?: "CA" | "US" | "OTHER";
+    /** Optional currency override (CAD/USD). Unset → derive from country. */
+    currency?: "CAD" | "USD";
+    is_default: boolean;
+  }
 
   const contacts = (customer.contacts as ContactItem[] | null) ?? [];
   const billingAddresses = (customer.billing_addresses as AddressItem[] | null) ?? [];
@@ -60,6 +77,10 @@ export default async function CustomerDetailPage({
       .from("invoices")
       .select("id, invoice_number, status, total, created_at")
       .eq("customer_id", id)
+      // Operational view — historic imports stay out of the recent-invoice
+      // list so the customer page reflects live activity. Their values
+      // still flow into the Reports → Revenue dashboard.
+      .eq("is_historic", false)
       .order("created_at", { ascending: false })
       .limit(10),
     supabase
@@ -159,6 +180,9 @@ export default async function CustomerDetailPage({
           billing_addresses: billingAddresses,
           shipping_addresses: shippingAddresses,
           bom_config: bomConfig,
+          folder_name: customer.folder_name ?? null,
+          default_currency: customer.default_currency ?? "CAD",
+          tax_region: customer.tax_region ?? "QC",
         }}
         paymentTermsOptions={paymentTermsOptions}
       >
@@ -233,9 +257,21 @@ export default async function CustomerDetailPage({
             </div>
           )}
           <Separator className="my-4" />
-          <div>
-            <p className="text-sm font-medium text-gray-500">Payment Terms</p>
-            <p className="text-sm">{customer.payment_terms}</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Payment Terms</p>
+              <p className="text-sm">{customer.payment_terms}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-500">Folder Name</p>
+              <p className="text-sm">
+                {customer.folder_name ? (
+                  <span className="font-mono">{customer.folder_name}</span>
+                ) : (
+                  <span className="text-gray-400">Not specified</span>
+                )}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -249,20 +285,59 @@ export default async function CustomerDetailPage({
           <CardContent>
             {billingAddresses.length > 0 ? (
               <div className="space-y-3">
-                {billingAddresses.map((a, i) => (
-                  <div key={i} className="rounded-lg border p-3 dark:border-gray-800">
-                    <div className="flex items-center gap-2 mb-1">
-                      <MapPin className="h-3.5 w-3.5 text-gray-400" />
-                      <span className="text-xs font-medium text-gray-500">{a.label || `Address ${i + 1}`}</span>
-                      {a.is_default && (
-                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">Default</span>
+                {billingAddresses.map((a, i) => {
+                  const code =
+                    a.country_code ?? normalizeCountry(a.country ?? "");
+                  const region = taxRegionForAddress({
+                    country_code: code,
+                    country: a.country,
+                    province: a.province,
+                  });
+                  const currency = currencyForAddress({
+                    country_code: code,
+                    country: a.country,
+                    currency: a.currency,
+                  });
+                  const isOverride =
+                    a.currency === "CAD" || a.currency === "USD";
+
+                  return (
+                    <div
+                      key={i}
+                      className="rounded-lg border p-3 dark:border-gray-800"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                        <span className="text-xs font-medium text-gray-500">
+                          {a.label || `Address ${i + 1}`}
+                        </span>
+                        {a.is_default && (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                            Default
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm">{a.street}</p>
+                      <p className="text-sm text-gray-500">
+                        {[a.city, a.province, a.postal_code]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                      {a.country && a.country !== "Canada" && (
+                        <p className="text-xs text-gray-400">{a.country}</p>
                       )}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {TAX_REGION_LABELS[region]}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px]">
+                          {currency}
+                          {isOverride ? " (override)" : ""}
+                        </Badge>
+                      </div>
                     </div>
-                    <p className="text-sm">{a.street}</p>
-                    <p className="text-sm text-gray-500">{[a.city, a.province, a.postal_code].filter(Boolean).join(", ")}</p>
-                    {a.country && a.country !== "Canada" && <p className="text-xs text-gray-400">{a.country}</p>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-gray-500">No billing addresses on file.</p>
@@ -333,7 +408,7 @@ export default async function CustomerDetailPage({
                 All board designs for this customer, with their BOM files
               </CardDescription>
             </div>
-            <Link href={`/bom/upload?customer=${id}`}>
+            <Link href={`/bom/upload?customer_id=${id}`}>
               <Button size="sm">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Board
@@ -367,7 +442,7 @@ export default async function CustomerDetailPage({
                           {gmp.is_active ? "Active" : "Inactive"}
                         </Badge>
                       </div>
-                      <Link href={`/bom/upload?customer=${id}&gmp=${gmp.id}`}>
+                      <Link href={`/bom/upload?gmp_id=${gmp.id}`}>
                         <Button variant="outline" size="sm">
                           <Plus className="mr-1 h-3 w-3" />
                           Upload BOM

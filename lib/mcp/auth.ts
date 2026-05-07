@@ -1,7 +1,7 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { getMcpSupabase } from "./db";
 import { isApiKeyFormat, validateApiKey } from "@/lib/api-keys";
-
-export type McpRole = "ceo" | "operations_manager" | "shop_floor";
+export type McpRole = "admin" | "production";
 
 export interface McpAuthUser {
   userId: string;
@@ -12,9 +12,9 @@ export interface McpAuthUser {
 
 /**
  * Validate a Bearer token from the Authorization header. Accepts EITHER:
- *   1. A permanent RS API key (prefix `rs_live_`) → validated against
+ *   1. A permanent RS API key (prefix `rs_live_`) â†’ validated against
  *      public.api_keys via validateApiKey().
- *   2. A Supabase JWT → validated against Supabase Auth + public.users.
+ *   2. A Supabase JWT â†’ validated against Supabase Auth + public.users.
  *
  * Throws on invalid/missing token or missing user profile.
  */
@@ -75,11 +75,7 @@ export async function validateMcpRequest(
     throw new Error("Unauthorized: user profile not found in public.users");
   }
 
-  if (
-    profile.role !== "ceo" &&
-    profile.role !== "operations_manager" &&
-    profile.role !== "shop_floor"
-  ) {
+  if (!isAdminRole(profile.role) && profile.role !== "production") {
     throw new Error(`Unauthorized: unknown role '${profile.role}'`);
   }
 
@@ -94,9 +90,8 @@ export async function validateMcpRequest(
 /**
  * Tool groups exposed by role.
  *
- *   - ceo                 → all tools
- *   - operations_manager  → all except profitability + aging (financials)
- *   - shop_floor          → read-only on jobs/production + production event logging
+ *   - admin       â†’ all tools
+ *   - production  â†’ read-only on jobs + production event logging
  *
  * Controlled centrally so we have one source of truth.
  */
@@ -128,25 +123,15 @@ export function allowedToolsForRole(role: McpRole): Set<string> {
     "rs_list_invoices",
     "rs_get_aging_report",
     "rs_get_profitability",
-    // inventory
-    "rs_get_bg_stock",
     // search
     "rs_search",
   ]);
 
-  if (role === "ceo") {
+  if (role === "admin") {
     return ALL;
   }
 
-  if (role === "operations_manager") {
-    // Ops manager sees everything operational except financial reports.
-    const ops = new Set(ALL);
-    ops.delete("rs_get_aging_report");
-    ops.delete("rs_get_profitability");
-    return ops;
-  }
-
-  // shop_floor — read-only on jobs + production event logging
+  // production â€” read-only on jobs + production event logging
   return new Set([
     "rs_business_overview",
     "rs_list_jobs",

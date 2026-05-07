@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
         fetched_at: new Date().toISOString(),
         expires_at: expiresAt.toISOString(),
       },
-      { onConflict: "source,search_key" }
+      { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
     );
 
   if (upsertError) {

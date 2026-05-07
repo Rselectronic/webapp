@@ -31,7 +31,7 @@ import { validateApiKey, isApiKeyFormat } from "@/lib/api-keys";
 export interface AuthUser {
   /** Supabase user UUID — null for API-key-authenticated requests */
   id: string | null;
-  /** "ceo" | "operations_manager" | "shop_floor" */
+  /** "admin" | "production" */
   role: string;
   /** true if authenticated via rs_live_* key, false if via Supabase session */
   isApiKey: boolean;
@@ -86,7 +86,8 @@ export async function getAuthUser(req: NextRequest): Promise<AuthResult> {
   return {
     user: {
       id: sbUser.id,
-      role: profile?.role ?? "shop_floor",
+      // Fall back to the most restrictive role if the profile row is missing.
+      role: profile?.role ?? "production",
       isApiKey: false,
     },
     supabase,

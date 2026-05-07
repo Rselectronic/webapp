@@ -167,9 +167,9 @@ export function resolveWorkflowSteps(
     hrefMap.job = `/jobs/${jobId}`;
   }
   if (procurementId) {
-    hrefMap.procurement = `/procurement/${procurementId}`;
+    hrefMap.procurement = `/proc/${procurementId}`;
   } else if (jobId) {
-    hrefMap.procurement = `/procurement/new?job_id=${jobId}`;
+    hrefMap.procurement = `/proc/pending`;
   }
   if (jobId) {
     hrefMap.production = `/jobs/${jobId}`;

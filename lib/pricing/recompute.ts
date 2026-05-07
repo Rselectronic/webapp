@@ -23,7 +23,9 @@ export async function recomputeQuotePricing(
   bom_id: string,
   resolvedTiers: TierInput[],
   shipping_flat: number,
-  assembly_type?: string,
+  /** Physical board layout — drives single- vs double-sided programming fee.
+   *  Sourced from `gmps.board_side`. */
+  board_side?: "single" | "double" | null,
   /** Per-quote markup overrides — applied on top of global settings */
   markupOverrides?: { component_markup_pct?: number; pcb_markup_pct?: number }
 ): Promise<{
@@ -66,6 +68,7 @@ export async function recomputeQuotePricing(
         .select("search_key, unit_price, source")
         .in("search_key", searchKeys)
         .gte("expires_at", new Date().toISOString())
+        .limit(50000)
     : { data: [] };
 
   // Prefer the lowest non-null unit_price per key, regardless of source.
@@ -92,6 +95,7 @@ export async function recomputeQuotePricing(
     return {
       bom_line_id: line.id,
       mpn: line.mpn ?? "",
+      cpc: line.cpc ?? null,
       description: line.description ?? "",
       m_code: (line.m_code as PricingLine["m_code"]) ?? null,
       qty_per_board: line.quantity,
@@ -134,7 +138,7 @@ export async function recomputeQuotePricing(
     overages: overageTiers,
     settings,
     tier_inputs: resolvedTiers,
-    assembly_type,
+    board_side,
   });
 
   return { pricing, settings, pricingLines };

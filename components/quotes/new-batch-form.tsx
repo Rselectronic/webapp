@@ -53,7 +53,7 @@ export function NewBatchForm({ customers }: { customers: Customer[] }) {
     const customer = customers.find((c) => c.id === id);
     if (customer && !batchName) {
       const now = new Date();
-      setBatchName(`${customer.code} ${now.toLocaleDateString("en-CA", { month: "short", year: "numeric" })}`);
+      setBatchName(`${customer.code} ${now.toLocaleDateString("en-CA", { month: "short", year: "numeric", timeZone: "America/Toronto" })}`);
     }
   }, [customers, batchName]);
 

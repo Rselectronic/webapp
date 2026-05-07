@@ -31,6 +31,12 @@ interface ColumnMapperProps {
   sampleRows: string[][];
   mapping: ColumnMapping;
   onMappingChange: (mapping: ColumnMapping) => void;
+  /** Headers the user has marked as alternate MPN columns. */
+  altMpnHeaders: string[];
+  onAltMpnHeadersChange: (headers: string[]) => void;
+  /** Headers the user has marked as alternate Manufacturer columns. */
+  altMfrHeaders: string[];
+  onAltMfrHeadersChange: (headers: string[]) => void;
   /** 1-indexed header row number as displayed to the user */
   headerRow: number;
   /** 1-indexed last row to process (inclusive) */
@@ -46,6 +52,10 @@ export function ColumnMapper({
   sampleRows,
   mapping,
   onMappingChange,
+  altMpnHeaders,
+  onAltMpnHeadersChange,
+  altMfrHeaders,
+  onAltMfrHeadersChange,
   headerRow,
   lastRow,
   totalRows,
@@ -56,6 +66,24 @@ export function ColumnMapper({
     () => new Set(Object.values(mapping).filter(Boolean)),
     [mapping]
   );
+  const altMpnSet = useMemo(() => new Set(altMpnHeaders), [altMpnHeaders]);
+  const altMfrSet = useMemo(() => new Set(altMfrHeaders), [altMfrHeaders]);
+
+  function toggleAltMpn(header: string) {
+    const next = new Set(altMpnSet);
+    if (next.has(header)) next.delete(header);
+    else next.add(header);
+    // Keep order stable: filter headers by membership so we follow the BOM's
+    // original column order regardless of click order.
+    onAltMpnHeadersChange(headers.filter((h) => next.has(h)));
+  }
+
+  function toggleAltMfr(header: string) {
+    const next = new Set(altMfrSet);
+    if (next.has(header)) next.delete(header);
+    else next.add(header);
+    onAltMfrHeadersChange(headers.filter((h) => next.has(h)));
+  }
 
   function handleFieldChange(field: FieldKey, header: string) {
     const next = { ...mapping };
@@ -160,8 +188,18 @@ export function ColumnMapper({
                   <span className="text-gray-400">— not mapped —</span>
                 </SelectItem>
                 {headers.map((h, i) => {
-                  const taken =
-                    usedHeaders.has(h) && mapping[field.key] !== h;
+                  // Standard "already taken" rule: header is used elsewhere.
+                  // Exception: CPC and MPN are allowed to share the SAME column
+                  // because many customer BOMs omit a dedicated CPC and we fall
+                  // back to using the MPN as the CPC. So when the current field
+                  // is cpc or mpn, allow the other of the two to share.
+                  const takenByOther = Object.entries(mapping).some(
+                    ([k, v]) => v === h && k !== field.key
+                  );
+                  const overlapAllowed =
+                    (field.key === "cpc" && mapping.mpn === h) ||
+                    (field.key === "mpn" && mapping.cpc === h);
+                  const taken = takenByOther && !overlapAllowed;
                   return (
                     <SelectItem
                       key={i}
@@ -177,6 +215,89 @@ export function ColumnMapper({
             </Select>
           </div>
         ))}
+      </div>
+
+      {/* Alternate MPN / Manufacturer columns — multi-select by clicking
+          header chips. Primary fields above are excluded automatically so the
+          user can't double-pick the primary MPN as an alternate. */}
+      <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950">
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              Alternate MPN columns
+            </label>
+            <span className="text-[11px] text-gray-500">
+              {altMpnHeaders.length} selected
+            </span>
+          </div>
+          <p className="mb-2 text-[11px] text-gray-500">
+            Pick any columns that list second-source / alternate part numbers.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {headers.map((h, i) => {
+              if (!h) return null;
+              const isPrimary = usedHeaders.has(h);
+              const picked = altMpnSet.has(h);
+              return (
+                <button
+                  key={`alt-mpn-${i}`}
+                  type="button"
+                  disabled={isPrimary}
+                  onClick={() => toggleAltMpn(h)}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
+                    isPrimary
+                      ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-600"
+                      : picked
+                      ? "border-blue-500 bg-blue-500 text-white"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-blue-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                  }`}
+                  title={isPrimary ? "Already used as a primary field" : undefined}
+                >
+                  {h}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              Alternate Manufacturer columns
+            </label>
+            <span className="text-[11px] text-gray-500">
+              {altMfrHeaders.length} selected
+            </span>
+          </div>
+          <p className="mb-2 text-[11px] text-gray-500">
+            Pick manufacturer columns paired with the alternates above. Leave
+            empty to reuse the primary manufacturer for every alternate.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {headers.map((h, i) => {
+              if (!h) return null;
+              const isPrimary = usedHeaders.has(h);
+              const picked = altMfrSet.has(h);
+              return (
+                <button
+                  key={`alt-mfr-${i}`}
+                  type="button"
+                  disabled={isPrimary}
+                  onClick={() => toggleAltMfr(h)}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
+                    isPrimary
+                      ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-600"
+                      : picked
+                      ? "border-purple-500 bg-purple-500 text-white"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-purple-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                  }`}
+                  title={isPrimary ? "Already used as a primary field" : undefined}
+                >
+                  {h}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Preview table */}

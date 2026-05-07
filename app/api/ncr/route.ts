@@ -1,8 +1,8 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
 // ---------------------------------------------------------------------------
-// GET /api/ncr — List NCRs with optional filters
+// GET /api/ncr â€” List NCRs with optional filters
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
 
   if (error) {
+    console.error("[ncr GET] supabase error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/ncr — Create an NCR
+// POST /api/ncr â€” Create an NCR
 // ---------------------------------------------------------------------------
 
 interface CreateNCRBody {
@@ -84,6 +85,21 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Admin-only â€” NCR records drive the quality-management system and must not
+  // be created by production-role users (RLS already blocks the write, but a
+  // 403 is friendlier than a Postgres error).
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json(
+      { error: "Forbidden â€” only admins can create NCRs." },
+      { status: 403 }
+    );
   }
 
   const body = (await req.json()) as CreateNCRBody;

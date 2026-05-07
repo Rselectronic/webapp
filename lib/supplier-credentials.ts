@@ -22,7 +22,12 @@ import {
   SUPPLIER_METADATA,
   isBuiltInSupplier,
 } from "./supplier-metadata";
-import type { BuiltInSupplierName, SupplierMetadata } from "./supplier-metadata";
+import type {
+  BuiltInSupplierName,
+  SupplierMetadata,
+  SupplierName,
+  SupplierFieldDef,
+} from "./supplier-metadata";
 
 // The previous inline SUPPLIER_METADATA block has moved to ./supplier-metadata.ts.
 // The rest of this file is server-only: AES encryption helpers, DB-backed
@@ -198,14 +203,22 @@ export async function setCredential(
   const meta = await getSupplierMetadata(supplier);
   if (!meta) throw new Error(`Unknown supplier: ${supplier}`);
 
+  // Merge the incoming delta with any existing credentials so partial updates
+  // (e.g. adding DigiKey's optional customer_id without re-entering the
+  // client_secret) don't clobber previously-saved secrets. The settings UI
+  // intentionally drops blank fields from the PUT body, so we must preserve
+  // whatever is already on the row.
+  const existing = (await getCredential<Record<string, string>>(supplier)) ?? {};
+  const merged: Record<string, string> = { ...existing, ...data };
+
   for (const f of meta.fields) {
-    if (f.required && !data[f.key]) {
+    if (f.required && !merged[f.key]) {
       throw new Error(`Missing required field for ${supplier}: ${f.key}`);
     }
   }
 
-  const ciphertext = encrypt(JSON.stringify(data));
-  const preview = buildPreview(meta.fields, data);
+  const ciphertext = encrypt(JSON.stringify(merged));
+  const preview = buildPreview(meta.fields, merged);
 
   const admin = createAdminClient();
   const { error } = await admin

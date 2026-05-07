@@ -183,15 +183,36 @@ export function EventLogger({ jobs }: EventLoggerProps) {
             }}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Choose a job in production..." />
+              {/*
+                This codebase uses Base UI's Select (not Radix). Base UI
+                does NOT snapshot the matched item's text into the trigger
+                — it renders the raw `value` (the job UUID) by default.
+                The fix is a children render function that maps the
+                selected id back to a human-readable label. The
+                placeholder shows when the value is empty.
+              */}
+              <SelectValue placeholder="Choose a job in production...">
+                {(value: string) => {
+                  if (!value) return "Choose a job in production...";
+                  const job = jobs.find((j) => j.id === value);
+                  if (!job) return value;
+                  return job.customers
+                    ? `${job.job_number} (${job.customers.code})`
+                    : job.job_number;
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {jobs.map((job) => (
-                <SelectItem key={job.id} value={job.id}>
-                  {job.job_number}
-                  {job.customers ? ` (${job.customers.code})` : ""}
-                </SelectItem>
-              ))}
+              {jobs.map((job) => {
+                const label = job.customers
+                  ? `${job.job_number} (${job.customers.code})`
+                  : job.job_number;
+                return (
+                  <SelectItem key={job.id} value={job.id}>
+                    {label}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
 

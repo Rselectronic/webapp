@@ -62,20 +62,36 @@ export async function POST(
   }
 
   // --- STEP 1: Write M-codes back to individual bom_lines ---
-  // For each batch line, find the corresponding bom_lines (by MPN) and update them
+  // For each batch line, find the corresponding bom_lines and update them.
+  // CPC is the stable identity key (MPN can rotate between classification and
+  // send-back, which would silently overwrite the wrong row). Fall back to MPN
+  // only if cpc is missing on the batch line (legacy data) and warn.
   for (const batchLine of batchLines) {
     if (batchLine.is_pcb) continue;
 
     const bomIds = batchBoms.map((bb) => bb.bom_id);
-    await admin
-      .from("bom_lines")
-      .update({
-        m_code: batchLine.m_code_final,
-        m_code_confidence: batchLine.m_code_confidence,
-        m_code_source: batchLine.m_code_override ? "manual" : batchLine.m_code_source,
-      })
-      .in("bom_id", bomIds)
-      .eq("mpn", batchLine.mpn);
+    const update = {
+      m_code: batchLine.m_code_final,
+      m_code_confidence: batchLine.m_code_confidence,
+      m_code_source: batchLine.m_code_override ? "manual" : batchLine.m_code_source,
+    };
+
+    if (batchLine.cpc) {
+      await admin
+        .from("bom_lines")
+        .update(update)
+        .in("bom_id", bomIds)
+        .eq("cpc", batchLine.cpc);
+    } else {
+      console.warn(
+        `[SEND-BACK] batch_line ${batchLine.id} (mpn=${batchLine.mpn}) has no cpc — falling back to mpn-match. Verify the row was classified correctly.`
+      );
+      await admin
+        .from("bom_lines")
+        .update(update)
+        .in("bom_id", bomIds)
+        .eq("mpn", batchLine.mpn);
+    }
   }
 
   // --- STEP 2: Generate individual quotes per GMP ---
@@ -200,9 +216,7 @@ export async function POST(
           total_labour_cost: totalPlacementCost,
           nre_programming: 0,
           nre_stencil: 0,
-          nre_setup: 0,
           nre_pcb_fab: 0,
-          nre_misc: 0,
           nre_total: nre,
           total_unique_lines: totalUniqueLines,
           total_smt_placements: totalSmtPlacements,

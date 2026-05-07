@@ -152,6 +152,8 @@ export async function searchSamtecPrice(
     lifecycle_status: lifecycle,
     datasheet_url: firstDatasheetUrl(json.additionalDocuments),
     product_url: productUrl,
+    description:
+      typeof json.description === "string" ? (json.description as string) : null,
   };
 
   return [quote];

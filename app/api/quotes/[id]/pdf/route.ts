@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rgb } from "pdf-lib";
@@ -146,73 +147,6 @@ function drawKVRow(
   return y - 13;
 }
 
-/** Draw a full-width table row with alternating background. */
-function drawTableRow(
-  page: PDFPage,
-  fonts: PdfFonts,
-  y: number,
-  label: string,
-  values: string[],
-  tierCount: number,
-  options?: { bold?: boolean; rowIndex?: number }
-): number {
-  const rowH = 18;
-  const labelColW = 150;
-  const tierColW = (CONTENT_WIDTH - labelColW) / tierCount;
-  const rowFont = options?.bold ? fonts.bold : fonts.regular;
-  const rowColor = options?.bold ? COLOR_DARK : COLOR_TEXT;
-
-  // Alternating or bold background
-  if (options?.bold) {
-    page.drawRectangle({
-      x: MARGIN,
-      y: y - rowH,
-      width: CONTENT_WIDTH,
-      height: rowH,
-      color: rgb(0.94, 0.96, 0.98),
-    });
-  } else if ((options?.rowIndex ?? 0) % 2 === 1) {
-    page.drawRectangle({
-      x: MARGIN,
-      y: y - rowH,
-      width: CONTENT_WIDTH,
-      height: rowH,
-      color: COLOR_BG_STRIP,
-    });
-  }
-
-  // Separator
-  page.drawLine({
-    start: { x: MARGIN, y: y - rowH },
-    end: { x: RIGHT_EDGE, y: y - rowH },
-    thickness: 0.5,
-    color: COLOR_BORDER,
-  });
-
-  // Label
-  page.drawText(sanitizeForPdf(label), {
-    x: MARGIN + 4,
-    y: y - 13,
-    size: 8.5,
-    font: rowFont,
-    color: rowColor,
-  });
-
-  // Values
-  for (let i = 0; i < values.length; i++) {
-    const val = sanitizeForPdf(values[i]);
-    const vw = rowFont.widthOfTextAtSize(val, 8.5);
-    page.drawText(val, {
-      x: MARGIN + labelColW + (i + 1) * tierColW - vw - 4,
-      y: y - 13,
-      size: 8.5,
-      font: rowFont,
-      color: rowColor,
-    });
-  }
-  return y - rowH;
-}
-
 /* ------------------------------------------------------------------ */
 /*  ROUTE HANDLER                                                      */
 /* ------------------------------------------------------------------ */
@@ -224,16 +158,90 @@ export async function GET(
   const { id } = await params;
   const supabase = await createClient();
 
+  // Admin-only: quote PDFs are a customer-facing commercial document â€” only
+  // admins should be able to mint and store them. Production users would
+  // also fail to write to the `quotes` storage bucket and the `pdf_path`
+  // column update due to RLS, so the silent-failure path produces a partial
+  // result; gate explicitly for a clean 403.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
+  }
+
   const { data: quote, error } = await supabase
     .from("quotes")
     .select(
-      "*, customers(code, company_name, contact_name, contact_email, billing_address, shipping_address, billing_addresses, shipping_addresses, payment_terms), gmps(gmp_number, board_name), boms(file_name, revision)"
+      "*, customers(code, company_name, contact_name, contact_email, billing_address, shipping_address, billing_addresses, shipping_addresses, payment_terms), gmps(gmp_number, board_name), boms(file_name, revision, bom_name, gerber_name, gerber_revision)"
     )
     .eq("id", id)
     .single();
 
   if (error || !quote) {
     return NextResponse.json({ error: "Quote not found" }, { status: 404 });
+  }
+
+  // Customer-supplied parts â€” pulled from the join of quote_customer_supplied
+  // with bom_lines. Shown on the PDF so the customer sees the exact MPNs they
+  // need to ship; these lines are already excluded from the priced totals.
+  const { data: csRows } = await supabase
+    .from("quote_customer_supplied")
+    .select("bom_line_id")
+    .eq("quote_id", id);
+  const csLineIds = (csRows ?? []).map((r) => r.bom_line_id);
+  const { data: csLineData } = csLineIds.length > 0
+    ? await supabase
+        .from("bom_lines")
+        .select("id, line_number, mpn, cpc, description, manufacturer, quantity, reference_designator")
+        .in("id", csLineIds)
+        .order("line_number", { ascending: true })
+    : { data: [] };
+  const customerSuppliedLines = csLineData ?? [];
+
+  // BOM lines (all priced lines â€” for the per-tier quotation line table).
+  // Exclude customer-supplied lines since they don't appear on the priced list.
+  const csLineIdSet = new Set(csLineIds);
+  const { data: allBomLinesData } = quote.bom_id
+    ? await supabase
+        .from("bom_lines")
+        .select("id, line_number, mpn, cpc, description, manufacturer, quantity, is_pcb, is_dni")
+        .eq("bom_id", quote.bom_id)
+        .order("line_number", { ascending: true })
+    : { data: [] };
+  const quotationLines = (allBomLinesData ?? []).filter(
+    (l) => !csLineIdSet.has(l.id) && !l.is_dni
+  );
+  const quotationLineIds = quotationLines.map((l) => l.id);
+
+  // Per-tier pinned supplier + lead-time for each BOM line.
+  const { data: blPricingData } = quotationLineIds.length > 0
+    ? await supabase
+        .from("bom_line_pricing")
+        .select("bom_line_id, tier_qty, supplier, selected_unit_price_cad, selected_unit_price, selected_currency, selected_lead_time_days")
+        .in("bom_line_id", quotationLineIds)
+    : { data: [] };
+  // Index as Map<`${bom_line_id}|${tier_qty}`, row>
+  const pricingByLineTier = new Map<string, {
+    supplier: string;
+    unit_price: number;
+    lead_time_days: number | null;
+  }>();
+  for (const r of (blPricingData ?? [])) {
+    const cad = r.selected_unit_price_cad ?? r.selected_unit_price ?? 0;
+    pricingByLineTier.set(`${r.bom_line_id}|${r.tier_qty}`, {
+      supplier: r.supplier,
+      unit_price: Number(cad),
+      lead_time_days: r.selected_lead_time_days ?? null,
+    });
   }
 
   const customer = quote.customers as unknown as {
@@ -254,6 +262,9 @@ export async function GET(
   const bom = quote.boms as unknown as {
     file_name: string;
     revision: string;
+    bom_name: string | null;
+    gerber_name: string | null;
+    gerber_revision: string | null;
   } | null;
   const rawPricing = quote.pricing as unknown as Record<string, unknown> | null;
   const leadTimes = (quote.lead_times ?? {}) as Record<string, string>;
@@ -290,6 +301,12 @@ export async function GET(
           pcb_cost_before_markup: 0,
           pcb_markup_amount: 0,
           pcb_markup_pct: 0,
+          // Assembly margin breakdown â€” 0 for legacy tier1..tier4 JSONB
+          // shape (pre-engine-v2 quotes). New quotes go through the
+          // tiers[] path above and carry real values.
+          assembly_cost_before_markup: 0,
+          assembly_markup_amount: 0,
+          assembly_markup_pct: 0,
           overage_cost: 0,
           overage_qty: 0,
           labour: {
@@ -302,9 +319,7 @@ export async function GET(
             total_labour_cost: 0,
             nre_programming: 0,
             nre_stencil: 0,
-            nre_setup: 0,
             nre_pcb_fab: 0,
-            nre_misc: 0,
             nre_total: t.nre ?? 0,
             total_unique_lines: 0,
             total_smt_placements: 0,
@@ -328,14 +343,15 @@ export async function GET(
     }
   }
 
-  // Total page count: 1 (summary) + 1 per tier
-  const totalPages = 1 + tiers.length;
+  // Total page count: 1 (summary) + optional customer-supplied page + 1 per tier
+  const hasCustomerSupplied = customerSuppliedLines.length > 0;
+  const totalPages = 1 + (hasCustomerSupplied ? 1 : 0) + tiers.length;
 
   // ---- Create PDF ----
   const { doc: pdfDoc, fonts, logo } = await createPdfDoc();
 
   /* ================================================================ */
-  /*  PAGE 1 — SUMMARY                                                */
+  /*  PAGE 1 â€” SUMMARY                                                */
   /* ================================================================ */
   const page1 = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
   let y = drawHeader(
@@ -451,13 +467,66 @@ export async function GET(
     color: COLOR_DARK,
   });
   let detY = y - 14;
+  // Translate the procurement mode enum into the customer-facing label.
+  // "turnkey" → "Turnkey (RS supplies parts)" etc. Keeps the customer
+  // crystal-clear about who's procuring what.
+  const procModeRaw = (quote as { procurement_mode?: string | null })
+    .procurement_mode;
+  // Mode labels: turnkey + assembly_only are unambiguous enough on their
+  // own, so no clarifying parenthetical. Consignment is the one where the
+  // customer needs to know they're on the hook for parts, so we keep the
+  // bracketed explanation for that case only.
+  const procModeLabel = (() => {
+    switch (procModeRaw) {
+      case "turnkey":
+        return "Turnkey";
+      case "consignment":
+        return "Consignment (customer supplies parts)";
+      case "assembly_only":
+        return "Assembly only";
+      default:
+        return null;
+    }
+  })();
+
+  const quoteCurrency =
+    (quote as { currency?: string | null }).currency === "USD" ? "USD" : "CAD";
+  const quoteFxRate = Number(
+    (quote as { fx_rate_to_cad?: number | string | null }).fx_rate_to_cad ?? 1
+  );
+
+  /**
+   * Customer-facing money formatter. The pricing engine outputs CAD; for
+   * USD quotes we divide by the captured FX rate before printing so the
+   * customer sees the agreed USD price (e.g. CAD 800 ÷ 1.3742 ≈ USD 582).
+   * Returns "$NNN.NN" — the currency is already declared once in the
+   * QUOTE DETAILS column, so we don't repeat it on every cell.
+   */
+  const fmtMoney = (cad: number | null | undefined): string => {
+    const n = cad ?? 0;
+    const converted =
+      quoteCurrency === "USD" && quoteFxRate > 0 ? n / quoteFxRate : n;
+    return `$${converted.toFixed(2)}`;
+  };
+
   const details: [string, string][] = [
     ["GMP:", gmp?.gmp_number ?? "-"],
-    ["Board:", gmp?.board_name ?? "-"],
-    ["BOM:", bom ? `${bom.file_name} Rev ${bom.revision}` : "-"],
+    ["BOM Name:", bom ? (bom.bom_name ?? bom.file_name ?? "-") : "-"],
+    ["BOM Rev:", bom?.revision ?? "-"],
+    ["Gerber Name:", bom?.gerber_name ?? "-"],
+    ["Gerber Rev:", bom?.gerber_revision ?? "-"],
+    ...(procModeLabel ? ([["Mode:", procModeLabel]] as [string, string][]) : []),
+    ["Currency:", quoteCurrency],
+    // FX rate is intentionally NOT printed here — it's an internal-only
+    // value persisted on quotes.fx_rate_to_cad for our books. The customer
+    // sees the agreed USD figures but never the rate behind them.
     ["Validity:", `${quote.validity_days ?? 30} days`],
     ["Terms:", customer?.payment_terms ?? "Net 30"],
   ];
+  // Value column offset widened from 50px to 80px so the longest label
+  // ("Gerber Name:" / "FX (CAD/USD):") doesn't run into its own value at
+  // 8pt — that was the overlap visible in the rendered PDF.
+  const labelToValueOffset = 80;
   for (const [label, value] of details) {
     page1.drawText(sanitizeForPdf(label), {
       x: detailX,
@@ -467,7 +536,7 @@ export async function GET(
       color: COLOR_MUTED,
     });
     page1.drawText(sanitizeForPdf(value), {
-      x: detailX + 50,
+      x: detailX + labelToValueOffset,
       y: detY,
       size: 8,
       font: fonts.regular,
@@ -507,13 +576,15 @@ export async function GET(
     y -= 16;
   }
 
-  // ---- Summary Pricing Table ----
+  // ---- Summary Pricing Table (row per tier) ----
   if (tiers.length > 0) {
-    const labelColW = 150;
-    const tierColW = (CONTENT_WIDTH - labelColW) / tiers.length;
     const rowH = 18;
+    // 4 columns: Qty | Per-Unit | Extended | Lead Time
+    const colCount = 4;
+    const colW = CONTENT_WIDTH / colCount;
+    const headers = ["Qty", "Per-Unit Price", "Extended Price", "Lead Time"];
 
-    // Table header
+    // Header row
     page1.drawRectangle({
       x: MARGIN,
       y: y - rowH,
@@ -521,12 +592,11 @@ export async function GET(
       height: rowH,
       color: COLOR_DARK,
     });
-    for (let i = 0; i < tiers.length; i++) {
-      const tierLabel = `${tiers[i].board_qty} Units`;
-      const tw = fonts.bold.widthOfTextAtSize(tierLabel, 8);
-      const tx = MARGIN + labelColW + i * tierColW + tierColW / 2 - tw / 2;
-      page1.drawText(tierLabel, {
-        x: tx,
+    for (let i = 0; i < colCount; i++) {
+      const h = headers[i];
+      const hw = fonts.bold.widthOfTextAtSize(h, 8);
+      page1.drawText(h, {
+        x: MARGIN + i * colW + colW / 2 - hw / 2,
         y: y - 13,
         size: 8,
         font: fonts.bold,
@@ -535,48 +605,187 @@ export async function GET(
     }
     y -= rowH;
 
-    // Rows
-    const summaryRows: { label: string; values: string[]; bold?: boolean }[] = [
-      { label: "Components", values: tiers.map((t) => fmt(t.component_cost)) },
-      { label: "PCB", values: tiers.map((t) => fmt(t.pcb_cost)) },
-      { label: "Assembly", values: tiers.map((t) => fmt(t.assembly_cost)) },
-      { label: "NRE", values: tiers.map((t) => fmt(t.nre_charge)) },
-      { label: "Shipping", values: tiers.map((t) => fmt(t.shipping)) },
-      {
-        label: "Total",
-        values: tiers.map((t) => fmt(t.subtotal)),
-        bold: true,
-      },
-      {
-        label: "Per Unit",
-        values: tiers.map((t) => fmt(t.per_unit)),
-        bold: true,
-      },
-    ];
+    // One row per tier
+    for (let ti = 0; ti < tiers.length; ti++) {
+      const t = tiers[ti];
+      const ltKey = `tier_${ti + 1}`;
+      const lt = leadTimes[ltKey]?.trim() ? leadTimes[ltKey] : "-";
+      const values = [
+        String(t.board_qty),
+        fmtMoney(t.per_unit),
+        fmtMoney(t.subtotal),
+        lt,
+      ];
+      const rowFont = fonts.regular;
+      const rowColor = COLOR_TEXT;
 
-    for (let ri = 0; ri < summaryRows.length; ri++) {
-      y = drawTableRow(page1, fonts, y, summaryRows[ri].label, summaryRows[ri].values, tiers.length, {
-        bold: summaryRows[ri].bold,
-        rowIndex: ri,
+      if (ti % 2 === 1) {
+        page1.drawRectangle({
+          x: MARGIN,
+          y: y - rowH,
+          width: CONTENT_WIDTH,
+          height: rowH,
+          color: COLOR_BG_STRIP,
+        });
+      }
+      page1.drawLine({
+        start: { x: MARGIN, y: y - rowH },
+        end: { x: RIGHT_EDGE, y: y - rowH },
+        thickness: 0.5,
+        color: COLOR_BORDER,
       });
-    }
 
-    // Lead time row (if any lead times set)
-    const hasLeadTimes = Object.values(leadTimes).some((v) => v && v.trim());
-    if (hasLeadTimes) {
-      y -= 4;
-      const ltValues = tiers.map((_, i) => {
-        const key = `tier_${i + 1}`;
-        return leadTimes[key] ?? "-";
-      });
-      y = drawTableRow(page1, fonts, y, "Lead Time", ltValues, tiers.length, {
-        bold: false,
-        rowIndex: 0,
-      });
+      for (let ci = 0; ci < colCount; ci++) {
+        const val = sanitizeForPdf(values[ci]);
+        const vw = rowFont.widthOfTextAtSize(val, 8.5);
+        page1.drawText(val, {
+          x: MARGIN + ci * colW + colW / 2 - vw / 2,
+          y: y - 13,
+          size: 8.5,
+          font: rowFont,
+          color: rowColor,
+        });
+      }
+      y -= rowH;
     }
   }
 
   y -= 16;
+
+  // ---- NRE (one-time charges) ----
+  // NRE is per-quote, not per-tier — the engine echoes the same numbers
+  // onto every tier. Pull from tier[0]'s labour breakdown when available;
+  // fall back to the flat `nre_charge` for older quotes that don't carry
+  // the split.
+  if (tiers.length > 0) {
+    const firstTier = tiers[0];
+    const labour = firstTier.labour as
+      | {
+          nre_programming?: number;
+          nre_stencil?: number;
+          nre_pcb_fab?: number;
+          nre_total?: number;
+        }
+      | null
+      | undefined;
+    const nreProgramming = Number(labour?.nre_programming ?? 0);
+    const nreStencil = Number(labour?.nre_stencil ?? 0);
+    const nrePcbFab = Number(labour?.nre_pcb_fab ?? 0);
+    const nreTotal =
+      Number(labour?.nre_total ?? 0) ||
+      nreProgramming + nreStencil + nrePcbFab ||
+      Number(firstTier.nre_charge ?? 0);
+
+    if (nreTotal > 0) {
+      const nreRowH = 16;
+      const nreHeaderH = 18;
+
+      // Section header bar.
+      page1.drawRectangle({
+        x: MARGIN,
+        y: y - nreHeaderH,
+        width: CONTENT_WIDTH,
+        height: nreHeaderH,
+        color: COLOR_DARK,
+      });
+      page1.drawText("NRE (ONE-TIME CHARGES)", {
+        x: MARGIN + 6,
+        y: y - 13,
+        size: 8,
+        font: fonts.bold,
+        color: COLOR_WHITE,
+      });
+      y -= nreHeaderH;
+
+      // Each populated breakdown line + total. Skip lines with zero value
+      // so a quote with only programming + stencil doesn't render an
+      // empty PCB-fab row.
+      const items: [string, number][] = [];
+      if (nreProgramming > 0) items.push(["Programming", nreProgramming]);
+      if (nreStencil > 0) items.push(["Stencil", nreStencil]);
+      if (nrePcbFab > 0) items.push(["PCB Fab", nrePcbFab]);
+      // Include "Other" only when the total exceeds the explicit pieces —
+      // protects legacy quotes whose labour breakdown is incomplete.
+      const explicitSum = nreProgramming + nreStencil + nrePcbFab;
+      if (nreTotal - explicitSum > 0.005 && explicitSum > 0) {
+        items.push(["Other", nreTotal - explicitSum]);
+      }
+      // No labour breakdown at all → render a single "Total" line.
+      if (items.length === 0) items.push(["Total", nreTotal]);
+
+      for (let i = 0; i < items.length; i++) {
+        const [label, amount] = items[i];
+        if (i % 2 === 1) {
+          page1.drawRectangle({
+            x: MARGIN,
+            y: y - nreRowH,
+            width: CONTENT_WIDTH,
+            height: nreRowH,
+            color: COLOR_BG_STRIP,
+          });
+        }
+        page1.drawLine({
+          start: { x: MARGIN, y: y - nreRowH },
+          end: { x: RIGHT_EDGE, y: y - nreRowH },
+          thickness: 0.5,
+          color: COLOR_BORDER,
+        });
+        page1.drawText(sanitizeForPdf(label), {
+          x: MARGIN + 6,
+          y: y - 12,
+          size: 8.5,
+          font: fonts.regular,
+          color: COLOR_TEXT,
+        });
+        const valStr = fmtMoney(amount);
+        const valW = fonts.regular.widthOfTextAtSize(valStr, 8.5);
+        page1.drawText(valStr, {
+          x: RIGHT_EDGE - valW - 6,
+          y: y - 12,
+          size: 8.5,
+          font: fonts.regular,
+          color: COLOR_TEXT,
+        });
+        y -= nreRowH;
+      }
+
+      // Total row — only when we actually broke the NRE down.
+      if (items.length > 1 || items[0]?.[0] !== "Total") {
+        page1.drawRectangle({
+          x: MARGIN,
+          y: y - nreRowH,
+          width: CONTENT_WIDTH,
+          height: nreRowH,
+          color: COLOR_BG_STRIP,
+        });
+        page1.drawLine({
+          start: { x: MARGIN, y: y - nreRowH },
+          end: { x: RIGHT_EDGE, y: y - nreRowH },
+          thickness: 0.5,
+          color: COLOR_BORDER,
+        });
+        page1.drawText("Total NRE", {
+          x: MARGIN + 6,
+          y: y - 12,
+          size: 9,
+          font: fonts.bold,
+          color: COLOR_DARK,
+        });
+        const totalStr = fmtMoney(nreTotal);
+        const totalW = fonts.bold.widthOfTextAtSize(totalStr, 9);
+        page1.drawText(totalStr, {
+          x: RIGHT_EDGE - totalW - 6,
+          y: y - 12,
+          size: 9,
+          font: fonts.bold,
+          color: COLOR_DARK,
+        });
+        y -= nreRowH;
+      }
+
+      y -= 16;
+    }
+  }
 
   // ---- Notes ----
   if (quote.notes) {
@@ -627,9 +836,16 @@ export async function GET(
     });
     y -= 14;
 
+    // Tax line on the boilerplate has to match the actual quote: USD/
+    // international quotes don't carry Quebec sales tax.
+    const taxClause =
+      quoteCurrency === "USD"
+        ? "All prices are in USD; applicable sales taxes are billed separately on the invoice."
+        : "All prices are in CAD and exclude TPS/GST (5%) and TVQ/QST (9.975%).";
+
     const terms = [
       `1. This quotation is valid for ${quote.validity_days ?? 30} days from the date of issue.`,
-      "2. All prices are in CAD and exclude TPS/GST (5%) and TVQ/QST (9.975%).",
+      `2. ${taxClause}`,
       "3. Lead times are subject to component availability at the time of order confirmation.",
       "4. Payment terms: Net 30 from date of invoice unless otherwise agreed.",
       "5. NRE charges apply to first-time boards only and cover stencil, programming, and setup.",
@@ -661,12 +877,108 @@ export async function GET(
   );
 
   /* ================================================================ */
-  /*  PAGES 2-N — Per-Tier Detailed Breakdown                         */
+  /*  OPTIONAL PAGE â€” Customer-Supplied Parts                         */
+  /*  Only drawn when the quote has lines marked as customer-supplied.*/
+  /*  Lists each part + per-tier total qty the customer needs to ship.*/
+  /* ================================================================ */
+  let nextPageNum = 2;
+  if (hasCustomerSupplied) {
+    const csPage = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+    let csY = drawHeader(
+      csPage,
+      fonts,
+      "CUSTOMER-SUPPLIED PARTS",
+      [
+        quote.quote_number,
+        `${customerSuppliedLines.length} part${customerSuppliedLines.length === 1 ? "" : "s"} to be supplied by customer`,
+      ],
+      logo
+    );
+
+    csPage.drawText(
+      "The parts listed below are to be supplied by the customer and are NOT included in the quoted component cost. " +
+        "Please ship them to RS Electronique prior to production.",
+      {
+        x: MARGIN,
+        y: csY,
+        size: 9,
+        font: fonts.regular,
+        color: COLOR_MUTED,
+        maxWidth: A4_WIDTH - 2 * MARGIN,
+        lineHeight: 12,
+      }
+    );
+    csY -= 30;
+
+    // Column layout: Designator | CPC | MPN | Manufacturer | Description
+    const colDesig = MARGIN;
+    const colCpc = MARGIN + 130;
+    const colMpn = MARGIN + 220;
+    const colMfr = MARGIN + 330;
+    const colDesc = MARGIN + 420;
+
+    // Header row.
+    csPage.drawRectangle({
+      x: MARGIN,
+      y: csY - 2,
+      width: A4_WIDTH - 2 * MARGIN,
+      height: 16,
+      color: COLOR_BG_STRIP,
+    });
+    csPage.drawText("Designator", { x: colDesig, y: csY + 3, size: 8, font: fonts.bold, color: COLOR_TEXT });
+    csPage.drawText("CPC", { x: colCpc, y: csY + 3, size: 8, font: fonts.bold, color: COLOR_TEXT });
+    csPage.drawText("MPN", { x: colMpn, y: csY + 3, size: 8, font: fonts.bold, color: COLOR_TEXT });
+    csPage.drawText("Manufacturer", { x: colMfr, y: csY + 3, size: 8, font: fonts.bold, color: COLOR_TEXT });
+    csPage.drawText("Description", { x: colDesc, y: csY + 3, size: 8, font: fonts.bold, color: COLOR_TEXT });
+    csY -= 16;
+
+    for (const line of customerSuppliedLines) {
+      if (csY < 60) {
+        drawFooter(csPage, fonts, "R.S. Electronique Inc.", quote.quote_number, nextPageNum, totalPages);
+        // If we overflow, drop the rest onto a continuation page.
+        const cont = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+        csY = drawHeader(
+          cont,
+          fonts,
+          "CUSTOMER-SUPPLIED PARTS (continued)",
+          [quote.quote_number],
+          logo
+        );
+        nextPageNum++;
+      }
+      const desig = sanitizeForPdf(line.reference_designator ?? "â€”");
+      const cpc = sanitizeForPdf(line.cpc ?? "â€”");
+      const mpn = sanitizeForPdf(line.mpn ?? "â€”");
+      const mfr = sanitizeForPdf(line.manufacturer ?? "â€”");
+      const desc = sanitizeForPdf(line.description ?? "â€”");
+      csPage.drawText(desig.slice(0, 22), { x: colDesig, y: csY, size: 8, font: fonts.regular, color: COLOR_TEXT });
+      csPage.drawText(cpc.slice(0, 16), { x: colCpc, y: csY, size: 8, font: fonts.regular, color: COLOR_TEXT });
+      csPage.drawText(mpn.slice(0, 18), { x: colMpn, y: csY, size: 8, font: fonts.regular, color: COLOR_TEXT });
+      csPage.drawText(mfr.slice(0, 14), { x: colMfr, y: csY, size: 8, font: fonts.regular, color: COLOR_TEXT });
+      csPage.drawText(desc.slice(0, 24), { x: colDesc, y: csY, size: 8, font: fonts.regular, color: COLOR_TEXT });
+      csY -= 12;
+    }
+
+    drawFooter(
+      csPage,
+      fonts,
+      "R.S. Electronique Inc.",
+      quote.quote_number,
+      nextPageNum,
+      totalPages
+    );
+    nextPageNum++;
+  }
+
+  /* ================================================================ */
+  /*  PAGES â€” Per-Tier Detailed Breakdown                             */
   /* ================================================================ */
   for (let ti = 0; ti < tiers.length; ti++) {
     const tier = tiers[ti];
     const labour = tier.labour;
-    const pageNum = ti + 2;
+    // Page numbering accounts for the optional customer-supplied page that
+    // sits between page 1 (summary) and the per-tier breakdown pages.
+    const pageNum = nextPageNum + ti;
     const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
 
     let py = drawHeader(
@@ -704,73 +1016,15 @@ export async function GET(
     }
     py -= 22;
 
-    // ---- Material Cost ----
-    py = drawSectionTitle(page, fonts, py, "MATERIAL COST");
-    const componentCostBeforeMarkup =
-      tier.component_cost / (1 + (Number(quote.component_markup ?? 20) / 100));
-    const markupPct = Number(quote.component_markup ?? 20);
-
-    py = drawKVRow(page, fonts, py, "Total component cost (before markup)", fmt(componentCostBeforeMarkup));
-    py = drawKVRow(page, fonts, py, "Component markup", fmtPct(markupPct));
-    py = drawKVRow(page, fonts, py, "Total component cost (after markup)", fmt(tier.component_cost), { bold: true });
-    py = drawKVRow(page, fonts, py, "Overage cost (extra parts)", fmt(tier.overage_cost));
-    py = drawKVRow(page, fonts, py, "Overage quantity (extra parts)", fmtInt(tier.overage_qty));
-    py -= 8;
-
-    // ---- PCB Cost ----
-    py = drawSectionTitle(page, fonts, py, "PCB COST");
-    const pcbUnitPrice = quote.pcb_cost_per_unit != null ? Number(quote.pcb_cost_per_unit) : 0;
-    // Try to get per-tier PCB price from tier_inputs
-    const tierInputs = rawPricing?.tier_inputs as Array<{ pcb_unit_price?: number }> | undefined;
-    const tierPcbUnit = tierInputs?.[ti]?.pcb_unit_price ?? pcbUnitPrice;
-    const pcbMarkupPct = 30; // default PCB markup
-
-    py = drawKVRow(page, fonts, py, "PCB unit price", fmt(tierPcbUnit));
-    py = drawKVRow(page, fonts, py, `PCB unit price x ${tier.board_qty} boards`, fmt(tierPcbUnit * tier.board_qty));
-    py = drawKVRow(page, fonts, py, "PCB markup", fmtPct(pcbMarkupPct));
-    py = drawKVRow(page, fonts, py, "Total PCB cost", fmt(tier.pcb_cost), { bold: true });
-    py -= 8;
-
-    // ---- Assembly Cost ----
-    py = drawSectionTitle(page, fonts, py, "ASSEMBLY COST");
-    py = drawKVRow(page, fonts, py, `SMT placements (${fmtInt(tier.smt_placements)} per board)`, fmt(labour.smt_placement_cost));
-    py = drawKVRow(page, fonts, py, `TH placements (${fmtInt(tier.th_placements)} per board)`, fmt(labour.th_placement_cost));
-    if (tier.mansmt_placements > 0) {
-      py = drawKVRow(page, fonts, py, `Manual SMT (${fmtInt(tier.mansmt_placements)} per board)`, fmt(labour.mansmt_placement_cost));
-    }
-    py = drawKVRow(page, fonts, py, "Total placement cost", fmt(labour.total_placement_cost));
-    if (labour.setup_cost > 0) {
-      py = drawKVRow(page, fonts, py, "Setup cost", fmt(labour.setup_cost));
-    }
-    if (labour.programming_cost > 0) {
-      py = drawKVRow(page, fonts, py, "Programming cost", fmt(labour.programming_cost));
-    }
-    py = drawKVRow(page, fonts, py, "Total assembly cost", fmt(tier.assembly_cost), { bold: true });
-    py -= 8;
-
-    // ---- NRE Breakdown ----
-    py = drawSectionTitle(page, fonts, py, "NRE (NON-RECURRING ENGINEERING)");
-    if (labour.nre_programming > 0) {
-      py = drawKVRow(page, fonts, py, "Programming fee", fmt(labour.nre_programming));
-    }
-    if (labour.nre_stencil > 0) {
-      py = drawKVRow(page, fonts, py, "Stencil cost", fmt(labour.nre_stencil));
-    }
-    if (labour.nre_pcb_fab > 0) {
-      py = drawKVRow(page, fonts, py, "PCB fab NRE", fmt(labour.nre_pcb_fab));
-    }
-    if (labour.nre_setup > 0) {
-      py = drawKVRow(page, fonts, py, "Setup cost", fmt(labour.nre_setup));
-    }
-    if (labour.nre_misc > 0) {
-      py = drawKVRow(page, fonts, py, "Miscellaneous", fmt(labour.nre_misc));
-    }
-    py = drawKVRow(page, fonts, py, "Total NRE", fmt(tier.nre_charge), { bold: true });
-    py -= 8;
-
-    // ---- Shipping ----
-    py = drawSectionTitle(page, fonts, py, "SHIPPING");
-    py = drawKVRow(page, fonts, py, "Shipping", fmt(tier.shipping));
+    // ---- Cost Summary ----
+    py = drawSectionTitle(page, fonts, py, "COST SUMMARY");
+    py = drawKVRow(page, fonts, py, "Component Cost", fmtMoney(tier.component_cost));
+    py = drawKVRow(page, fonts, py, "PCB Cost", fmtMoney(tier.pcb_cost));
+    py = drawKVRow(page, fonts, py, "Assembly Cost", fmtMoney(tier.assembly_cost));
+    py = drawKVRow(page, fonts, py, "NRE", fmtMoney(tier.nre_charge));
+    py = drawKVRow(page, fonts, py, "Shipping", fmtMoney(tier.shipping));
+    py = drawKVRow(page, fonts, py, "Subtotal", fmtMoney(tier.subtotal), { bold: true });
+    py = drawKVRow(page, fonts, py, "Per Unit", fmtMoney(tier.per_unit), { bold: true });
     py -= 8;
 
     // ---- Tier Total ----
@@ -791,7 +1045,7 @@ export async function GET(
       font: fonts.bold,
       color: COLOR_DARK,
     });
-    const totalText = fmt(tier.subtotal);
+    const totalText = fmtMoney(tier.subtotal);
     const totalW = fonts.bold.widthOfTextAtSize(totalText, 12);
     page.drawText(totalText, {
       x: RIGHT_EDGE - totalW - 8,
@@ -808,7 +1062,7 @@ export async function GET(
       font: fonts.regular,
       color: COLOR_MUTED,
     });
-    const puText = fmt(tier.per_unit);
+    const puText = fmtMoney(tier.per_unit);
     const puW = fonts.bold.widthOfTextAtSize(puText, 10);
     page.drawText(puText, {
       x: RIGHT_EDGE - puW - 8,

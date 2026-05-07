@@ -1,14 +1,14 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
 // ---------------------------------------------------------------------------
 // /api/quotes/[id]/customer-supplied
-//   POST   — add a BOM line to this quote's customer-supplied list.
-//   DELETE — remove a BOM line from the list (query param ?bom_line_id=...).
-//   GET    — list current customer-supplied lines for the quote.
+//   POST   â€” add a BOM line to this quote's customer-supplied list.
+//   DELETE â€” remove a BOM line from the list (query param ?bom_line_id=...).
+//   GET    â€” list current customer-supplied lines for the quote.
 //
 // Writes to the `quote_customer_supplied` table. Same BOM part can be
-// customer-supplied on one quote and RS-procured on the next — this table
+// customer-supplied on one quote and RS-procured on the next â€” this table
 // captures the per-quote decision.
 // ---------------------------------------------------------------------------
 
@@ -21,10 +21,10 @@ async function authz(supabase: Awaited<ReturnType<typeof createClient>>) {
   }
   const { data: profile } = await supabase
     .from("users").select("role").eq("id", user.id).single();
-  if (!profile || (profile.role !== "ceo" && profile.role !== "operations_manager")) {
+  if (!profile || !isAdminRole(profile.role)) {
     return {
       error: NextResponse.json(
-        { error: "CEO or operations manager role required" },
+        { error: "Admin role required" },
         { status: 403 }
       ),
       user: null,
@@ -103,7 +103,7 @@ export async function POST(
   }
 
   // When a line is customer-supplied, any pinned supplier selections for it
-  // are meaningless — RS doesn't buy it from anyone. Clear them so the quote
+  // are meaningless â€” RS doesn't buy it from anyone. Clear them so the quote
   // engine doesn't accidentally charge for it.
   await supabase
     .from("bom_line_pricing")

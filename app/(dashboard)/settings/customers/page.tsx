@@ -1,7 +1,7 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { BomConfigEditor } from "@/components/settings/bom-config-editor";
-
 export default async function CustomerBomConfigsPage() {
   const supabase = await createClient();
   const {
@@ -14,7 +14,7 @@ export default async function CustomerBomConfigsPage() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") redirect("/");
+  if (!isAdminRole(profile?.role)) redirect("/");
 
   const { data: customers } = await supabase
     .from("customers")

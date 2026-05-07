@@ -164,15 +164,39 @@ export async function searchAvnetPrice(
       },
     ];
 
-    // factoryLeadTimeWks is a STRING in weeks — coerce before converting.
-    const leadWksRaw = it.factoryLeadTimeWks;
-    const leadWks =
-      typeof leadWksRaw === "string"
-        ? parseInt(leadWksRaw, 10)
-        : typeof leadWksRaw === "number"
-          ? leadWksRaw
-          : NaN;
-    const leadTimeDays = Number.isFinite(leadWks) ? leadWks * 7 : null;
+    // Lead time: Avnet primarily returns `factoryLeadTimeWks` (string, weeks).
+    // Some responses use `leadTime` / `leadTimeWeeks` / `leadTimeDays` instead
+    // depending on part type. Accept any of them; multiply weeks by 7.
+    // Return null (not 0) when the part is in stock with no quoted lead time —
+    // 0 days isn't really a lead time.
+    const toNum = (v: unknown): number => {
+      if (typeof v === "number") return v;
+      if (typeof v === "string") {
+        // Accept "12", "12 Weeks", "12 Week", "60 Days"
+        const m = v.match(/([\d.]+)/);
+        return m ? parseFloat(m[1]) : NaN;
+      }
+      return NaN;
+    };
+    const leadWksRaw = it.factoryLeadTimeWks ?? it.leadTimeWeeks;
+    const leadDaysRaw = it.leadTimeDays;
+    const leadTimeStr = it.leadTime;
+    let leadTimeDays: number | null = null;
+    const wks = toNum(leadWksRaw);
+    const days = toNum(leadDaysRaw);
+    if (Number.isFinite(wks) && wks > 0) {
+      leadTimeDays = Math.round(wks * 7);
+    } else if (Number.isFinite(days) && days > 0) {
+      leadTimeDays = Math.round(days);
+    } else if (typeof leadTimeStr === "string") {
+      const n = toNum(leadTimeStr);
+      if (Number.isFinite(n) && n > 0) {
+        const lower = leadTimeStr.toLowerCase();
+        if (lower.includes("week")) leadTimeDays = Math.round(n * 7);
+        else if (lower.includes("month")) leadTimeDays = Math.round(n * 30);
+        else leadTimeDays = Math.round(n); // assume days
+      }
+    }
 
     const stockRaw = it.inStock;
     const stockQty =
@@ -194,10 +218,25 @@ export async function searchAvnetPrice(
     const lifecycle =
       obsoleteFlag === "Y" || endOfLife === "Y" ? "OBSOLETE" : "ACTIVE";
 
-    const manufacturer =
-      typeof it.quotedManufacturerName === "string"
-        ? it.quotedManufacturerName
-        : null;
+    // Manufacturer: Avnet returns `quotedManufacturerName` on matched offers,
+    // but some responses only carry `manufacturer` / `manufacturerName` /
+    // `mfrName`. Fall back through all known field names so we don't lose the
+    // brand on rows where the primary field is absent.
+    const mfrCandidates = [
+      it.quotedManufacturerName,
+      it.manufacturer,
+      it.manufacturerName,
+      it.mfrName,
+      it.manufacturerCode,
+      it.mfrCode,
+    ];
+    let manufacturer: string | null = null;
+    for (const c of mfrCandidates) {
+      if (typeof c === "string" && c.trim().length > 0) {
+        manufacturer = c.trim();
+        break;
+      }
+    }
     const erpPn =
       typeof it.erpPartNumber === "string" ? it.erpPartNumber : null;
     const reqMpn =
@@ -223,6 +262,7 @@ export async function searchAvnetPrice(
       lifecycle_status: lifecycle,
       datasheet_url: null, // not in price response
       product_url: null,   // not in price response
+      description: null,   // Avnet's price endpoint doesn't include a part description
     });
   }
 

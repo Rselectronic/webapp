@@ -1,7 +1,11 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { formatDateTime } from "@/lib/utils/format";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -93,7 +97,7 @@ export default async function AuditLogPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "ceo") redirect("/");
+  if (!isAdminRole(profile?.role)) redirect("/");
 
   const { data: logs } = await supabase
     .from("audit_log")
@@ -107,6 +111,12 @@ export default async function AuditLogPage() {
 
   return (
     <div className="space-y-6">
+      <Link href="/settings">
+        <Button variant="ghost" size="sm">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Settings
+        </Button>
+      </Link>
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Audit Log</h2>
         <p className="text-sm text-gray-500">

@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, AlertTriangle, ShieldAlert } from "lucide-react";
@@ -24,7 +25,7 @@ export default async function ApiConfigPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "ceo") redirect("/");
+  if (!isAdminRole(profile?.role)) redirect("/");
 
   const hasMasterKey = !!process.env.SUPPLIER_CREDENTIALS_KEY;
 

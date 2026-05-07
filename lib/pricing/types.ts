@@ -38,16 +38,26 @@ export interface SupplierQuote {
   lifecycle_status: string | null;     // "ACTIVE" / "OBSOLETE" / "Production" / etc.
   datasheet_url: string | null;
   product_url: string | null;
+  /**
+   * Full-text product description from the distributor (e.g.
+   * "SMT 0603 0.1 uF 50 V ±10% X7R Capacitor, AEC-Q200"). Optional —
+   * some suppliers return very short / marketing-style descriptions, and
+   * consumers typically pick the longest across all returned quotes.
+   */
+  description?: string | null;
 }
 
 export interface PricingLine {
   bom_line_id: string;
   mpn: string;
+  cpc?: string | null;
   description: string;
   m_code: MCode | null;
   qty_per_board: number;
   unit_price: number | null;
   price_source: "cache" | "digikey" | "mouser" | "lcsc" | "historical" | "manual" | null;
+  /** Number of through-hole pins for this line. Used for true per-pin TH time. */
+  pin_count?: number | null;
 }
 
 export interface OverageTier {
@@ -59,6 +69,10 @@ export interface OverageTier {
 export interface PricingSettings {
   component_markup_pct: number;
   pcb_markup_pct: number;
+  /** Margin applied on the computed assembly cost (labour + machine for the
+   *  time model, or per-placement for the legacy model). Default 30%. Per-
+   *  quote override lives on quotes.assembly_markup_pct_override. */
+  assembly_markup_pct: number;
   /** @deprecated Legacy flat per-placement cost. Kept for backward compat; new quotes use CPH time model. */
   smt_cost_per_placement: number;
   /** @deprecated Legacy flat per-placement cost. Kept for backward compat; new quotes use CPH time model. */
@@ -74,9 +88,7 @@ export interface PricingSettings {
   // Granular NRE defaults (sum = default_nre when all apply)
   nre_programming: number;
   nre_stencil: number;
-  nre_setup: number;
   nre_pcb_fab: number;
-  nre_misc: number;
   // Setup / programming time defaults (hours)
   setup_time_hours: number;
   programming_time_hours: number;
@@ -94,6 +106,30 @@ export interface PricingSettings {
   printer_setup_min: number;     // Solder paste printer setup per side (default 15)
   // Whether to use the time-based model (true) or legacy per-placement model (false)
   use_time_model: boolean;
+  // ---------- LABOUR_SETTINGS OVERLAY (migration 059) ----------
+  // These fields are populated by applyLabourOverlay() when a labour_settings
+  // row is active. All optional — when absent, engine falls back to the
+  // CPH-based model above.
+  /** SMT reflow oven length in millimeters (for throughput bottleneck). */
+  oven_length_mm?: number | null;
+  /** SMT conveyor speed in mm/sec (for throughput bottleneck). */
+  conveyor_mm_per_sec?: number | null;
+  /** Number of reflow passes (1 = top-only, 2 = double-sided). */
+  reflow_passes?: number | null;
+  /** TH placement base time in seconds/part. When set with th_per_pin_seconds, overrides th_cph. */
+  th_base_seconds?: number | null;
+  /** TH placement time per pin in seconds/pin. Multiplied by bom_lines.pin_count. */
+  th_per_pin_seconds?: number | null;
+  /** First-article inspection minutes (one-time, added to setup). */
+  first_article_minutes?: number | null;
+  /** Per-board inspection minutes. */
+  inspection_minutes_per_board?: number | null;
+  /** Per-board touch-up minutes. */
+  touchup_minutes_per_board?: number | null;
+  /** Per-board packing minutes. */
+  packing_minutes_per_board?: number | null;
+  /** Depanelisation time in seconds per board (only applies when boards_per_panel > 1). */
+  depanel_seconds_per_board?: number | null;
 }
 
 export interface PricingTier {
@@ -117,11 +153,37 @@ export interface PricingTier {
   pcb_cost_before_markup: number;
   pcb_markup_amount: number;
   pcb_markup_pct: number;
+  // Assembly markup breakdown — same pattern as component / PCB. The
+  // displayed assembly_cost is post-markup; the engine exposes the
+  // before-markup figure + the markup amount for transparency.
+  assembly_cost_before_markup: number;
+  assembly_markup_amount: number;
+  assembly_markup_pct: number;
   // Overage breakdown — how much of component_cost is overage extras
   overage_cost: number;
   overage_qty: number;
+  // Per-line cost breakdown for this tier — used by the UI's "Expand line
+  // math" toggle and for diffing against the Excel system when numbers don't
+  // match. Always populated so the information is available on demand.
+  line_breakdowns?: LineCostBreakdown[];
   // Labour breakdown
   labour: LabourBreakdown;
+}
+
+export interface LineCostBreakdown {
+  bom_line_id: string;
+  mpn: string;
+  cpc?: string | null;
+  m_code: string | null;
+  qty_per_board: number;
+  board_qty: number;
+  overage_extras: number;
+  order_qty: number;          // qty_per_board × board_qty + overage_extras
+  unit_price: number;         // CAD, post-FX. 0 when no price resolved.
+  unit_price_source: "override" | "cache" | "missing";
+  markup_pct: number;
+  extended_before_markup: number; // unit_price × order_qty
+  extended_after_markup: number;  // extended_before_markup × (1 + markup/100)
 }
 
 export interface LabourBreakdown {
@@ -135,9 +197,7 @@ export interface LabourBreakdown {
   // NRE breakdown
   nre_programming: number;
   nre_stencil: number;
-  nre_setup: number;
   nre_pcb_fab: number;
-  nre_misc: number;
   nre_total: number;
   // Stats from VBA TIME file
   total_unique_lines: number;
@@ -189,8 +249,12 @@ export interface QuoteInput {
   settings: PricingSettings;
   /** New per-tier input with individual PCB prices and NRE breakdown */
   tier_inputs?: TierInput[];
-  /** Assembly type for programming fee lookup: TB=double-sided, TS=single-sided, etc. */
-  assembly_type?: string;
+  /** Physical board layout for programming fee lookup. Sourced from
+   *  `gmps.board_side`. 'double' = top + bottom SMT, 'single' = top only. */
+  board_side?: "single" | "double" | null;
+  /** How many individual boards are built per SMT panel. Drives oven throughput
+   *  (panels-through-oven, not boards) and depanelisation cost. Default 1. */
+  boards_per_panel?: number;
   /**
    * Per-BOM-line per-tier unit-price overrides in CAD, from the Component
    * Pricing Review page (`bom_line_pricing` table). When present for a given
@@ -207,7 +271,7 @@ export interface MissingPriceComponent {
   description: string;
   qty_per_board: number;
   bom_line_id?: string;  // for lookup when MPN is empty
-  cpc?: string;          // customer part code (fallback identifier)
+  cpc?: string | null;   // customer part code (fallback identifier)
 }
 
 export interface QuotePricing {

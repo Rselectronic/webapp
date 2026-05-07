@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils/format";
 import { KpiCard } from "@/components/kpi-card";
-import { ActiveWorkflows, type ActiveWorkflowItem } from "@/components/workflow/active-workflows";
 import { DashboardTabs } from "@/components/dashboard/dashboard-tabs";
 import {
   AlertTriangle,
@@ -11,7 +10,6 @@ import {
   DollarSign,
   Factory,
   FileText,
-  TrendingUp,
   Users,
 } from "lucide-react";
 
@@ -94,21 +92,24 @@ export default async function DashboardPage() {
     quotesThisMonthResult,
     jobsInProductionResult,
     overdueInvoicesResult,
-    avgQuoteResult,
     recentQuotes,
     recentJobs,
     recentInvoices,
-    activeWorkflowJobs,
   ] = await Promise.all([
     // Primary KPIs
     supabase
       .from("customers")
       .select("id", { count: "exact", head: true })
       .eq("is_active", true),
+    // Open Quotes = quotes RS still owes work on (draft or review).
+    // 'sent' is intentionally excluded: per the business model, the
+    // job is done once the quote is sent — only a fraction of customers
+    // come back with a PO, so a "sent" quote isn't an open task. It's
+    // tracked separately on /quotes by status filter.
     supabase
       .from("quotes")
       .select("id", { count: "exact", head: true })
-      .in("status", ["draft", "review", "sent"]),
+      .in("status", ["draft", "review"]),
     supabase
       .from("jobs")
       .select("id", { count: "exact", head: true })
@@ -130,10 +131,6 @@ export default async function DashboardPage() {
       .from("invoices")
       .select("id", { count: "exact", head: true })
       .eq("status", "overdue"),
-    supabase
-      .from("quotes")
-      .select("pricing")
-      .not("pricing", "is", null),
     // Recent activity
     supabase
       .from("quotes")
@@ -150,15 +147,6 @@ export default async function DashboardPage() {
       .select("id, invoice_number, status, total, created_at, customers(code)")
       .order("created_at", { ascending: false })
       .limit(5),
-    // Active workflows — recent jobs not archived, with linked entities
-    supabase
-      .from("jobs")
-      .select(
-        "id, job_number, status, bom_id, quote_id, customer_id, customers(code, company_name), gmps(gmp_number)"
-      )
-      .not("status", "in", '("archived")')
-      .order("updated_at", { ascending: false })
-      .limit(5),
   ]);
 
   // Compute KPI values
@@ -174,29 +162,6 @@ export default async function DashboardPage() {
   const quotesThisMonth = quotesThisMonthResult.count ?? 0;
   const jobsInProduction = jobsInProductionResult.count ?? 0;
   const overdueInvoices = overdueInvoicesResult.count ?? 0;
-
-  // Calculate average quote value from first tier pricing
-  let avgQuoteValue = 0;
-  if (avgQuoteResult.data && avgQuoteResult.data.length > 0) {
-    const values = avgQuoteResult.data
-      .map((q) => {
-        const pricing = q.pricing as Record<string, unknown> | null;
-        if (!pricing) return null;
-        // Try to extract the first tier total or per_unit
-        const tiers = Object.values(pricing);
-        if (tiers.length > 0) {
-          const firstTier = tiers[0] as Record<string, unknown> | null;
-          if (firstTier && typeof firstTier === "object") {
-            return Number(firstTier.per_unit) || Number(firstTier.total) || 0;
-          }
-        }
-        return 0;
-      })
-      .filter((v): v is number => v !== null && v > 0);
-    if (values.length > 0) {
-      avgQuoteValue = values.reduce((a, b) => a + b, 0) / values.length;
-    }
-  }
 
   // Merge recent activity
   const activity: ActivityItem[] = [];
@@ -251,28 +216,6 @@ export default async function DashboardPage() {
   );
   const recentActivity = activity.slice(0, 10);
 
-  // Build active workflow items from jobs
-  const workflows: ActiveWorkflowItem[] = (activeWorkflowJobs.data ?? []).map(
-    (j) => {
-      const jCust = j.customers as unknown as {
-        code: string;
-        company_name: string;
-      } | null;
-      const jGmp = j.gmps as unknown as { gmp_number: string } | null;
-      return {
-        title: `${jCust?.code ?? "?"} / ${jGmp?.gmp_number ?? j.job_number}`,
-        entities: {
-          bomId: j.bom_id ?? undefined,
-          bomStatus: "parsed" as const,
-          quoteId: j.quote_id ?? undefined,
-          quoteStatus: j.quote_id ? "accepted" : undefined,
-          jobId: j.id,
-          jobStatus: j.status,
-        },
-      };
-    }
-  );
-
   const overviewContent = (
     <div className="space-y-6">
       {/* Primary KPIs */}
@@ -286,7 +229,7 @@ export default async function DashboardPage() {
         <KpiCard
           title="Open Quotes"
           value={openQuotes}
-          description="Draft, review, or sent"
+          description="Draft or review — needs action"
           icon={Calculator}
         />
         <KpiCard
@@ -304,7 +247,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Secondary KPIs */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <KpiCard
           title="Quotes This Month"
           value={quotesThisMonth}
@@ -316,12 +259,6 @@ export default async function DashboardPage() {
           value={jobsInProduction}
           description="Currently on the floor"
           icon={Factory}
-        />
-        <KpiCard
-          title="Avg Quote Value"
-          value={avgQuoteValue > 0 ? formatCurrency(avgQuoteValue) : "--"}
-          description="Per unit, first tier"
-          icon={TrendingUp}
         />
         <KpiCard
           title="Overdue Invoices"
@@ -384,20 +321,6 @@ export default async function DashboardPage() {
     </div>
   );
 
-  const workflowsContent = (
-    <div className="rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-950">
-      <div className="border-b px-6 py-4 dark:border-gray-800">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Active Workflows
-        </h3>
-        <p className="text-sm text-gray-500">
-          Track jobs through the full lifecycle: BOM &rarr; Classify &rarr; Quote &rarr; Job &rarr; Procurement &rarr; Production &rarr; Ship &rarr; Invoice
-        </p>
-      </div>
-      <ActiveWorkflows workflows={workflows} />
-    </div>
-  );
-
   return (
     <div className="space-y-6">
       <div>
@@ -407,10 +330,18 @@ export default async function DashboardPage() {
         </p>
       </div>
 
+      {/* Single-tab shell for now. The DashboardTabs component is kept
+          generalized so a second tab can be added by appending one more
+          entry to the array. */}
       <DashboardTabs
-        overviewContent={overviewContent}
-        workflowsContent={workflowsContent}
-        workflowCount={workflows.length}
+        tabs={[
+          {
+            id: "overview",
+            label: "Overview",
+            icon: "layout",
+            content: overviewContent,
+          },
+        ]}
       />
     </div>
   );

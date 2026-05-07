@@ -23,7 +23,7 @@ export function registerJobTools(server: McpServer) {
       let query = supabase
         .from("jobs")
         .select(
-          "id, job_number, status, quantity, assembly_type, po_number, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name)"
+          "id, job_number, status, quantity, po_number, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name, board_side)"
         )
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -54,8 +54,8 @@ export function registerJobTools(server: McpServer) {
           | null;
         const c = Array.isArray(customers) ? customers[0] : customers;
         const gmps = j.gmps as
-          | { gmp_number?: string }
-          | { gmp_number?: string }[]
+          | { gmp_number?: string; board_side?: string | null }
+          | { gmp_number?: string; board_side?: string | null }[]
           | null;
         const g = Array.isArray(gmps) ? gmps[0] : gmps;
         return {
@@ -65,7 +65,7 @@ export function registerJobTools(server: McpServer) {
           gmp: g?.gmp_number,
           status: j.status,
           quantity: j.quantity,
-          assembly_type: j.assembly_type,
+          board_side: g?.board_side ?? null,
           po_number: j.po_number,
           scheduled_start: j.scheduled_start,
           scheduled_completion: j.scheduled_completion,
@@ -95,7 +95,7 @@ export function registerJobTools(server: McpServer) {
       let query = supabase
         .from("jobs")
         .select(
-          "*, customers(code, company_name), gmps(gmp_number, board_name), quotes(quote_number, pricing, quantities)"
+          "*, customers(code, company_name), gmps(gmp_number, board_name), quotes!jobs_quote_id_fkey(quote_number, pricing, quantities)"
         );
 
       if (job_id) {

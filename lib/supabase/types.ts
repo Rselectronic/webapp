@@ -1,4 +1,4 @@
-export type UserRole = "ceo" | "operations_manager" | "shop_floor";
+export type UserRole = "admin" | "production";
 
 export type JobStatus =
   | "created"

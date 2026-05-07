@@ -1,10 +1,10 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
 // ---------------------------------------------------------------------------
 // /api/pricing-preferences
-//   GET    — list every preference (system + user-created). Any authed user.
-//   POST   — create a user-defined preference. CEO / ops_manager only.
+//   GET    â€” list every preference (system + user-created). Any authed user.
+//   POST   â€” create a user-defined preference. CEO / ops_manager only.
 // ---------------------------------------------------------------------------
 
 const VALID_RULES = new Set([
@@ -67,8 +67,8 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: profile } = await supabase
     .from("users").select("role").eq("id", user.id).single();
-  if (!profile || (profile.role !== "ceo" && profile.role !== "operations_manager")) {
-    return NextResponse.json({ error: "CEO or operations manager role required" }, { status: 403 });
+  if (!profile || !isAdminRole(profile.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   const { data, error } = await supabase

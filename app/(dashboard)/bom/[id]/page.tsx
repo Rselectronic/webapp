@@ -8,10 +8,12 @@ import {
 } from "@/components/ui/card";
 import { ArrowLeft, Calculator } from "lucide-react";
 import { BomTable } from "@/components/bom/bom-table";
+import { AddPcbLineButton } from "@/components/bom/add-pcb-line-button";
 import { AIClassifyButton } from "@/components/bom/ai-classify-button";
 import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import { ExportBomButton } from "@/components/bom/export-bom-button";
 import { DeleteBomButton } from "@/components/bom/delete-bom-button";
+import { EditBomMetaButton } from "@/components/bom/edit-bom-meta-button";
 import { StartQuoteButton } from "@/components/quote-wizard/start-quote-button";
 import { formatDateTime } from "@/lib/utils/format";
 
@@ -36,6 +38,36 @@ export default async function BomDetailPage({
     .select("*")
     .eq("bom_id", id)
     .order("line_number", { ascending: true });
+
+  // Load customer-supplied (+ RS/operator) alternates for every line in one
+  // shot. rank=0 is the primary MPN mirror, so filter it out — we only want
+  // true alternates (rank >= 1). Grouped below into a map keyed by
+  // bom_line_id for O(1) lookup in the table.
+  const { data: alternates } =
+    lines && lines.length > 0
+      ? await supabase
+          .from("bom_line_alternates")
+          .select("bom_line_id, mpn, manufacturer, rank, source")
+          .in(
+            "bom_line_id",
+            lines.map((l) => l.id)
+          )
+          .gt("rank", 0)
+          .order("rank", { ascending: true })
+      : { data: [] as Array<{ bom_line_id: string; mpn: string; manufacturer: string | null; rank: number; source: string }> };
+
+  const alternatesByLineId: Record<
+    string,
+    Array<{ mpn: string; manufacturer: string | null; source: string }>
+  > = {};
+  for (const alt of alternates ?? []) {
+    if (!alternatesByLineId[alt.bom_line_id]) alternatesByLineId[alt.bom_line_id] = [];
+    alternatesByLineId[alt.bom_line_id].push({
+      mpn: alt.mpn,
+      manufacturer: alt.manufacturer,
+      source: alt.source,
+    });
+  }
 
   // Revision history + linked quote for workflow banner — both in parallel
   const [{ data: revisions }, { data: linkedQuote }] = await Promise.all([
@@ -65,10 +97,13 @@ export default async function BomDetailPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href="/bom">
+        {/* The standalone /bom list page was retired in favour of the GMP
+            view — every BOM is now reached via its parent GMP, so this
+            back-button mirrors the way the user arrived. */}
+        <Link href={bom.gmp_id ? `/gmp/${bom.gmp_id}` : "/gmp"}>
           <Button variant="ghost" size="sm">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            All BOMs
+            Back to GMP
           </Button>
         </Link>
         <Link href="/bom/upload">
@@ -118,8 +153,22 @@ export default async function BomDetailPage({
               </Button>
             </Link>
           )}
+          <EditBomMetaButton
+            bomId={id}
+            fileName={bom.file_name}
+            initial={{
+              bom_name: bom.bom_name ?? null,
+              revision: bom.revision ?? null,
+              gerber_name: bom.gerber_name ?? null,
+              gerber_revision: bom.gerber_revision ?? null,
+            }}
+          />
           <ExportBomButton bomId={id} fileName={bom.file_name} gmpNumber={gmp?.gmp_number ?? ""} />
-          <DeleteBomButton bomId={id} bomName={gmp?.gmp_number ?? bom.file_name} />
+          <DeleteBomButton
+            bomId={id}
+            bomName={gmp?.gmp_number ?? bom.file_name}
+            redirectTo={bom.gmp_id ? `/gmp/${bom.gmp_id}` : "/gmp"}
+          />
         </div>
       </div>
 
@@ -172,9 +221,32 @@ export default async function BomDetailPage({
         />
       )}
 
+      {/* Manual add-PCB control — shown only when the BOM has no is_pcb row.
+          Auto-hides once a PCB line exists (including after auto-create during
+          parse). */}
+      {lines && lines.length > 0 && !lines.some((l) => l.is_pcb) && (
+        <AddPcbLineButton
+          bomId={id}
+          defaultMpn={bom.gerber_name ?? null}
+          defaultCpc={bom.gerber_name ?? null}
+          defaultDescription={
+            bom.gerber_name
+              ? bom.gerber_revision
+                ? `${bom.gerber_name} (PCB, Rev ${bom.gerber_revision})`
+                : `${bom.gerber_name} (PCB)`
+              : null
+          }
+        />
+      )}
+
       {/* BOM table */}
       {lines && lines.length > 0 ? (
-        <BomTable lines={lines} bomId={id} />
+        <BomTable
+          lines={lines}
+          bomId={id}
+          customerId={bom.customer_id}
+          alternatesByLineId={alternatesByLineId}
+        />
       ) : (
         <Card>
           <CardContent className="py-8 text-center text-gray-500">

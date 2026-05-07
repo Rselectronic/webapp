@@ -21,6 +21,15 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, X, User, MapPin } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { AddressFields } from "./address-fields";
+import {
+  normalizeCountry,
+  taxRegionForAddress,
+  currencyForAddress,
+  type CountryCode,
+} from "@/lib/address/regions";
+import { TAX_REGION_LABELS } from "@/lib/tax/regions";
 
 const DEFAULT_PAYMENT_TERMS = [
   "Net 30",
@@ -46,6 +55,9 @@ interface Address {
   province: string;
   postal_code: string;
   country: string;
+  country_code?: CountryCode;
+  /** Optional currency override (CAD/USD). Unset → derive from country. */
+  currency?: "CAD" | "USD";
   is_default: boolean;
 }
 
@@ -54,7 +66,7 @@ const emptyContact = (): Contact => ({
 });
 
 const emptyAddress = (): Address => ({
-  label: "", street: "", city: "", province: "", postal_code: "", country: "Canada", is_default: false,
+  label: "", street: "", city: "", province: "", postal_code: "", country: "Canada", country_code: "CA", is_default: false,
 });
 
 export function CreateCustomerDialog() {
@@ -67,6 +79,7 @@ export function CreateCustomerDialog() {
   const [code, setCode] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("Net 30");
+  const [folderName, setFolderName] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -85,6 +98,11 @@ export function CreateCustomerDialog() {
   const [contacts, setContacts] = useState<Contact[]>([{ ...emptyContact(), is_primary: true }]);
   const [billingAddresses, setBillingAddresses] = useState<Address[]>([{ ...emptyAddress(), label: "Primary", is_default: true }]);
   const [shippingAddresses, setShippingAddresses] = useState<Address[]>([{ ...emptyAddress(), label: "Primary", is_default: true }]);
+  // "Same as billing" — when on, hide the shipping section and clone the
+  // billing addresses into shipping_addresses on submit. Default ON because
+  // most customers only have one address; the operator opts out for
+  // multi-location accounts.
+  const [shippingSameAsBilling, setShippingSameAsBilling] = useState(true);
 
   const updateContact = (index: number, field: keyof Contact, value: string | boolean) => {
     setContacts(prev => {
@@ -151,7 +169,16 @@ export function CreateCustomerDialog() {
     try {
       const validContacts = contacts.filter(c => c.name || c.email || c.phone);
       const validBilling = billingAddresses.filter(a => a.street || a.city);
-      const validShipping = shippingAddresses.filter(a => a.street || a.city);
+      // "Same as billing" → clone billing into shipping (sans the
+      // currency override; shipping doesn't carry tax/currency, so we
+      // strip those keys to avoid confusion downstream).
+      const validShipping = shippingSameAsBilling
+        ? validBilling.map((a) => {
+            const clone: Address = { ...a };
+            delete clone.currency;
+            return clone;
+          })
+        : shippingAddresses.filter((a) => a.street || a.city);
 
       const res = await fetch("/api/customers", {
         method: "POST",
@@ -163,6 +190,7 @@ export function CreateCustomerDialog() {
           billing_addresses: validBilling,
           shipping_addresses: validShipping,
           payment_terms: paymentTerms,
+          folder_name: folderName.trim() || null,
           notes: notes.trim() || null,
         }),
       });
@@ -188,51 +216,122 @@ export function CreateCustomerDialog() {
     addresses: Address[],
   ) => (
     <div className="space-y-3">
-      {addresses.map((addr, i) => (
-        <div key={i} className="rounded-md border p-3 space-y-3 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MapPin className="h-3.5 w-3.5 text-gray-400" />
-              <span className="text-xs font-medium text-gray-500">Address {i + 1}</span>
-              {addr.is_default && (
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">Default</span>
-              )}
+      {addresses.map((addr, i) => {
+        const code: CountryCode =
+          (addr.country_code ?? normalizeCountry(addr.country)) as CountryCode;
+        const region = taxRegionForAddress({
+          country_code: code,
+          province: addr.province,
+        });
+        // Effective currency = override if set, else country default.
+        const currency = currencyForAddress({
+          country_code: code,
+          currency: addr.currency,
+        });
+        const isOverride = addr.currency === "CAD" || addr.currency === "USD";
+
+        return (
+          <div key={i} className="rounded-md border p-3 space-y-3 dark:border-gray-700">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                <span className="text-xs font-medium text-gray-500">Address {i + 1}</span>
+                {addr.is_default && (
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">Default</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {!addr.is_default && (
+                  <Button type="button" variant="ghost" size="sm" className="h-7 text-xs"
+                    onClick={() => updateAddress(type, i, "is_default", true)}>
+                    Set default
+                  </Button>
+                )}
+                {addresses.length > 1 && (
+                  <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-red-500"
+                    onClick={() => removeAddress(type, i)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              {!addr.is_default && (
-                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs"
-                  onClick={() => updateAddress(type, i, "is_default", true)}>
-                  Set default
-                </Button>
-              )}
-              {addresses.length > 1 && (
-                <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-red-500"
-                  onClick={() => removeAddress(type, i)}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
+
+            <Input placeholder="Label (e.g. HQ, Warehouse)" value={addr.label}
+              onChange={e => updateAddress(type, i, "label", e.target.value)} className="text-sm" />
+
+            <AddressFields
+              size="sm"
+              value={{
+                country_code: code,
+                country: addr.country ?? "",
+                street: addr.street ?? "",
+                city: addr.city ?? "",
+                province: addr.province ?? "",
+                postal_code: addr.postal_code ?? "",
+              }}
+              onChange={(next) => {
+                updateAddress(type, i, "country_code", next.country_code);
+                updateAddress(type, i, "country", next.country);
+                updateAddress(type, i, "street", next.street);
+                updateAddress(type, i, "city", next.city);
+                updateAddress(type, i, "province", next.province);
+                updateAddress(type, i, "postal_code", next.postal_code);
+              }}
+            />
+
+            {/* Derived tax region + editable currency override for billing.
+                Currency defaults to the country's currency but can be
+                overridden per address (e.g. a US billing address billed
+                in CAD per a customer agreement). Tax region stays
+                derived — no override there. */}
+            {type === "billing" ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="text-[10px]">
+                  {TAX_REGION_LABELS[region]}
+                </Badge>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Currency:
+                  </span>
+                  <Select
+                    value={addr.currency || "__auto__"}
+                    onValueChange={(v) => {
+                      updateAddress(
+                        type,
+                        i,
+                        "currency",
+                        v === "CAD" || v === "USD" ? v : ""
+                      );
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="h-6 px-1 text-[10px] min-w-[7rem]">
+                      <SelectValue>
+                        {(v: string) =>
+                          v === "__auto__" || !v
+                            ? `Auto (${currencyForAddress({ country_code: code })})`
+                            : v
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__auto__">
+                        Auto ({currencyForAddress({ country_code: code })})
+                      </SelectItem>
+                      <SelectItem value="CAD">CAD</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {isOverride ? (
+                    <Badge variant="outline" className="text-[10px]">
+                      {currency} (override)
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="col-span-2">
-              <Input placeholder="Label (e.g. HQ, Warehouse)" value={addr.label}
-                onChange={e => updateAddress(type, i, "label", e.target.value)} className="text-sm" />
-            </div>
-            <div className="col-span-2">
-              <Input placeholder="Street address" value={addr.street}
-                onChange={e => updateAddress(type, i, "street", e.target.value)} className="text-sm" />
-            </div>
-            <Input placeholder="City" value={addr.city}
-              onChange={e => updateAddress(type, i, "city", e.target.value)} className="text-sm" />
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Province" value={addr.province}
-                onChange={e => updateAddress(type, i, "province", e.target.value)} className="text-sm" />
-              <Input placeholder="Postal" value={addr.postal_code}
-                onChange={e => updateAddress(type, i, "postal_code", e.target.value)} className="text-sm" />
-            </div>
-          </div>
-        </div>
-      ))}
+        );
+      })}
       <Button type="button" variant="outline" size="sm" onClick={() => addAddress(type)} className="w-full">
         <Plus className="mr-1 h-3 w-3" /> Add Address
       </Button>
@@ -261,7 +360,7 @@ export function CreateCustomerDialog() {
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Customer Code *</label>
                 <Input placeholder="e.g. TLAN, LABO" value={code}
-                  onChange={e => setCode(e.target.value)} maxLength={10} className="font-mono uppercase" />
+                  onChange={e => setCode(e.target.value)} maxLength={15} className="font-mono uppercase" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Payment Terms</label>
@@ -284,6 +383,25 @@ export function CreateCustomerDialog() {
               <Input placeholder="Full company name" value={companyName}
                 onChange={e => setCompanyName(e.target.value)} />
             </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                Folder Name
+              </label>
+              <Input
+                placeholder="e.g. CEVIANS"
+                value={folderName}
+                onChange={(e) => setFolderName(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-gray-500">
+                Used as the OneDrive / shared-drive folder name for this
+                customer&apos;s files. Leave blank if it matches the
+                company name.
+              </p>
+            </div>
+            {/* Currency + tax region used to live here — they're now derived
+                from each billing address. The customer-level columns stay
+                in the DB as a legacy fallback for any pre-existing invoice
+                created before billing addresses were captured. */}
           </div>
 
           {/* Contacts */}
@@ -343,10 +461,33 @@ export function CreateCustomerDialog() {
 
           {/* Shipping Addresses */}
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Shipping Addresses ({shippingAddresses.length})
-            </h3>
-            {renderAddressFields("shipping", shippingAddresses)}
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Shipping Addresses
+                {!shippingSameAsBilling
+                  ? ` (${shippingAddresses.length})`
+                  : ""}
+              </h3>
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={shippingSameAsBilling}
+                  onChange={(e) =>
+                    setShippingSameAsBilling(e.target.checked)
+                  }
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Same as billing
+              </label>
+            </div>
+            {shippingSameAsBilling ? (
+              <p className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40">
+                Shipping addresses will be copied from billing on save.
+                Uncheck above to enter different shipping locations.
+              </p>
+            ) : (
+              renderAddressFields("shipping", shippingAddresses)
+            )}
           </div>
 
           {/* Notes */}

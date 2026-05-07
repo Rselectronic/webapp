@@ -160,10 +160,28 @@ export async function searchArrowPrice(mpn: string): Promise<SupplierQuote[]> {
     const unitPrice = firstTierPrice ?? rowPrice;
     if (unitPrice === null || !(unitPrice > 0)) continue;
 
-    const leadTime = r.leadTime as { supplierLeadTime?: unknown; arrowLeadTime?: unknown } | undefined;
-    const supplierLt = toNum(leadTime?.supplierLeadTime);
-    const arrowLt = toNum(leadTime?.arrowLeadTime);
-    const leadTimeDays = supplierLt ?? arrowLt;
+    // Arrow publishes lead time inside `leadTime` as days on `supplierLeadTime`
+    // and `arrowLeadTime`. Some responses expose `supplierLeadTimeWeeks` /
+    // `arrowLeadTimeWeeks` instead — accept both and convert weeks → days.
+    // Treat 0 as "no lead time" (part is in stock) and return null.
+    const leadTime = r.leadTime as
+      | {
+          supplierLeadTime?: unknown;
+          arrowLeadTime?: unknown;
+          supplierLeadTimeWeeks?: unknown;
+          arrowLeadTimeWeeks?: unknown;
+        }
+      | undefined;
+    const pickPositive = (n: number | null) => (n !== null && n > 0 ? n : null);
+    const supplierLtDays = pickPositive(toNum(leadTime?.supplierLeadTime));
+    const arrowLtDays = pickPositive(toNum(leadTime?.arrowLeadTime));
+    const supplierLtWks = pickPositive(toNum(leadTime?.supplierLeadTimeWeeks));
+    const arrowLtWks = pickPositive(toNum(leadTime?.arrowLeadTimeWeeks));
+    const leadTimeDays =
+      supplierLtDays ??
+      arrowLtDays ??
+      (supplierLtWks !== null ? Math.round(supplierLtWks * 7) : null) ??
+      (arrowLtWks !== null ? Math.round(arrowLtWks * 7) : null);
 
     quotes.push({
       source: "arrow",
@@ -184,6 +202,7 @@ export async function searchArrowPrice(mpn: string): Promise<SupplierQuote[]> {
       lifecycle_status: typeof r.lifeCycleStatus === "string" ? r.lifeCycleStatus : null,
       datasheet_url: findUrl(r.urlData, "Datasheet"),
       product_url: findUrl(r.urlData, "Part Details"),
+      description: typeof r.description === "string" ? r.description : null,
     });
   }
 

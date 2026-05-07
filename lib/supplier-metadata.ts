@@ -16,6 +16,7 @@ export type BuiltInSupplierName =
   | "future"
   | "avnet"
   | "arrow"
+  | "arrow_com"
   | "tti"
   | "esonic"
   | "newark"
@@ -30,6 +31,7 @@ export const BUILT_IN_SUPPLIER_NAMES: ReadonlyArray<BuiltInSupplierName> = [
   "future",
   "avnet",
   "arrow",
+  "arrow_com",
   "tti",
   "esonic",
   "newark",
@@ -69,6 +71,10 @@ export const SUPPLIER_METADATA: Record<BuiltInSupplierName, SupplierMetadata> = 
       { key: "client_id", label: "Client ID", type: "text", required: true },
       { key: "client_secret", label: "Client Secret", type: "password", required: true },
       { key: "environment", label: "Environment", type: "select", required: true, options: ["Production", "Sandbox"] },
+      // Optional: enables contract pricing ("MyPricing") on productdetails
+      // responses. DigiKey strips MyPricing unless the request carries
+      // X-DIGIKEY-Customer-Id. Find this value in MyDigiKey → Account.
+      { key: "customer_id", label: "Customer ID (for MyPricing)", type: "text", required: false },
     ],
     supported_currencies: ["USD", "CAD", "EUR", "GBP", "JPY", "AUD", "CHF", "CNY", "DKK", "HKD", "INR", "KRW", "MXN", "NOK", "NZD", "PLN", "SEK", "SGD", "TWD", "ZAR"],
     default_currency: "CAD",
@@ -122,7 +128,7 @@ export const SUPPLIER_METADATA: Record<BuiltInSupplierName, SupplierMetadata> = 
   },
   arrow: {
     name: "arrow",
-    display_name: "Arrow Electronics",
+    display_name: "Arrow (myArrow)",
     fields: [
       { key: "client_id", label: "Client ID", type: "text", required: true },
       { key: "client_secret", label: "Client Secret", type: "password", required: true },
@@ -130,6 +136,19 @@ export const SUPPLIER_METADATA: Record<BuiltInSupplierName, SupplierMetadata> = 
     supported_currencies: ["USD", "EUR", "GBP", "CAD"],
     default_currency: "CAD",
     docs_url: "https://developers.arrow.com",
+    notes: "Legacy myArrow OAuth API on my.arrow.com. Pricing & availability endpoint has been returning 504s — prefer Arrow.com (v4 itemservice) for new lookups.",
+  },
+  arrow_com: {
+    name: "arrow_com",
+    display_name: "Arrow.com",
+    fields: [
+      { key: "login", label: "Login", type: "text", required: true },
+      { key: "apikey", label: "API Key", type: "password", required: true },
+    ],
+    supported_currencies: ["USD"],
+    default_currency: "USD",
+    docs_url: "https://developers.arrow.com",
+    notes: "api.arrow.com itemservice v4 — supports up to 1000 parts per request (currently called one MPN at a time; batch dispatch is a planned follow-up).",
   },
   tti: {
     name: "tti",
@@ -153,7 +172,7 @@ export const SUPPLIER_METADATA: Record<BuiltInSupplierName, SupplierMetadata> = 
   },
   newark: {
     name: "newark",
-    display_name: "Newark / Element14",
+    display_name: "Newark",
     fields: [
       { key: "api_key", label: "API Key", type: "password", required: true },
     ],

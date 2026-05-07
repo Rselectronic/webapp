@@ -12,6 +12,10 @@ import type { SupplierQuote, PriceBreak } from "./types";
 // ---------------------------------------------------------------------------
 
 const TME_ENDPOINT = "https://api.tme.eu/Products/GetPricesAndStocks.json";
+// Companion endpoint that carries Producer (manufacturer) + Description.
+// GetPricesAndStocks is the lightweight price/stock feed and intentionally
+// omits them. We fetch both in parallel so total wall time ≈ one call.
+const TME_PRODUCTS_ENDPOINT = "https://api.tme.eu/Products/GetProducts.json";
 const REQUEST_TIMEOUT_MS = 15_000;
 
 interface TmeCreds {
@@ -65,46 +69,73 @@ function buildSignature(
   return createHmac("sha1", secret).update(baseString).digest("base64");
 }
 
-export async function searchTmePrice(mpn: string): Promise<SupplierQuote[]> {
-  const creds = await getTmeCredentials();
-  if (!creds) return [];
-
-  // Params to include in the signature — everything except ApiSignature itself.
+/** Common helper — POST to a TME endpoint with OAuth1-style HMAC signature. */
+async function tmePost(
+  endpoint: string,
+  mpn: string,
+  creds: TmeCreds
+): Promise<unknown | null> {
   const params: Record<string, string> = {
     "SymbolList[0]": mpn,
     Language: "EN",
     Token: creds.token,
     Country: "CA",
   };
-
-  const signature = buildSignature("POST", TME_ENDPOINT, params, creds.secret);
-
+  const signature = buildSignature("POST", endpoint, params, creds.secret);
   const body = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) body.append(k, v);
   body.append("ApiSignature", signature);
-
-  let json:
-    | {
-        Status?: string;
-        Data?: {
-          Currency?: string;
-          ProductList?: unknown[];
-        };
-      }
-    | null = null;
   try {
-    const res = await fetch(TME_ENDPOINT, {
+    const res = await fetch(endpoint, {
       method: "POST",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     });
-    if (!res.ok) return [];
-    json = await res.json();
+    if (!res.ok) return null;
+    return await res.json();
   } catch {
-    return [];
+    return null;
+  }
+}
+
+export async function searchTmePrice(mpn: string): Promise<SupplierQuote[]> {
+  const creds = await getTmeCredentials();
+  if (!creds) return [];
+
+  // Fire both calls in parallel. GetPricesAndStocks has the pricing/stock
+  // data we need; GetProducts carries Producer (manufacturer) + Description.
+  // Running them concurrently keeps wall-clock time ≈ one call.
+  const [pricesJson, productsJson] = await Promise.all([
+    tmePost(TME_ENDPOINT, mpn, creds),
+    tmePost(TME_PRODUCTS_ENDPOINT, mpn, creds),
+  ]);
+
+  const json = pricesJson as
+    | { Status?: string; Data?: { Currency?: string; ProductList?: unknown[] } }
+    | null;
+
+  // Build a Symbol → { producer, description } index from the GetProducts
+  // response so we can enrich each price row below without another call.
+  const metaBySymbol = new Map<string, { producer: string | null; description: string | null }>();
+  const productsData = productsJson as
+    | { Status?: string; Data?: { ProductList?: unknown[] } }
+    | null;
+  if (productsData?.Status === "OK" && Array.isArray(productsData.Data?.ProductList)) {
+    for (const raw of productsData.Data.ProductList) {
+      const p = raw as Record<string, unknown>;
+      const symbol = typeof p.Symbol === "string" ? p.Symbol : null;
+      if (!symbol) continue;
+      const producer =
+        typeof p.Producer === "string" && p.Producer.trim().length > 0
+          ? p.Producer.trim()
+          : null;
+      const description =
+        typeof p.Description === "string" && p.Description.trim().length > 0
+          ? p.Description.trim()
+          : null;
+      metaBySymbol.set(symbol, { producer, description });
+    }
   }
 
   if (!json || json.Status !== "OK") return [];
@@ -145,10 +176,21 @@ export async function searchTmePrice(mpn: string): Promise<SupplierQuote[]> {
     const stock = Number(p.Amount);
     const symbol = typeof p.Symbol === "string" ? p.Symbol : mpn;
 
+    // Enrich manufacturer + description from the GetProducts companion call
+    // fetched in parallel above. Fallback to row-level Producer (rare) or
+    // null if GetProducts didn't return anything for this symbol.
+    const meta = metaBySymbol.get(symbol);
+    const producer =
+      meta?.producer ??
+      (typeof p.Producer === "string" && p.Producer.trim().length > 0
+        ? p.Producer.trim()
+        : null);
+    const description = meta?.description ?? null;
+
     quotes.push({
       source: "tme",
       mpn: symbol,
-      manufacturer: null, // not in this lite endpoint — don't synthesize
+      manufacturer: producer,
       supplier_part_number: null, // TME doesn't expose a distinct distributor PN here
       unit_price: unitPrice,
       currency,
@@ -156,13 +198,17 @@ export async function searchTmePrice(mpn: string): Promise<SupplierQuote[]> {
       stock_qty: Number.isFinite(stock) ? stock : null,
       moq: null,
       order_multiple: null,
-      lead_time_days: null, // decision #9: no second call
+      // GetProducts doesn't publish a standardized lead time either — still
+      // null. Pricing + stock come from GetPricesAndStocks; GetProducts only
+      // adds Producer + Description.
+      lead_time_days: null,
       warehouse_code: null,
       ncnr: null,
       franchised: null,
       lifecycle_status: null,
       datasheet_url: null,
       product_url: null,
+      description,
     });
   }
 

@@ -1,8 +1,8 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { listCredentialStatus } from "@/lib/supplier-credentials";
-
-async function requireCeo() {
+async function requireAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -19,10 +19,10 @@ async function requireCeo() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
+  if (!isAdminRole(profile?.role)) {
     return {
       user: null,
-      error: NextResponse.json({ error: "CEO role required" }, { status: 403 }),
+      error: NextResponse.json({ error: "Admin role required" }, { status: 403 }),
     };
   }
 
@@ -30,7 +30,7 @@ async function requireCeo() {
 }
 
 export async function GET() {
-  const { user, error } = await requireCeo();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   try {

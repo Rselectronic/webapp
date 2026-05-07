@@ -1,6 +1,6 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function PATCH(
@@ -35,12 +35,9 @@ export async function PATCH(
     .eq("id", user.id)
     .single();
 
-  if (
-    !profile ||
-    (profile.role !== "ceo" && profile.role !== "operations_manager")
-  ) {
+  if (!profile || !isAdminRole(profile.role)) {
     return NextResponse.json(
-      { error: "CEO or operations manager role required" },
+      { error: "Admin role required" },
       { status: 403 }
     );
   }
@@ -72,7 +69,7 @@ export async function PATCH(
     .from("bom_lines")
     .update(updates)
     .eq("id", id)
-    .select("id, pin_count")
+    .select("id, pin_count, cpc, bom_id")
     .maybeSingle();
 
   if (error) {
@@ -87,6 +84,30 @@ export async function PATCH(
       { error: "BOM line not found" },
       { status: 404 }
     );
+  }
+
+  // Learning loop â€” when the operator sets a pin count on a TH line, mirror
+  // it onto customer_parts.through_hole_pins so the next BOM from the same
+  // customer that ships this CPC gets the pin count pre-filled. Best-effort;
+  // nothing downstream depends on the write succeeding.
+  if ("pin_count" in updates && data.cpc) {
+    const { data: bomRow } = await supabase
+      .from("boms")
+      .select("customer_id")
+      .eq("id", data.bom_id)
+      .maybeSingle();
+    if (bomRow?.customer_id) {
+      await supabase
+        .from("customer_parts")
+        .upsert(
+          {
+            customer_id: bomRow.customer_id,
+            cpc: data.cpc,
+            through_hole_pins: updates.pin_count as number | null,
+          },
+          { onConflict: "customer_id,cpc" }
+        );
+    }
   }
 
   return NextResponse.json({ ok: true, ...data });
@@ -117,12 +138,9 @@ export async function DELETE(
     .eq("id", user.id)
     .single();
 
-  if (
-    !profile ||
-    (profile.role !== "ceo" && profile.role !== "operations_manager")
-  ) {
+  if (!profile || !isAdminRole(profile.role)) {
     return NextResponse.json(
-      { error: "CEO or operations manager role required" },
+      { error: "Admin role required" },
       { status: 403 }
     );
   }

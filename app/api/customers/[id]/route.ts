@@ -1,9 +1,10 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/auth/api-auth";
-
+import { TAX_REGIONS, type TaxRegion } from "@/lib/tax/regions";
 // ---------------------------------------------------------------------------
-// GET /api/customers/[id] — Fetch full customer detail
+// GET /api/customers/[id] â€” Fetch full customer detail
 // ---------------------------------------------------------------------------
 export async function GET(
   req: NextRequest,
@@ -20,7 +21,8 @@ export async function GET(
     .select(
       `id, code, company_name, contact_name, contact_email, contact_phone,
        contacts, billing_addresses, shipping_addresses,
-       payment_terms, bom_config, notes, is_active, created_at, updated_at`
+       payment_terms, bom_config, notes, is_active, created_at, updated_at,
+       default_currency, tax_region, folder_name`
     )
     .eq("id", id)
     .maybeSingle();
@@ -35,9 +37,9 @@ export async function GET(
 }
 
 // ---------------------------------------------------------------------------
-// DELETE /api/customers/[id] — Deactivate (soft delete) or hard-delete a customer
-//   ?force=true  → hard delete (CEO only, blocked if references exist)
-//   default      → soft delete (set is_active = false)
+// DELETE /api/customers/[id] â€” Deactivate (soft delete) or hard-delete a customer
+//   ?force=true  â†’ hard delete (CEO only, blocked if references exist)
+//   default      â†’ soft delete (set is_active = false)
 // ---------------------------------------------------------------------------
 export async function DELETE(
   req: NextRequest,
@@ -58,9 +60,9 @@ export async function DELETE(
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
+  if (!isAdminRole(profile?.role)) {
     return NextResponse.json(
-      { error: "Only the CEO can delete customers." },
+      { error: "Only an admin can delete customers." },
       { status: 403 }
     );
   }
@@ -78,7 +80,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Customer not found" }, { status: 404 });
   }
 
-  // Check referential integrity — quotes, jobs, BOMs
+  // Check referential integrity â€” quotes, jobs, BOMs
   const [quotesRes, jobsRes, bomsRes] = await Promise.all([
     admin
       .from("quotes")
@@ -112,7 +114,7 @@ export async function DELETE(
 
       return NextResponse.json(
         {
-          error: `Cannot hard-delete — customer has ${parts.join(", ")}. Remove those first or use soft delete.`,
+          error: `Cannot hard-delete â€” customer has ${parts.join(", ")}. Remove those first or use soft delete.`,
           blocking: {
             quotes: blockingQuotes,
             jobs: blockingJobs,
@@ -133,7 +135,7 @@ export async function DELETE(
     return NextResponse.json({ success: true, deleted: id, mode: "hard" });
   }
 
-  // Soft delete — set is_active = false
+  // Soft delete â€” set is_active = false
   const { error } = await admin
     .from("customers")
     .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -165,7 +167,7 @@ export async function PATCH(
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
+  if (!isAdminRole(profile?.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -173,9 +175,10 @@ export async function PATCH(
   const {
     bom_config, contacts, billing_addresses, shipping_addresses,
     company_name, payment_terms, notes, is_active,
+    default_currency, tax_region, folder_name,
   } = body;
 
-  // Build update payload — only include fields that were sent
+  // Build update payload â€” only include fields that were sent
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (bom_config !== undefined) updates.bom_config = bom_config;
   if (contacts !== undefined) {
@@ -194,6 +197,18 @@ export async function PATCH(
   if (payment_terms !== undefined) updates.payment_terms = payment_terms;
   if (notes !== undefined) updates.notes = notes;
   if (is_active !== undefined) updates.is_active = is_active;
+  if (default_currency !== undefined) {
+    updates.default_currency = default_currency === "USD" ? "USD" : "CAD";
+  }
+  if (tax_region !== undefined) {
+    updates.tax_region = TAX_REGIONS.includes(tax_region as TaxRegion)
+      ? tax_region
+      : "QC";
+  }
+  if (folder_name !== undefined) {
+    const v = typeof folder_name === "string" ? folder_name.trim() : "";
+    updates.folder_name = v.length > 0 ? v : null;
+  }
 
   const { error } = await supabase
     .from("customers")

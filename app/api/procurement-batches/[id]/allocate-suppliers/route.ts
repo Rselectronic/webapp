@@ -129,7 +129,7 @@ export async function POST(
           response: r as unknown as Record<string, unknown>,
           unit_price: r.unit_price, stock_qty: null,
           currency: r.currency, expires_at: expiresAt,
-        }, { onConflict: "source,search_key" });
+        }, { onConflict: "source,search_key,supplier_part_number,warehouse_code" });
       }
 
       if (mouser.status === "fulfilled" && mouser.value) {
@@ -145,7 +145,7 @@ export async function POST(
           response: r as unknown as Record<string, unknown>,
           unit_price: r.unit_price, stock_qty: r.stock_qty,
           currency: r.currency, expires_at: expiresAt,
-        }, { onConflict: "source,search_key" });
+        }, { onConflict: "source,search_key,supplier_part_number,warehouse_code" });
       }
 
       if (lcsc.status === "fulfilled" && lcsc.value) {
@@ -161,7 +161,7 @@ export async function POST(
           response: r as unknown as Record<string, unknown>,
           unit_price: r.unit_price, stock_qty: r.stock_qty,
           currency: r.currency, expires_at: expiresAt,
-        }, { onConflict: "source,search_key" });
+        }, { onConflict: "source,search_key,supplier_part_number,warehouse_code" });
       }
 
       if (hits.length > 0) {

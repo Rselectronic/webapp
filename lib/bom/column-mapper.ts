@@ -1,7 +1,10 @@
 import type { BomConfig, ColumnMapping, RawRow } from "./types";
 
+// Single-value mapping keys (excludes the array-valued alt_* fields).
+type SingleFieldKey = "qty" | "designator" | "cpc" | "description" | "mpn" | "manufacturer";
+
 // Exact-match keywords (checked first)
-const EXACT_KEYWORDS: Record<keyof ColumnMapping, string[]> = {
+const EXACT_KEYWORDS: Record<SingleFieldKey, string[]> = {
   qty: ["qty", "quantity", "qté", "quantity for 1 board", "quantity / board", "requested quantity 1", "count", "amount", "board qty", "qty per board", "number"],
   designator: ["designator", "designation", "ref des", "ref. des.", "reference designator", "refdes", "ref_des", "r des.", "position sur circuit", "part reference", "references", "index", "ref", "component reference", "component"],
   mpn: ["mpn", "manufacturer part number", "manufacturer_pn", "mfr#", "manufacturer part", "part number", "partnumber", "mfg p/n", "manufacturer p/n", "part_number", "manufacturer part number 1", "mfr part number", "mfr part no", "mfg part no", "mfg part number", "mfr p/n", "p/n", "pn", "part no", "part no.", "part#", "part #", "component part number"],
@@ -11,7 +14,7 @@ const EXACT_KEYWORDS: Record<keyof ColumnMapping, string[]> = {
 };
 
 // Contains-match keywords (checked second — header CONTAINS this substring)
-const CONTAINS_KEYWORDS: Record<keyof ColumnMapping, string[]> = {
+const CONTAINS_KEYWORDS: Record<SingleFieldKey, string[]> = {
   qty: ["quantit", "qty", "count", "amount"],
   designator: ["designat", "ref des", "refdes", "reference", "ref."],
   mpn: ["manufacturer p", "mfr p", "mfg p", "part number", "part#", "part #", "manufacturer_pn", "part no", "mfr no", "mfg no", "p/n"],
@@ -24,38 +27,177 @@ export function resolveColumnMapping(
   config: BomConfig,
   headers: string[]
 ): ColumnMapping {
+  let mapping: ColumnMapping;
+
   // Case 1: Fixed column order (no headers, e.g. Lanka — header_none=true)
   if (config.columns_fixed) {
-    const mapping: Partial<ColumnMapping> = {};
+    const m: Partial<ColumnMapping> = {};
     const validFields = ["qty", "designator", "cpc", "description", "mpn", "manufacturer"];
     config.columns_fixed.forEach((field, index) => {
       if (validFields.includes(field)) {
-        (mapping as Record<string, number>)[field] = index;
+        (m as Record<string, number>)[field] = index;
       }
     });
-    return mapping as ColumnMapping;
+    mapping = m as ColumnMapping;
   }
-
   // Case 2: Forced column names (ISC 2100-0142 — override detected headers with known names)
-  if (config.forced_columns) {
-    return autoDetectColumns(config.forced_columns);
+  else if (config.forced_columns) {
+    mapping = autoDetectColumns(config.forced_columns);
   }
-
   // Case 3: Explicit column name mapping
-  if (config.columns && config.columns !== "auto_detect") {
-    const mapping: Partial<ColumnMapping> = {};
+  else if (config.columns && config.columns !== "auto_detect") {
+    const m: Partial<ColumnMapping> = {};
     const normalizedHeaders = headers.map((h) => h.toLowerCase().trim());
     for (const [field, headerName] of Object.entries(config.columns)) {
       const idx = normalizedHeaders.indexOf(headerName.toLowerCase().trim());
       if (idx !== -1) {
-        (mapping as Record<string, number>)[field] = idx;
+        (m as Record<string, number>)[field] = idx;
       }
     }
-    return mapping as ColumnMapping;
+    mapping = m as ColumnMapping;
+  }
+  // Case 4: Auto-detect
+  else {
+    mapping = autoDetectColumns(headers);
   }
 
-  // Case 4: Auto-detect
-  return autoDetectColumns(headers);
+  // Bind alternate-MPN columns. Priority: explicit config.alt_mpn_columns >
+  // auto-detect from header keywords. `alt_mpn_columns: []` disables detection.
+  mapping.alt_mpns = resolveAltMpnColumns(config, headers, mapping);
+  mapping.alt_manufacturers = resolveAltManufacturerColumns(
+    config,
+    headers,
+    mapping,
+    mapping.alt_mpns.length
+  );
+
+  return mapping;
+}
+
+/**
+ * Match a normalized (lowercased, trimmed) header against structured tests.
+ * Deliberately checks fields independently (mfr vs part-number) so the caller
+ * can route to the right list without pattern order mattering.
+ */
+function isPartNumberHeader(h: string): boolean {
+  return (
+    /\bmpn\b/.test(h) ||
+    /\bp\/n\b/.test(h) ||
+    /\bpn\b/.test(h) ||
+    /\bpart\s*(number|no\.?|#)?\b/.test(h) ||
+    /\bpart\s*number\b/.test(h)
+  );
+}
+
+function isManufacturerHeader(h: string): boolean {
+  return (
+    /\bmanufacturer\b/.test(h) ||
+    /\bmfr\b/.test(h) ||
+    /\bmfg\b/.test(h) ||
+    /\bvendor\b/.test(h) ||
+    /\bsupplier\b/.test(h)
+  );
+}
+
+/**
+ * A header looks like an "alternate" marker if it starts with or contains
+ * alt/alternate/second/third/.../sub/nth-source, OR it's a duplicate primary
+ * field suffixed with a digit >1 (e.g. "Manufacturer Part Number 2",
+ * "MFR Name 3"). The digit-suffix heuristic is what catches customers who
+ * don't use the word "alternate" at all.
+ */
+function hasAltMarker(h: string): boolean {
+  return (
+    /\balt(ernate)?\b/.test(h) ||
+    /\b(second|2nd|third|3rd|fourth|4th|fifth|5th)\s*(source|mpn|pn|part|mfr|mfg|manufacturer)?\b/.test(h) ||
+    /\bsub\s*(mpn|pn|part|mfr|mfg|manufacturer)\b/.test(h) ||
+    /\s[2-9]\s*$/.test(h) // trailing " 2" .. " 9"
+  );
+}
+
+/**
+ * Public entry point for auto-detecting alternate MPN / manufacturer columns
+ * given headers + a primary mapping. Used by the parse route when the user
+ * has supplied their own 6-field mapping via the UI Column Mapper — we still
+ * want the alt columns to be picked up automatically.
+ */
+export function attachAlternateColumns(
+  config: BomConfig,
+  headers: string[],
+  mapping: ColumnMapping
+): ColumnMapping {
+  mapping.alt_mpns = resolveAltMpnColumns(config, headers, mapping);
+  mapping.alt_manufacturers = resolveAltManufacturerColumns(
+    config,
+    headers,
+    mapping,
+    mapping.alt_mpns.length
+  );
+  return mapping;
+}
+
+function resolveAltMpnColumns(
+  config: BomConfig,
+  headers: string[],
+  primary: ColumnMapping
+): Array<string | number> {
+  // Explicit override wins. Empty array intentionally disables auto-detect.
+  if (Array.isArray(config.alt_mpn_columns)) {
+    const normalized = headers.map((h) => h.toLowerCase().trim());
+    return config.alt_mpn_columns
+      .map((col) => {
+        const idx = normalized.indexOf(col.toLowerCase().trim());
+        return idx === -1 ? null : idx;
+      })
+      .filter((v): v is number => v !== null);
+  }
+
+  // Auto-detect — skip the index already used for the primary MPN.
+  // A header qualifies as an alt-MPN column when it names a part number
+  // AND carries an "alternate" marker (explicit word or trailing digit).
+  const primaryMpnIdx = typeof primary.mpn === "number" ? primary.mpn : -1;
+  const indices: number[] = [];
+  headers.forEach((h, i) => {
+    if (i === primaryMpnIdx) return;
+    const norm = h.toLowerCase().trim();
+    if (!norm) return;
+    if (isPartNumberHeader(norm) && !isManufacturerHeader(norm) && hasAltMarker(norm)) {
+      indices.push(i);
+    }
+  });
+  return indices;
+}
+
+function resolveAltManufacturerColumns(
+  config: BomConfig,
+  headers: string[],
+  primary: ColumnMapping,
+  altMpnCount: number
+): Array<string | number> {
+  if (altMpnCount === 0) return [];
+
+  if (Array.isArray(config.alt_manufacturer_columns)) {
+    const normalized = headers.map((h) => h.toLowerCase().trim());
+    return config.alt_manufacturer_columns
+      .map((col) => {
+        const idx = normalized.indexOf(col.toLowerCase().trim());
+        return idx === -1 ? null : idx;
+      })
+      .filter((v): v is number => v !== null);
+  }
+
+  const primaryMfrIdx =
+    typeof primary.manufacturer === "number" ? primary.manufacturer : -1;
+  const indices: number[] = [];
+  headers.forEach((h, i) => {
+    if (i === primaryMfrIdx) return;
+    const norm = h.toLowerCase().trim();
+    if (!norm) return;
+    if (isManufacturerHeader(norm) && !isPartNumberHeader(norm) && hasAltMarker(norm)) {
+      indices.push(i);
+    }
+  });
+  return indices;
 }
 
 export function autoDetectColumns(headers: string[]): ColumnMapping {
@@ -158,7 +300,7 @@ export function autoDetectColumns(headers: string[]): ColumnMapping {
 export function getField(
   row: RawRow,
   mapping: ColumnMapping,
-  field: keyof ColumnMapping,
+  field: SingleFieldKey,
   _headers: string[]
 ): string {
   const colRef = mapping[field];

@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
@@ -23,7 +24,7 @@ export default async function ApiKeysPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "ceo") redirect("/");
+  if (!isAdminRole(profile?.role)) redirect("/");
 
   const { data: keys } = await supabase
     .from("api_keys")
@@ -43,7 +44,7 @@ export default async function ApiKeysPage() {
         <h2 className="text-2xl font-bold text-gray-900">API Keys</h2>
         <p className="text-sm text-gray-500">
           Permanent API keys for connecting AI agents (Claude Desktop, Claude
-          Code, n8n, etc.) to the RS MCP server. Keys never expire — revoke to
+          Code, n8n, etc.) to the RS MCP server. Keys never expire â€” revoke to
           deactivate.
         </p>
       </div>

@@ -60,6 +60,7 @@ export function PricingSettingsForm({ settings: initial }: Props) {
   const markupFields: FieldDef[] = [
     { key: "component_markup_pct", label: "Component markup", suffix: "%" },
     { key: "pcb_markup_pct", label: "PCB markup", suffix: "%" },
+    { key: "assembly_markup_pct", label: "Assembly markup", suffix: "%" },
   ];
 
   const cphFields: FieldDef[] = [

@@ -2,11 +2,96 @@ import type {
   RawRow,
   ColumnMapping,
   ParsedLine,
+  ParsedAlternate,
   ParseLogEntry,
   ParseResult,
   BomConfig,
 } from "./types";
 import { getField } from "./column-mapper";
+
+/** Read a cell by its column ref (header name or index) the same way
+ *  getField() does, but for columns not in ColumnMapping's fixed keys. */
+function readCell(row: RawRow, colRef: string | number): string {
+  let value: string | number | null | undefined;
+  if (typeof colRef === "number") {
+    const keys = Object.keys(row);
+    value = row[keys[colRef]];
+  } else {
+    value = row[colRef];
+  }
+  return value != null ? String(value).trim() : "";
+}
+
+/**
+ * Treat common "no value" placeholders the same as an empty cell.
+ *
+ * Customer BOMs often have an alternate-MPN column where rows that have no
+ * approved alternate are filled with N/A / TBD / - / "none" instead of
+ * being left blank. Pulling those through as real alternates pollutes the
+ * parts library and breaks downstream pricing. This list is intentionally
+ * conservative — only values that are unambiguously "not a part number"
+ * with no realistic chance of being a legitimate MPN.
+ */
+function isPlaceholderValue(s: string): boolean {
+  const v = s.trim().toUpperCase();
+  if (v === "") return true;
+  // Strip common decoration so "N/A", "N.A.", "n.a", "(N/A)" all collapse
+  // to the same canonical token.
+  const stripped = v.replace(/[.\s()/\\\-_]/g, "");
+  return (
+    stripped === "" ||
+    stripped === "NA" ||
+    stripped === "NONE" ||
+    stripped === "NIL" ||
+    stripped === "NULL" ||
+    stripped === "TBD" ||
+    stripped === "TBA" ||
+    stripped === "TBC" ||
+    stripped === "DNS" ||
+    stripped === "X" ||
+    stripped === "?"
+  );
+}
+
+/** Extract customer-supplied alternates for a single row, paired with their
+ *  manufacturer when the BOM has an aligned alt-mfr column. Dedupes against
+ *  the primary MPN and against each other; drops empties and common
+ *  placeholder values (N/A, TBD, dashes, etc.). */
+function extractAlternates(
+  row: RawRow,
+  mapping: ColumnMapping,
+  primaryMpn: string,
+  primaryManufacturer: string
+): ParsedAlternate[] {
+  const altMpnRefs = mapping.alt_mpns ?? [];
+  const altMfrRefs = mapping.alt_manufacturers ?? [];
+  if (altMpnRefs.length === 0) return [];
+
+  const seen = new Set<string>();
+  if (primaryMpn) seen.add(primaryMpn.toUpperCase());
+
+  const out: ParsedAlternate[] = [];
+  for (let i = 0; i < altMpnRefs.length; i++) {
+    const mpn = readCell(row, altMpnRefs[i]);
+    // Skip empty cells AND placeholders so "N/A", "TBD", "-" etc. don't
+    // leak in as real alternate part numbers.
+    if (!mpn || isPlaceholderValue(mpn)) continue;
+    const key = mpn.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // Same placeholder check on the alt manufacturer column — if it's
+    // "N/A", fall back to the primary manufacturer rather than storing
+    // the placeholder as the manufacturer name.
+    const rawMfr = i < altMfrRefs.length ? readCell(row, altMfrRefs[i]) : "";
+    const mfr = !rawMfr || isPlaceholderValue(rawMfr) ? "" : rawMfr;
+    out.push({
+      mpn,
+      manufacturer: mfr || primaryManufacturer,
+    });
+  }
+  return out;
+}
 
 function naturalSort(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
@@ -169,6 +254,8 @@ export function parseBom(
         ? cpcTrimmed
         : null;
 
+    const alternates = extractAlternates(row, mapping, mpn, manufacturer);
+
     included.push({
       line_number: lineCounter++,
       quantity: qty,
@@ -179,6 +266,7 @@ export function parseBom(
       manufacturer,
       is_pcb: false,
       is_dni: false,
+      alternates: alternates.length > 0 ? alternates : undefined,
     });
     log.push({ raw_row_index: i, action: "INCLUDED" });
     stats.included++;
@@ -240,6 +328,24 @@ function mergeSameMpn(
         .filter(Boolean)
         .sort(naturalSort);
       existing.reference_designator = allDesignators.join(", ");
+
+      // Union alternates from both rows — different designators for the same
+      // primary MPN might carry different second-source suggestions.
+      if (line.alternates && line.alternates.length > 0) {
+        const seen = new Set<string>(
+          (existing.alternates ?? []).map((a) => a.mpn.toUpperCase())
+        );
+        seen.add(existing.mpn.toUpperCase());
+        const merged = [...(existing.alternates ?? [])];
+        for (const alt of line.alternates) {
+          const k = alt.mpn.toUpperCase();
+          if (seen.has(k)) continue;
+          seen.add(k);
+          merged.push(alt);
+        }
+        existing.alternates = merged.length > 0 ? merged : undefined;
+      }
+
       stats.merged++;
       log.push({
         raw_row_index: -1,

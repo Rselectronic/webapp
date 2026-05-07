@@ -17,15 +17,28 @@ import { formatDateTime } from "@/lib/utils/format";
 interface BomRow {
   id: string;
   file_name: string;
+  bom_name: string | null;
   revision: string | null;
+  gerber_name: string | null;
+  gerber_revision: string | null;
+  boards_per_panel: number | null;
+  board_side: string | null;
+  ipc_class: string | null;
+  solder_type: string | null;
   status: string;
   component_count: number | null;
   created_at: string;
-  customers: { code: string; company_name: string } | { code: string; company_name: string }[] | null;
-  gmps: { gmp_number: string; board_name: string | null } | { gmp_number: string; board_name: string | null }[] | null;
+  customers:
+    | { code: string; company_name: string }
+    | { code: string; company_name: string }[]
+    | null;
+  gmps:
+    | { gmp_number: string; board_name: string | null }
+    | { gmp_number: string; board_name: string | null }[]
+    | null;
 }
 
-type SortColumn = "file_name" | "customer" | "gmp" | "revision" | "component_count" | "status" | "created_at";
+type SortColumn = "customer" | "gmp" | "bom_name" | "gerber_name" | "status";
 type SortDirection = "asc" | "desc";
 
 interface SortState {
@@ -35,21 +48,29 @@ interface SortState {
 
 function resolveCustomer(raw: BomRow["customers"]) {
   if (!raw) return null;
-  return (Array.isArray(raw) ? raw[0] : raw) as { code: string; company_name: string } | null;
+  return (Array.isArray(raw) ? raw[0] : raw) as
+    | { code: string; company_name: string }
+    | null;
 }
 
 function resolveGmp(raw: BomRow["gmps"]) {
   if (!raw) return null;
-  return (Array.isArray(raw) ? raw[0] : raw) as { gmp_number: string; board_name: string | null } | null;
+  return (Array.isArray(raw) ? raw[0] : raw) as
+    | { gmp_number: string; board_name: string | null }
+    | null;
 }
 
 function SortArrow({ column, sort }: { column: SortColumn; sort: SortState }) {
   if (sort.column !== column) return null;
   return (
     <span className="ml-1 text-blue-600 dark:text-blue-400">
-      {sort.direction === "asc" ? "\u2191" : "\u2193"}
+      {sort.direction === "asc" ? "↑" : "↓"}
     </span>
   );
+}
+
+function displayBomName(bom: BomRow): string {
+  return bom.bom_name?.trim() || bom.file_name;
 }
 
 export function BomListTable({ boms }: { boms: BomRow[] }) {
@@ -71,7 +92,8 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
       const customer = resolveCustomer(bom.customers);
       const gmp = resolveGmp(bom.gmps);
       return (
-        bom.file_name.toLowerCase().includes(q) ||
+        displayBomName(bom).toLowerCase().includes(q) ||
+        (bom.gerber_name?.toLowerCase().includes(q) ?? false) ||
         (customer?.code?.toLowerCase().includes(q) ?? false) ||
         (customer?.company_name?.toLowerCase().includes(q) ?? false) ||
         (gmp?.gmp_number?.toLowerCase().includes(q) ?? false) ||
@@ -85,19 +107,15 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
 
     return [...filtered].sort((a, b) => {
       const col = sort.column!;
-      let aVal: string | number;
-      let bVal: string | number;
+      let aVal: string;
+      let bVal: string;
 
       switch (col) {
-        case "file_name":
-          aVal = a.file_name.toLowerCase();
-          bVal = b.file_name.toLowerCase();
-          break;
         case "customer": {
           const ac = resolveCustomer(a.customers);
           const bc = resolveCustomer(b.customers);
-          aVal = (ac?.code ?? "").toLowerCase();
-          bVal = (bc?.code ?? "").toLowerCase();
+          aVal = (ac?.company_name ?? ac?.code ?? "").toLowerCase();
+          bVal = (bc?.company_name ?? bc?.code ?? "").toLowerCase();
           break;
         }
         case "gmp": {
@@ -107,32 +125,25 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
           bVal = (bg?.gmp_number ?? "").toLowerCase();
           break;
         }
-        case "revision":
-          aVal = a.revision ?? "";
-          bVal = b.revision ?? "";
+        case "bom_name":
+          aVal = displayBomName(a).toLowerCase();
+          bVal = displayBomName(b).toLowerCase();
           break;
-        case "component_count":
-          aVal = a.component_count ?? 0;
-          bVal = b.component_count ?? 0;
+        case "gerber_name":
+          aVal = (a.gerber_name ?? "").toLowerCase();
+          bVal = (b.gerber_name ?? "").toLowerCase();
           break;
         case "status":
           aVal = a.status;
           bVal = b.status;
           break;
-        case "created_at":
-          aVal = a.created_at;
-          bVal = b.created_at;
-          break;
         default:
           return 0;
       }
 
-      let cmp: number;
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        cmp = aVal - bVal;
-      } else {
-        cmp = String(aVal).localeCompare(String(bVal), undefined, { sensitivity: "base" });
-      }
+      const cmp = String(aVal).localeCompare(String(bVal), undefined, {
+        sensitivity: "base",
+      });
       return sort.direction === "asc" ? cmp : -cmp;
     });
   }, [filtered, sort]);
@@ -140,11 +151,23 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
   const headerClass =
     "cursor-pointer select-none hover:text-blue-600 dark:hover:text-blue-400 transition-colors";
 
+  const formatBoardSide = (side: string | null) => {
+    if (side === "single") return "Single";
+    if (side === "double") return "Double";
+    return "—";
+  };
+
+  const formatSolder = (solder: string | null) => {
+    if (solder === "leaded") return "Leaded";
+    if (solder === "lead-free") return "Lead-free";
+    return "—";
+  };
+
   return (
     <>
       <div className="flex items-center gap-2">
         <Input
-          placeholder="Search by file, customer, GMP..."
+          placeholder="Search by BOM, Gerber, customer, GMP..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full sm:w-72"
@@ -160,14 +183,8 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
           <TableHeader>
             <TableRow>
               <TableHead>
-                <span className={headerClass} onClick={() => handleSort("file_name")}>
-                  File
-                  <SortArrow column="file_name" sort={sort} />
-                </span>
-              </TableHead>
-              <TableHead>
                 <span className={headerClass} onClick={() => handleSort("customer")}>
-                  Customer
+                  Customer Name
                   <SortArrow column="customer" sort={sort} />
                 </span>
               </TableHead>
@@ -177,30 +194,31 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
                   <SortArrow column="gmp" sort={sort} />
                 </span>
               </TableHead>
-              <TableHead className="w-16">
-                <span className={headerClass} onClick={() => handleSort("revision")}>
-                  Rev
-                  <SortArrow column="revision" sort={sort} />
+              <TableHead>
+                <span className={headerClass} onClick={() => handleSort("bom_name")}>
+                  BOM Name
+                  <SortArrow column="bom_name" sort={sort} />
                 </span>
               </TableHead>
-              <TableHead className="w-24">
-                <span className={headerClass} onClick={() => handleSort("component_count")}>
-                  Components
-                  <SortArrow column="component_count" sort={sort} />
+              <TableHead className="w-20 text-center">BOM Version</TableHead>
+              <TableHead>
+                <span className={headerClass} onClick={() => handleSort("gerber_name")}>
+                  Gerber Name
+                  <SortArrow column="gerber_name" sort={sort} />
                 </span>
               </TableHead>
+              <TableHead className="w-24 text-center">Gerber Version</TableHead>
+              <TableHead className="w-24 text-center">Board/Panel</TableHead>
+              <TableHead className="w-24 text-center">Board Side</TableHead>
+              <TableHead className="w-20 text-center">IPC Class</TableHead>
+              <TableHead className="w-28 text-center">Solder Type</TableHead>
               <TableHead className="w-24">
                 <span className={headerClass} onClick={() => handleSort("status")}>
                   Status
                   <SortArrow column="status" sort={sort} />
                 </span>
               </TableHead>
-              <TableHead className="w-40">
-                <span className={headerClass} onClick={() => handleSort("created_at")}>
-                  Uploaded
-                  <SortArrow column="created_at" sort={sort} />
-                </span>
-              </TableHead>
+              <TableHead className="w-40">Uploaded</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -215,27 +233,61 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
                       ? "destructive"
                       : "secondary";
                 return (
-                  <TableRow key={bom.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <TableCell className="font-medium">
-                      <Link href={`/bom/${bom.id}`} className="text-blue-600 hover:underline">
-                        {bom.file_name}
-                      </Link>
-                    </TableCell>
+                  <TableRow
+                    key={bom.id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                  >
                     <TableCell className="text-sm">
-                      <span className="font-mono text-xs text-gray-500">{customer?.code}</span>
-                      {" "}
-                      <span className="text-gray-700 dark:text-gray-300">{customer?.company_name}</span>
+                      <span className="font-mono text-xs text-gray-500">
+                        {customer?.code}
+                      </span>{" "}
+                      <span className="text-gray-700 dark:text-gray-300">
+                        {customer?.company_name}
+                      </span>
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {gmp?.gmp_number}
                       {gmp?.board_name && (
-                        <span className="text-gray-400 ml-1 font-sans">&mdash; {gmp.board_name}</span>
+                        <span className="text-gray-400 ml-1 font-sans">
+                          &mdash; {gmp.board_name}
+                        </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-center">{bom.revision}</TableCell>
-                    <TableCell className="text-sm text-center">{bom.component_count ?? "\u2014"}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/bom/${bom.id}`}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {displayBomName(bom)}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-sm text-center">
+                      {bom.revision ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {bom.gerber_name ?? (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-center">
+                      {bom.gerber_revision ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-center">
+                      {bom.boards_per_panel ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-center">
+                      {formatBoardSide(bom.board_side)}
+                    </TableCell>
+                    <TableCell className="text-sm text-center">
+                      {bom.ipc_class ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-center">
+                      {formatSolder(bom.solder_type)}
+                    </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant} className="text-xs">{bom.status}</Badge>
+                      <Badge variant={statusVariant} className="text-xs">
+                        {bom.status}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-gray-500">
                       {formatDateTime(bom.created_at)}
@@ -245,7 +297,7 @@ export function BomListTable({ boms }: { boms: BomRow[] }) {
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                   {search ? `No BOMs matching "${search}"` : "No BOMs found"}
                 </TableCell>
               </TableRow>

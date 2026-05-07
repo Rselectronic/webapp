@@ -51,6 +51,18 @@ interface BomLine {
 interface BomTableProps {
   lines: BomLine[];
   bomId: string;
+  customerId?: string;
+  alternatesByLineId?: Record<
+    string,
+    Array<{ mpn: string; manufacturer: string | null; source: string }>
+  >;
+}
+
+function sourceLabel(source: string): string {
+  if (source === "customer") return "Customer alternate";
+  if (source === "rs_alt") return "RS alternate";
+  if (source === "operator") return "Operator-added";
+  return source;
 }
 
 /**
@@ -122,8 +134,8 @@ type ColKey =
   | "qty"
   | "designator"
   | "cpc"
-  | "description"
   | "mpn"
+  | "description"
   | "manufacturer"
   | "m_code"
   | "th_pins"
@@ -136,8 +148,8 @@ const COL_ORDER: ColKey[] = [
   "qty",
   "designator",
   "cpc",
-  "description",
   "mpn",
+  "description",
   "manufacturer",
   "m_code",
   "th_pins",
@@ -164,7 +176,7 @@ const COL_INITIAL_PCT: Record<ColKey, number> = {
 /** Minimum column width in pixels — drag can't shrink below this. */
 const COL_MIN_PX = 40;
 
-export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) {
+export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alternatesByLineId }: BomTableProps) {
   const router = useRouter();
   const [lines, setLines] = useState(initialLines);
   const [search, setSearch] = useState("");
@@ -420,33 +432,78 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
   async function handleMcodeChange(lineId: string, mcode: string) {
     const supabase = createClient();
 
+    // When m_code=APCB, the line is really a PCB — flip is_pcb so every
+    // "skip PCBs" filter in the codebase (pricing fetch, etc.) catches it
+    // via a single predicate.
+    const pcbFlip = mcode === "APCB" ? { is_pcb: true } : {};
+
     await supabase
       .from("bom_lines")
-      .update({ m_code: mcode, m_code_confidence: 1.0, m_code_source: "manual", m_code_reasoning: "Manual override" })
+      .update({
+        m_code: mcode,
+        m_code_confidence: 1.0,
+        m_code_source: "manual",
+        m_code_reasoning: "Manual override",
+        ...pcbFlip,
+      })
       .eq("id", lineId);
 
-    // Learning loop — save to components table for future auto-classification
+    // Learning loop — save to components table for future auto-classification.
+    // Key on CPC (customer part code); fall back to MPN when the BOM has no
+    // CPC column, matching the classifier's lookup rule.
     const line = lines.find((l) => l.id === lineId);
-    if (line?.mpn) {
+    const lookupKey = line?.cpc || line?.mpn;
+    if (lookupKey) {
       await supabase.from("components").upsert(
         {
-          mpn: line.mpn,
-          manufacturer: line.manufacturer ?? undefined,
-          description: line.description ?? undefined,
+          cpc: lookupKey,
+          manufacturer: line?.manufacturer ?? undefined,
+          description: line?.description ?? undefined,
           m_code: mcode,
           m_code_source: "manual",
         },
-        { onConflict: "mpn,manufacturer" }
+        { onConflict: "cpc,manufacturer" }
+      );
+    }
+
+    // Also write to the per-customer procurement log. customer_parts is the
+    // source of truth for Layer-1 classification going forward — when the
+    // same CPC turns up on this customer's next BOM, the classifier reads
+    // `m_code_manual` from here before falling back to the global
+    // components cache.
+    if (customerId && line?.cpc) {
+      await supabase.from("customer_parts").upsert(
+        {
+          customer_id: customerId,
+          cpc: line.cpc,
+          original_mpn: line.mpn ?? null,
+          original_manufacturer: line.manufacturer ?? null,
+          m_code_manual: mcode,
+          m_code_manual_updated_at: new Date().toISOString(),
+        },
+        { onConflict: "customer_id,cpc" }
       );
     }
 
     setLines((prev) =>
       prev.map((l) =>
         l.id === lineId
-          ? { ...l, m_code: mcode, m_code_confidence: 1.0, m_code_source: "manual", m_code_reasoning: "Manual override" }
+          ? {
+              ...l,
+              m_code: mcode,
+              m_code_confidence: 1.0,
+              m_code_source: "manual",
+              m_code_reasoning: "Manual override",
+              is_pcb: mcode === "APCB" ? true : l.is_pcb,
+            }
           : l
       )
     );
+
+    // Ask the server page to re-fetch so the 4 summary tiles above the table
+    // (Components / Classified / Need Review / Merged Lines) reflect the new
+    // m_code. Without this they stay pinned to the server-rendered snapshot.
+    router.refresh();
   }
 
   // Live M-Code distribution — recomputes whenever lines change. Excludes
@@ -632,8 +689,8 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                 <HeadCell colKey="qty" label="Qty" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
                 <HeadCell colKey="designator" label="Designator" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
                 <HeadCell colKey="cpc" label="CPC" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
-                <HeadCell colKey="description" label="Description" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
                 <HeadCell colKey="mpn" label="MPN" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
+                <HeadCell colKey="description" label="Description" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
                 <HeadCell colKey="manufacturer" label="Manufacturer" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
                 <HeadCell colKey="m_code" label="M-Code" sortField={sortField} sortDir={sortDir} onToggle={toggleSort} onResizeStart={handleResizeStart} />
                 <HeadCell colKey="th_pins" label="TH Pins" onResizeStart={handleResizeStart} />
@@ -676,11 +733,50 @@ export function BomTable({ lines: initialLines, bomId: _bomId }: BomTableProps) 
                     <TableCell className="px-3 py-2.5 font-mono text-xs">
                       <CellWithTooltip value={line.cpc} />
                     </TableCell>
-                    <TableCell className="px-3 py-2.5 text-xs">
-                      <CellWithTooltip value={line.description} />
-                    </TableCell>
                     <TableCell className="px-3 py-2.5 font-mono text-xs">
                       <CellWithTooltip value={line.mpn} />
+                      {(() => {
+                        const alts = alternatesByLineId?.[line.id];
+                        if (!alts || alts.length === 0) return null;
+                        const shown = alts.slice(0, 3);
+                        const overflow = alts.length - shown.length;
+                        return (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {shown.map((alt, i) => (
+                              <Tooltip key={`${alt.mpn}-${i}`}>
+                                <TooltipTrigger
+                                  render={
+                                    <span className="inline-block max-w-full truncate rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono text-gray-600 dark:bg-gray-800 dark:text-gray-400 cursor-default">
+                                      {alt.mpn}
+                                    </span>
+                                  }
+                                />
+                                <TooltipContent side="top" align="start" sideOffset={6} className="max-w-xs break-words">
+                                  {alt.manufacturer ? `${alt.manufacturer} · ` : ""}
+                                  {sourceLabel(alt.source)}
+                                </TooltipContent>
+                              </Tooltip>
+                            ))}
+                            {overflow > 0 && (
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={
+                                    <span className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono text-gray-500 dark:bg-gray-800 dark:text-gray-500 cursor-default">
+                                      +{overflow} more
+                                    </span>
+                                  }
+                                />
+                                <TooltipContent side="top" align="start" sideOffset={6} className="max-w-xs break-words whitespace-pre-wrap">
+                                  {alts.slice(3).map((a) => `${a.mpn}${a.manufacturer ? ` (${a.manufacturer})` : ""}`).join("\n")}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell className="px-3 py-2.5 text-xs">
+                      <CellWithTooltip value={line.description} />
                     </TableCell>
                     <TableCell className="px-3 py-2.5 text-xs">
                       <CellWithTooltip value={line.manufacturer} />

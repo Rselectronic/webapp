@@ -1,9 +1,9 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { readFile } from "fs/promises";
 import path from "path";
-
-/** Whitelist of allowed source files — prevents path traversal. */
+/** Whitelist of allowed source files â€” prevents path traversal. */
 const ALLOWED_FILES: Record<string, { contentType: string }> = {
   "_SOURCE_DM_Common_File_V11_2026-04-15.xlsm": {
     contentType:
@@ -34,7 +34,7 @@ export async function GET(
 ) {
   const { filename } = await params;
 
-  // --- Auth: CEO only ---
+  // --- Auth: admin only ---
   const supabase = await createClient();
   const {
     data: { user },
@@ -48,8 +48,8 @@ export async function GET(
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
-    return NextResponse.json({ error: "CEO role required" }, { status: 403 });
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   // --- Validate filename against whitelist ---

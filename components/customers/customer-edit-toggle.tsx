@@ -35,6 +35,15 @@ interface CustomerEditToggleProps {
     billing_addresses: Address[];
     shipping_addresses: Address[];
     bom_config: Record<string, unknown> | null;
+    folder_name?: string | null;
+    default_currency?: "CAD" | "USD" | null;
+    tax_region?:
+      | "QC"
+      | "CA_OTHER"
+      | "HST_ON"
+      | "HST_15"
+      | "INTERNATIONAL"
+      | null;
   };
   paymentTermsOptions?: string[];
   children: React.ReactNode;

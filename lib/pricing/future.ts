@@ -121,10 +121,30 @@ export async function searchFuturePrice(mpn: string): Promise<SupplierQuote[]> {
     const stock = quantities ? Number(quantities.quantity_available) : NaN;
     const moq = quantities ? Number(quantities.quantity_minimum) : NaN;
     const orderMultiple = quantities ? Number(quantities.order_mult_qty) : NaN;
-    const leadTimeDays = parseLeadTime(
+    // Primary: `quantities.factory_leadtime` + `factory_leadtime_units`.
+    // Fallbacks: `attrs.leadTimeWeeks` (number, weeks) and `attrs.leadTime`
+    // (string like "12 Weeks" / "60 Days"). 0 → null (in stock, not a lead time).
+    let leadTimeDays = parseLeadTime(
       quantities?.factory_leadtime,
       quantities?.factory_leadtime_units
     );
+    if (leadTimeDays === null || leadTimeDays <= 0) {
+      const wks = Number(attrs.leadTimeWeeks);
+      if (Number.isFinite(wks) && wks > 0) {
+        leadTimeDays = Math.round(wks * 7);
+      } else if (typeof attrs.leadTime === "string") {
+        const str = attrs.leadTime;
+        const m = str.match(/([\d.]+)/);
+        const n = m ? parseFloat(m[1]) : NaN;
+        if (Number.isFinite(n) && n > 0) {
+          const lower = str.toLowerCase();
+          if (lower.includes("week")) leadTimeDays = Math.round(n * 7);
+          else if (lower.includes("month")) leadTimeDays = Math.round(n * 30);
+          else if (lower.includes("day")) leadTimeDays = Math.round(n);
+        }
+      }
+    }
+    if (leadTimeDays !== null && leadTimeDays <= 0) leadTimeDays = null;
 
     const manufacturer = typeof attrs.manufacturerName === "string" ? attrs.manufacturerName : null;
     const lifecycle = typeof attrs.productLifeCycle === "string" ? attrs.productLifeCycle : null;
@@ -147,6 +167,12 @@ export async function searchFuturePrice(mpn: string): Promise<SupplierQuote[]> {
       lifecycle_status: lifecycle,
       datasheet_url: firstDatasheetUrl(offer.documents),
       product_url: partId?.web_url ? String(partId.web_url) : null,
+      description:
+        typeof attrs.productDescription === "string"
+          ? (attrs.productDescription as string)
+          : typeof attrs.description === "string"
+            ? (attrs.description as string)
+            : null,
     });
   }
 

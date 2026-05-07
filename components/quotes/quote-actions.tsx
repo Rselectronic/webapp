@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pencil, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +20,7 @@ import { formatCurrency } from "@/lib/utils/format";
 const STATUS_TRANSITIONS: Record<string, { label: string; next: string }> = {
   draft: { label: "Submit for Review", next: "review" },
   review: { label: "Mark as Sent", next: "sent" },
-  sent: { label: "Mark as Accepted", next: "accepted" },
+  sent: { label: "Mark as Won", next: "accepted" },
 };
 
 interface QuoteTier {
@@ -46,6 +47,8 @@ export function QuoteActions({
 }: QuoteActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTierIdx, setSelectedTierIdx] = useState<number | null>(null);
   const [customQty, setCustomQty] = useState<string>("");
@@ -88,6 +91,28 @@ export function QuoteActions({
   const customQtyValid =
     Number.isFinite(parsedCustomQty) && parsedCustomQty > 0;
   const customResolved = customQtyValid ? resolveForQty(parsedCustomQty) : null;
+
+  async function confirmSendBackToDraft() {
+    setUnlocking(true);
+    try {
+      const res = await fetch(`/api/quotes/${quoteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "draft" }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to unlock quote");
+      }
+      setUnlockDialogOpen(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Send back to draft failed:", err);
+      alert(err instanceof Error ? err.message : "Failed to unlock quote");
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   async function handleAdvance() {
     if (!transition) return;
@@ -164,8 +189,72 @@ export function QuoteActions({
 
   return (
     <div className="flex gap-2">
+      {currentStatus === "draft" && (
+        <Link href={`/quotes/wizard/${quoteId}`}>
+          <Button size="sm" variant="outline">
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </Button>
+        </Link>
+      )}
+      {currentStatus === "review" && (
+        <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
+          <DialogTrigger
+            render={
+              <Button size="sm" variant="outline" disabled={unlocking}>
+                <Undo2 className="mr-2 h-4 w-4" />
+                {unlocking ? "Unlocking..." : "Send back to Draft"}
+              </Button>
+            }
+          />
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Send quote back to Draft?</DialogTitle>
+              <DialogDescription>
+                The current pricing snapshot will remain intact until you
+                recalculate. You&apos;ll be able to edit quantities, distributor
+                picks, PCB prices, NRE, and board details before submitting
+                again.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUnlockDialogOpen(false)}
+                disabled={unlocking}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmSendBackToDraft}
+                disabled={unlocking}
+              >
+                {unlocking ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Unlocking...
+                  </>
+                ) : (
+                  "Send back to Draft"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       {transition && (
-        <Button size="sm" disabled={loading} onClick={handleAdvance}>
+        <Button
+          size="sm"
+          disabled={loading}
+          onClick={handleAdvance}
+          title={
+            currentStatus === "sent"
+              ? "Marks this quote as Won for CRM/reporting only. Job creation is no longer gated by this status — jobs are spawned from the customer PO flow."
+              : undefined
+          }
+        >
           {loading ? "Updating..." : transition.label}
         </Button>
       )}

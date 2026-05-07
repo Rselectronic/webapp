@@ -72,12 +72,53 @@ export default async function BomPricingReviewPage({
     if (l.mpn) searchKeys.push(l.mpn.toUpperCase());
     if (l.cpc) searchKeys.push(l.cpc.toUpperCase());
   }
+  // Also include alt MPNs from bom_line_alternates — otherwise cached LCSC/
+  // DigiKey rows fetched under an alternate MPN are invisible to this page
+  // even though auto-pick (which searches by alts too) will still pick them.
+  if (lineIds.length > 0) {
+    const { data: altRows } = await supabase
+      .from("bom_line_alternates")
+      .select("mpn")
+      .in("bom_line_id", lineIds);
+    for (const a of altRows ?? []) {
+      if (a.mpn && a.mpn.trim()) searchKeys.push(a.mpn.toUpperCase());
+    }
+  }
+  // And include customer_parts.mpn_to_use — same reason: if RS has a known
+  // replacement for a CPC, the cache may only have rows under that MPN.
+  if (bom?.customer_id) {
+    const cpcsForLookup = [
+      ...new Set(
+        (lines ?? [])
+          .map((l) => l.cpc)
+          .filter((c): c is string => typeof c === "string" && c.length > 0)
+      ),
+    ];
+    if (cpcsForLookup.length > 0) {
+      const { data: cpRows } = await supabase
+        .from("customer_parts")
+        .select("mpn_to_use")
+        .eq("customer_id", bom.customer_id)
+        .in("cpc", cpcsForLookup);
+      for (const r of cpRows ?? []) {
+        if (r.mpn_to_use && r.mpn_to_use.trim()) {
+          searchKeys.push(r.mpn_to_use.trim().toUpperCase());
+        }
+      }
+    }
+  }
   // Multi-warehouse suppliers store cache rows with "MPN#WAREHOUSE" keys
   // (Arrow, Newark). Exact-match .in() loses them on reload; use an OR
   // filter that accepts both exact MPN and MPN#* variants.
   const uniqueKeys = [...new Set(searchKeys)];
+  // Quote values that contain PostgREST .or() special chars (,()") so MPNs
+  // like "PMEG3020EJ,115" survive the comma-separated filter.
+  const pqKey = (k: string) => {
+    const needsQuote = /[,()" ]/.test(k);
+    return needsQuote ? `"${k.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : k;
+  };
   const orFilter = uniqueKeys
-    .flatMap((k) => [`search_key.eq.${k}`, `search_key.like.${k}#*`])
+    .flatMap((k) => [`search_key.eq.${pqKey(k)}`, `search_key.like.${pqKey(`${k}#*`)}`])
     .join(",");
   const { data: cachedQuotes } = uniqueKeys.length > 0
     ? await supabase
@@ -101,8 +142,14 @@ export default async function BomPricingReviewPage({
     credStatusMap = Object.fromEntries(BUILT_IN_SUPPLIER_NAMES.map((n) => [n, true]));
   }
 
-  const customer = bom.customers as Record<string, string> | null;
-  const gmp = bom.gmps as Record<string, string> | null;
+  // Supabase types FK joins as arrays even when the relationship is 1:1,
+  // so we go via `unknown` and cast to the actual shape we use.
+  const customer = bom.customers as unknown as
+    | { code: string; company_name: string }
+    | null;
+  const gmp = bom.gmps as unknown as
+    | { gmp_number: string; board_name: string | null }
+    | null;
 
   return (
     <div className="space-y-6">

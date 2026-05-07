@@ -1,6 +1,6 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -68,15 +68,15 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check role — only CEO can delete components
+  // Check role â€” only admins can delete components
   const { data: profile } = await supabase
     .from("users")
     .select("role")
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "ceo") {
-    return NextResponse.json({ error: "Forbidden — CEO only" }, { status: 403 });
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Forbidden â€” Admin only" }, { status: 403 });
   }
 
   const { error } = await supabase

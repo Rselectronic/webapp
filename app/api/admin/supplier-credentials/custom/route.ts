@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -6,7 +7,7 @@ import {
   type SupplierFieldDef,
 } from "@/lib/supplier-credentials";
 
-async function requireCeoOrOps() {
+async function requireAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -23,11 +24,11 @@ async function requireCeoOrOps() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo" && profile?.role !== "operations_manager") {
+  if (!isAdminRole(profile?.role)) {
     return {
       user: null,
       error: NextResponse.json(
-        { error: "CEO or operations_manager role required" },
+        { error: "Admin role required" },
         { status: 403 }
       ),
     };
@@ -44,7 +45,7 @@ async function requireCeoOrOps() {
  * the raw error message. Other failures return 500.
  */
 export async function POST(req: NextRequest) {
-  const { user, error } = await requireCeoOrOps();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   let body: unknown;
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Shallow-validate fields array shape — deeper validation in addCustomSupplier.
+  // Shallow-validate fields array shape â€” deeper validation in addCustomSupplier.
   const fields: SupplierFieldDef[] = [];
   for (const f of raw.fields) {
     if (!f || typeof f !== "object") {

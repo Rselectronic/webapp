@@ -7,6 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { todayMontreal } from "@/lib/utils/format";
 
 const PAYMENT_METHODS = [
   { value: "cheque", label: "Cheque" },
@@ -31,9 +39,7 @@ export function RecordPaymentForm({
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
   const [amount, setAmount] = useState("");
-  const [paymentDate, setPaymentDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [paymentDate, setPaymentDate] = useState(todayMontreal());
   const [paymentMethod, setPaymentMethod] = useState("cheque");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [notes, setNotes] = useState("");
@@ -122,18 +128,25 @@ export function RecordPaymentForm({
 
             <div>
               <Label htmlFor="payment-method">Payment Method</Label>
-              <select
-                id="payment-method"
+              <Select
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onValueChange={(v) => setPaymentMethod(v ?? "")}
               >
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="payment-method" className="mt-1 w-full">
+                  <SelectValue>
+                    {(v: string) =>
+                      PAYMENT_METHODS.find((m) => m.value === v)?.label ?? ""
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>

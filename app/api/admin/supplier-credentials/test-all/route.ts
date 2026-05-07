@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -8,16 +9,11 @@ import {
 import { testSupplierConnection, type TestResult } from "@/lib/supplier-tests";
 
 /**
- * Auth gate for the bulk-test route.
- *
- * The sibling routes (GET /api/admin/supplier-credentials,
- * POST /api/admin/supplier-credentials/[supplier]/test) are currently
- * ceo-only, but the CEO explicitly asked for the bulk runner to be
- * available to ops_manager as well — Piyush needs it to verify his
- * endpoint fixes against live creds without having to flag Anas every
- * time. Financial data is never touched here, only connection health.
+ * Auth gate for the bulk-test route. After the role consolidation in
+ * migration 088 there's only one elevated role left (`admin`), so the gate
+ * is just an admin check.
  */
-async function requireCeoOrOps() {
+async function requireAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -34,11 +30,11 @@ async function requireCeoOrOps() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo" && profile?.role !== "operations_manager") {
+  if (!isAdminRole(profile?.role)) {
     return {
       user: null,
       error: NextResponse.json(
-        { error: "CEO or operations manager role required" },
+        { error: "Admin role required" },
         { status: 403 }
       ),
     };
@@ -80,16 +76,16 @@ interface BulkTestResponse {
  * has stored credentials (configured === true). Uses Promise.allSettled
  * so one hanging/failing test does not poison the others.
  *
- * The aggregated response intentionally DOES NOT include raw_response —
+ * The aggregated response intentionally DOES NOT include raw_response â€”
  * 12 distributors x ~20KB of JSON = payload bloat in the browser. Users
  * who want to inspect the raw body can click the per-row Test button in
  * the existing UI, which still returns full raw_response.
  *
  * Per-test timeout is inherited from testSupplierConnection's internal
- * 15s AbortController — no outer wrapper needed.
+ * 15s AbortController â€” no outer wrapper needed.
  */
 export async function POST(req: NextRequest) {
-  const { user, error } = await requireCeoOrOps();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   const body = (await req.json().catch(() => ({}))) as { mpn?: unknown };
@@ -146,7 +142,7 @@ export async function POST(req: NextRequest) {
   const settled = await Promise.allSettled(runs);
   const rows: BulkTestRow[] = settled.map((r, i) => {
     if (r.status === "fulfilled") return r.value;
-    // Should be unreachable — the inner function already catches — but
+    // Should be unreachable â€” the inner function already catches â€” but
     // belt-and-braces so one rejection can't nuke the whole response.
     const s = configured[i];
     const msg =

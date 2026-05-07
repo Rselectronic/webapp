@@ -23,7 +23,7 @@ export async function POST(
   const { data: lines, error } = await supabase
     .from("bom_lines")
     .select(
-      "id, mpn, description, cpc, manufacturer, quantity, m_code, m_code_source, is_pcb, is_dni"
+      "id, mpn, description, cpc, manufacturer, quantity, m_code, m_code_source, is_pcb, is_dni, pin_count"
     )
     .eq("bom_id", bomId)
     .order("line_number", { ascending: true });
@@ -31,6 +31,16 @@ export async function POST(
   if (error || !lines) {
     return NextResponse.json({ error: "BOM not found" }, { status: 404 });
   }
+
+  // Lookup the BOM's customer — the classifier uses it to consult that
+  // customer's per-CPC manual M-Code overrides BEFORE falling through to the
+  // global sheet and the components cache.
+  const { data: bomRow } = await supabase
+    .from("boms")
+    .select("customer_id")
+    .eq("id", bomId)
+    .maybeSingle();
+  const customerId = bomRow?.customer_id ?? undefined;
 
   // Qty-0 lines are effectively not-installed components. They stay in the
   // BOM so the production print-out shows the empty designators, but they
@@ -78,14 +88,18 @@ export async function POST(
     for (let i = 0; i < unclassified.length; i++) {
       const result = aiResults[i];
       if (result?.m_code && result.confidence >= 0.7) {
+        // Auto-flip is_pcb when m_code=APCB so every "skip PCBs" filter in
+        // the codebase can rely on a single predicate.
+        const updates: Record<string, unknown> = {
+          m_code: result.m_code,
+          m_code_source: "ai",
+          m_code_confidence: result.confidence,
+          m_code_reasoning: `AI: ${result.reasoning}`,
+        };
+        if (result.m_code === "APCB") updates.is_pcb = true;
         await supabase
           .from("bom_lines")
-          .update({
-            m_code: result.m_code,
-            m_code_source: "ai",
-            m_code_confidence: result.confidence,
-            m_code_reasoning: `AI: ${result.reasoning}`,
-          })
+          .update(updates)
           .eq("id", unclassified[i].id);
         classifiedCount++;
         results.push({ mpn: unclassified[i].mpn ?? "", m_code: result.m_code, confidence: result.confidence });
@@ -118,27 +132,75 @@ export async function POST(
       cpc: l.cpc ?? "",
       manufacturer: l.manufacturer ?? "",
     })),
-    supabase
+    supabase,
+    customerId
   );
 
   let classified = 0;
   let unclassified = 0;
 
-  // Incremental DB updates: update each component immediately as it's classified
-  // This allows the polling frontend to see real progress in the progress bar
-  for (let i = 0; i < toClassify.length; i++) {
-    const result = ruleResults[i];
-    await supabase
-      .from("bom_lines")
-      .update({
-        m_code: result.m_code,
-        m_code_confidence: result.confidence,
-        m_code_source: result.source,
-        m_code_reasoning: result.rule_id ?? null,
+  // Batch-load through-hole pin counts for every CPC on this BOM that exists
+  // in the per-customer procurement log. Lines that end up classified TH
+  // will get their pin_count seeded from here, saving the operator the work
+  // of re-typing what was already set on a previous BOM for the same CPC.
+  const pinsByCpc = new Map<string, number>();
+  if (customerId) {
+    const cpcs = [
+      ...new Set(
+        toClassify
+          .map((l) => l.cpc)
+          .filter((c): c is string => typeof c === "string" && c.length > 0)
+      ),
+    ];
+    if (cpcs.length > 0) {
+      const { data: partsRows } = await supabase
+        .from("customer_parts")
+        .select("cpc, through_hole_pins")
+        .eq("customer_id", customerId)
+        .in("cpc", cpcs);
+      for (const row of partsRows ?? []) {
+        if (row.through_hole_pins != null) {
+          pinsByCpc.set(row.cpc, row.through_hole_pins);
+        }
+      }
+    }
+  }
+
+  // Parallel DB updates. The old loop awaited each UPDATE sequentially, so a
+  // 60-line BOM took 60 × one round-trip of latency (~6s on a typical
+  // connection). Running them concurrently keeps total wall time at roughly
+  // ONE round-trip for the whole batch — well under the 2–3s target.
+  // Chunk size caps the in-flight count so we don't overwhelm the pool on
+  // huge BOMs; 25 is conservatively under Supabase's default connection cap.
+  const CHUNK = 25;
+  for (let i = 0; i < toClassify.length; i += CHUNK) {
+    const slice = toClassify.slice(i, i + CHUNK);
+    await Promise.all(
+      slice.map((line, sliceIdx) => {
+        const result = ruleResults[i + sliceIdx];
+        const updates: Record<string, unknown> = {
+          m_code: result.m_code,
+          m_code_confidence: result.confidence,
+          m_code_source: result.source,
+          m_code_reasoning: result.rule_id ?? null,
+        };
+        if (result.m_code === "APCB") updates.is_pcb = true;
+        if (
+          result.m_code === "TH" &&
+          line.cpc &&
+          pinsByCpc.has(line.cpc)
+        ) {
+          const existingPin =
+            (line as { pin_count?: number | null }).pin_count ?? null;
+          if (existingPin == null) {
+            updates.pin_count = pinsByCpc.get(line.cpc);
+          }
+        }
+        if (result.m_code) classified++;
+        else unclassified++;
+        return supabase.from("bom_lines").update(updates).eq("id", line.id);
       })
-      .eq("id", toClassify[i].id);
-    if (result.m_code) classified++;
-    else unclassified++;
+    );
   }
 
   const manual = lines.length - toClassify.length;

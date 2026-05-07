@@ -1,11 +1,11 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
-// DELETE /api/admin/api-keys/[id] — Revoke an API key (soft, sets revoked_at)
+// DELETE /api/admin/api-keys/[id] â€” Revoke an API key (soft, sets revoked_at)
 // ---------------------------------------------------------------------------
 export async function DELETE(
   _req: NextRequest,
@@ -34,8 +34,8 @@ export async function DELETE(
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
-    return NextResponse.json({ error: "CEO role required" }, { status: 403 });
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   const { data: updated, error } = await supabase
