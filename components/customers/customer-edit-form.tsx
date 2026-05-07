@@ -12,6 +12,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, Save, Plus, Trash2, X } from "lucide-react";
+import { AddressFields } from "./address-fields";
+import {
+  normalizeCountry,
+  taxRegionForAddress,
+  currencyForAddress,
+  type CountryCode,
+} from "@/lib/address/regions";
+import { TAX_REGION_LABELS } from "@/lib/tax/regions";
 
 interface Contact {
   name: string;
@@ -28,6 +36,14 @@ interface Address {
   province: string;
   postal_code: string;
   country: string;
+  /** New ISO country code — added migration 105. Falls back to normalized country text. */
+  country_code?: CountryCode;
+  /**
+   * Optional currency override for billing addresses. Unset → derive from
+   * country (US → USD, else → CAD). Set → use this verbatim. Lets a
+   * customer ask to be billed in CAD even with a US billing address.
+   */
+  currency?: "CAD" | "USD";
   is_default: boolean;
 }
 
@@ -52,13 +68,22 @@ interface CustomerEditFormProps {
     billing_addresses: Address[];
     shipping_addresses: Address[];
     bom_config: Record<string, unknown> | null;
+    folder_name?: string | null;
+    default_currency?: "CAD" | "USD" | null;
+    tax_region?:
+      | "QC"
+      | "CA_OTHER"
+      | "HST_ON"
+      | "HST_15"
+      | "INTERNATIONAL"
+      | null;
   };
   paymentTermsOptions?: string[];
   onClose: () => void;
 }
 
 const emptyContact: Contact = { name: "", email: "", phone: "", role: "", is_primary: false };
-const emptyAddress: Address = { label: "", street: "", city: "", province: "", postal_code: "", country: "Canada", is_default: false };
+const emptyAddress: Address = { label: "", street: "", city: "", province: "", postal_code: "", country: "Canada", country_code: "CA", is_default: false };
 
 export function CustomerEditForm({ customerId, initialData, paymentTermsOptions, onClose }: CustomerEditFormProps) {
   const router = useRouter();
@@ -69,6 +94,7 @@ export function CustomerEditForm({ customerId, initialData, paymentTermsOptions,
   const [paymentTerms, setPaymentTerms] = useState(initialData.payment_terms);
   const [notes, setNotes] = useState(initialData.notes ?? "");
   const [isActive, setIsActive] = useState(initialData.is_active);
+  const [folderName, setFolderName] = useState(initialData.folder_name ?? "");
   const [contacts, setContacts] = useState<Contact[]>(
     initialData.contacts.length > 0 ? initialData.contacts : [{ ...emptyContact, is_primary: true }]
   );
@@ -142,6 +168,7 @@ export function CustomerEditForm({ customerId, initialData, paymentTermsOptions,
           billing_addresses: billingAddresses,
           shipping_addresses: shippingAddresses,
           bom_config: parsedBomConfig,
+          folder_name: folderName.trim() || null,
         }),
       });
 
@@ -177,12 +204,21 @@ export function CustomerEditForm({ customerId, initialData, paymentTermsOptions,
       </div>
 
       {/* ---- Compact top fields ---- */}
-      <div className="grid grid-cols-[1fr_160px_auto] items-end gap-3 py-4">
+      <div className="grid grid-cols-[1fr_180px_160px_auto] items-end gap-3 py-4">
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Company Name</Label>
           <Input
             value={companyName}
             onChange={e => setCompanyName(e.target.value)}
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Folder Name</Label>
+          <Input
+            value={folderName}
+            onChange={(e) => setFolderName(e.target.value)}
+            placeholder="OneDrive folder"
             className="h-9"
           />
         </div>
@@ -211,6 +247,10 @@ export function CustomerEditForm({ customerId, initialData, paymentTermsOptions,
           </Badge>
         </button>
       </div>
+
+      {/* Currency + tax region are now derived from each billing address
+          (visible as badges on the address card in the Addresses tab).
+          The customer-level fields stay in the DB as a legacy fallback. */}
 
       {/* ---- Tabbed content ---- */}
       <Tabs defaultValue="contacts" className="flex-1 min-h-0">
@@ -312,6 +352,7 @@ export function CustomerEditForm({ customerId, initialData, paymentTermsOptions,
             {/* Billing column */}
             <AddressColumn
               title="Billing"
+              kind="billing"
               addresses={billingAddresses}
               onUpdate={(i, f, v) => updateAddress("billing", i, f, v)}
               onAdd={() => addAddress("billing")}
@@ -320,6 +361,7 @@ export function CustomerEditForm({ customerId, initialData, paymentTermsOptions,
             {/* Shipping column */}
             <AddressColumn
               title="Shipping"
+              kind="shipping"
               addresses={shippingAddresses}
               onUpdate={(i, f, v) => updateAddress("shipping", i, f, v)}
               onAdd={() => addAddress("shipping")}
@@ -386,12 +428,16 @@ export function CustomerEditForm({ customerId, initialData, paymentTermsOptions,
 
 function AddressColumn({
   title,
+  kind,
   addresses,
   onUpdate,
   onAdd,
   onRemove,
 }: {
   title: string;
+  /** Tax region + currency only apply to billing addresses (where the
+   *  invoice is billed to). Shipping addresses are pure logistics. */
+  kind: "billing" | "shipping";
   addresses: Address[];
   onUpdate: (index: number, field: keyof Address, value: string | boolean) => void;
   onAdd: () => void;
@@ -418,66 +464,117 @@ function AddressColumn({
         </p>
       )}
 
-      {addresses.map((a, i) => (
-        <div key={i} className="space-y-2 rounded-md border p-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Input
-                value={a.label}
-                onChange={e => onUpdate(i, "label", e.target.value)}
-                placeholder="Label (HQ, Warehouse)"
-                className="h-7 w-36 text-xs"
-              />
-              <button type="button" onClick={() => onUpdate(i, "is_default", true)}>
-                <Badge
-                  variant={a.is_default ? "default" : "outline"}
-                  className="cursor-pointer select-none text-xs"
-                >
-                  {a.is_default ? "Default" : "Set default"}
-                </Badge>
-              </button>
-            </div>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onRemove(i)}>
-              <Trash2 className="h-3 w-3 text-destructive" />
-            </Button>
-          </div>
+      {addresses.map((a, i) => {
+        // Normalize legacy rows that pre-date country_code: derive a code
+        // from the free-text country once at render-time; user can change it
+        // by picking a different country in the dropdown.
+        const code: CountryCode = (a.country_code ?? normalizeCountry(a.country)) as CountryCode;
+        const region = taxRegionForAddress({
+          country_code: code,
+          province: a.province,
+        });
+        // Effective currency = override if set, else country default.
+        const currency = currencyForAddress({
+          country_code: code,
+          currency: a.currency,
+        });
+        const isOverride = a.currency === "CAD" || a.currency === "USD";
 
-          <Input
-            value={a.street}
-            onChange={e => onUpdate(i, "street", e.target.value)}
-            placeholder="Street address"
-            className="h-8 text-sm"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              value={a.city}
-              onChange={e => onUpdate(i, "city", e.target.value)}
-              placeholder="City"
-              className="h-8 text-sm"
+        return (
+          <div key={i} className="space-y-2 rounded-md border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={a.label}
+                  onChange={e => onUpdate(i, "label", e.target.value)}
+                  placeholder="Label (HQ, Warehouse)"
+                  className="h-7 w-36 text-xs"
+                />
+                <button type="button" onClick={() => onUpdate(i, "is_default", true)}>
+                  <Badge
+                    variant={a.is_default ? "default" : "outline"}
+                    className="cursor-pointer select-none text-xs"
+                  >
+                    {a.is_default ? "Default" : "Set default"}
+                  </Badge>
+                </button>
+              </div>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onRemove(i)}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+
+            <AddressFields
+              size="sm"
+              value={{
+                country_code: code,
+                country: a.country ?? "",
+                street: a.street ?? "",
+                city: a.city ?? "",
+                province: a.province ?? "",
+                postal_code: a.postal_code ?? "",
+              }}
+              onChange={(next) => {
+                onUpdate(i, "country_code", next.country_code);
+                onUpdate(i, "country", next.country);
+                onUpdate(i, "street", next.street);
+                onUpdate(i, "city", next.city);
+                onUpdate(i, "province", next.province);
+                onUpdate(i, "postal_code", next.postal_code);
+              }}
             />
-            <Input
-              value={a.province}
-              onChange={e => onUpdate(i, "province", e.target.value)}
-              placeholder="Province"
-              className="h-8 text-sm"
-            />
+
+            {/* Derived tax region + editable currency — billing only. The
+                shipping address is pure logistics; tax + currency are
+                properties of where the invoice is sent, not the parts. */}
+            {kind === "billing" ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Badge variant="secondary" className="text-[10px]">
+                  {TAX_REGION_LABELS[region]}
+                </Badge>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Currency:
+                  </span>
+                  <Select
+                    value={a.currency || "__auto__"}
+                    onValueChange={(v) => {
+                      onUpdate(
+                        i,
+                        "currency",
+                        v === "CAD" || v === "USD" ? v : ""
+                      );
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="h-6 px-1 text-[10px] min-w-[7rem]">
+                      <SelectValue>
+                        {(v: string) =>
+                          v === "__auto__" || !v
+                            ? `Auto (${currencyForAddress({ country_code: code })})`
+                            : v
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__auto__">
+                        Auto ({currencyForAddress({ country_code: code })})
+                      </SelectItem>
+                      <SelectItem value="CAD">CAD</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {isOverride ? (
+                    <Badge variant="outline" className="text-[10px]">
+                      {currency} (override)
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              value={a.postal_code}
-              onChange={e => onUpdate(i, "postal_code", e.target.value)}
-              placeholder="Postal code"
-              className="h-8 text-sm"
-            />
-            <Input
-              value={a.country}
-              onChange={e => onUpdate(i, "country", e.target.value)}
-              placeholder="Country"
-              className="h-8 text-sm"
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

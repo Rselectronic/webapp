@@ -64,13 +64,13 @@ export async function GET(
   const { data: job, error: jobError } = await supabase
     .from("jobs")
     .select(
-      `id, job_number, status, quantity, assembly_type, po_number, notes,
+      `id, job_number, status, quantity, po_number, notes,
        scheduled_start, scheduled_completion,
        customer_id, gmp_id, bom_id, quote_id,
        customers(code, company_name),
-       gmps(gmp_number, board_name),
+       gmps(gmp_number, board_name, board_side),
        boms(id, file_name, revision, component_count),
-       quotes(quote_number)`
+       quotes!jobs_quote_id_fkey(quote_number)`
     )
     .eq("id", id)
     .single();
@@ -86,6 +86,7 @@ export async function GET(
   const gmp = job.gmps as unknown as {
     gmp_number: string;
     board_name: string | null;
+    board_side: string | null;
   } | null;
   const bom = job.boms as unknown as {
     id: string;
@@ -146,9 +147,9 @@ export async function GET(
       const { data: jobsRows } = await supabase
         .from("jobs")
         .select(
-          `id, job_number, quantity, assembly_type, po_number,
+          `id, job_number, quantity, po_number,
            customers(code, company_name),
-           gmps(gmp_number, board_name),
+           gmps(gmp_number, board_name, board_side),
            boms(id, file_name, revision, component_count)`
         )
         .in("id", batchJobIds);
@@ -186,6 +187,7 @@ export async function GET(
         const jGmp = jr.gmps as unknown as {
           gmp_number: string;
           board_name: string | null;
+          board_side: string | null;
         } | null;
         const jBom = jr.boms as unknown as {
           id: string;
@@ -193,7 +195,9 @@ export async function GET(
           revision: string;
         } | null;
 
-        const bl = jr.assembly_type ?? "TB";
+        // The shop-floor "BL" code uses the legacy two-letter physical-layout
+        // shorthand (TB=top+bottom, TS=top-only). Sourced from gmps.board_side.
+        const bl = jGmp?.board_side === "single" ? "TS" : "TB";
         const productName = jGmp?.board_name
           ? `${jGmp.gmp_number} — ${jGmp.board_name}`
           : jGmp?.gmp_number ?? jr.job_number;
@@ -252,7 +256,9 @@ export async function GET(
         gmpNumber: sanitizeForPdf(gmpNumber),
         boardName: boardName ? sanitizeForPdf(boardName) : boardName,
         boardQty: job.quantity,
-        assemblyType: job.assembly_type ?? "TB",
+        // Legacy two-letter physical-layout shorthand for the traveller
+        // header. Sourced from gmps.board_side.
+        assemblyType: gmp?.board_side === "single" ? "TS" : "TB",
         poNumber: job.po_number ? sanitizeForPdf(job.po_number) : null,
         procBatchCode: procBatchCode ? sanitizeForPdf(procBatchCode) : null,
         bomName: bom?.file_name ? sanitizeForPdf(bom.file_name) : "",
@@ -328,7 +334,10 @@ export async function GET(
         lines: (bomLines ?? []).map((l) => {
           const qtyPerBoard = l.quantity;
           const baseNeeded = qtyPerBoard * boardQtyPB;
-          const extras = l.is_pcb ? 0 : getOveragePB(l.m_code, boardQtyPB);
+          // Overage thresholds are PART counts — pass baseNeeded, not
+          // boardQtyPB, otherwise small board quantities pin every line
+          // to the smallest threshold's extras.
+          const extras = l.is_pcb ? 0 : getOveragePB(l.m_code, baseNeeded);
           return {
             lineNumber: l.line_number,
             quantity: qtyPerBoard,
@@ -382,15 +391,16 @@ export async function GET(
           .filter((x): x is string => Boolean(x));
         const bomLineMap = new Map<
           string,
-          { manufacturer: string | null; reference_designator: string | null }
+          { cpc: string | null; manufacturer: string | null; reference_designator: string | null }
         >();
         if (bomLineIds.length > 0) {
           const { data: bomLinesForProc } = await supabase
             .from("bom_lines")
-            .select("id, manufacturer, reference_designator")
+            .select("id, cpc, manufacturer, reference_designator")
             .in("id", bomLineIds);
           for (const bl of bomLinesForProc ?? []) {
             bomLineMap.set(bl.id, {
+              cpc: bl.cpc,
               manufacturer: bl.manufacturer,
               reference_designator: bl.reference_designator,
             });
@@ -403,6 +413,7 @@ export async function GET(
           const qe = l.qty_extra ?? 0;
           return {
             lineNumber: idx + 1,
+            cpc: bl?.cpc ?? null,
             mpn: l.mpn,
             description: l.description,
             manufacturer: bl?.manufacturer ?? null,
@@ -425,7 +436,7 @@ export async function GET(
         const { data: bomLines2, error: bomError2 } = await supabase
           .from("bom_lines")
           .select(
-            "line_number, quantity, reference_designator, mpn, description, manufacturer, m_code"
+            "line_number, quantity, reference_designator, cpc, mpn, description, manufacturer, m_code"
           )
           .eq("bom_id", bom.id)
           .order("line_number", { ascending: true });
@@ -466,9 +477,12 @@ export async function GET(
 
         receptionLines = (bomLines2 ?? []).map((l) => {
           const qtyNeeded = l.quantity * boardQty;
-          const qtyExtra = getOverage(l.m_code, boardQty);
+          // Overage thresholds are PART counts — match against qtyNeeded,
+          // not boardQty.
+          const qtyExtra = getOverage(l.m_code, qtyNeeded);
           return {
             lineNumber: l.line_number,
+            cpc: l.cpc,
             mpn: l.mpn,
             description: l.description,
             manufacturer: l.manufacturer,
@@ -492,6 +506,7 @@ export async function GET(
       // often contain Greek letters like Ω, μ that crash standard PDF fonts).
       const sanitizedReceptionLines = receptionLines.map((l) => ({
         ...l,
+        cpc: l.cpc ? sanitizeForPdf(l.cpc) : null,
         mpn: l.mpn ? sanitizeForPdf(l.mpn) : null,
         description: l.description ? sanitizeForPdf(l.description) : null,
         manufacturer: l.manufacturer ? sanitizeForPdf(l.manufacturer) : null,
@@ -1506,6 +1521,7 @@ async function generatePrintBom(p: PrintBomParams): Promise<Uint8Array> {
 
 interface ReceptionLine {
   lineNumber: number;
+  cpc: string | null;
   mpn: string | null;
   description: string | null;
   manufacturer: string | null;
@@ -1552,20 +1568,21 @@ async function generateReception(p: ReceptionParams): Promise<Uint8Array> {
     align: "left" | "center" | "right";
   }[] = [
     { key: "num", label: "#", w: 22, align: "center" },
-    { key: "rdes", label: "R.Des", w: 60, align: "left" },
-    { key: "mpn", label: "MPN", w: 100, align: "left" },
-    { key: "desc", label: "Description", w: 140, align: "left" },
-    { key: "mfr", label: "MFR", w: 60, align: "left" },
-    { key: "mcode", label: "M-Code", w: 36, align: "center" },
-    { key: "sup", label: "Supplier", w: 50, align: "left" },
-    { key: "supPn", label: "Supplier PN", w: 70, align: "left" },
-    { key: "qtyPb", label: "Qty/Brd", w: 30, align: "right" },
-    { key: "extra", label: "Extra", w: 26, align: "right" },
-    { key: "need", label: "Needed", w: 32, align: "right" },
-    { key: "ord", label: "Ordered", w: 36, align: "right" },
-    { key: "rcv", label: "Rcvd", w: 30, align: "center" },
-    { key: "rcvDt", label: "Recv Date", w: 50, align: "center" },
-    { key: "chk", label: "Checked", w: 36, align: "center" },
+    { key: "rdes", label: "R.Des", w: 56, align: "left" },
+    { key: "cpc", label: "CPC", w: 70, align: "left" },
+    { key: "mpn", label: "MPN", w: 84, align: "left" },
+    { key: "desc", label: "Description", w: 124, align: "left" },
+    { key: "mfr", label: "MFR", w: 54, align: "left" },
+    { key: "mcode", label: "M-Code", w: 34, align: "center" },
+    { key: "sup", label: "Supplier", w: 46, align: "left" },
+    { key: "supPn", label: "Supplier PN", w: 60, align: "left" },
+    { key: "qtyPb", label: "Qty/Brd", w: 28, align: "right" },
+    { key: "extra", label: "Extra", w: 24, align: "right" },
+    { key: "need", label: "Needed", w: 30, align: "right" },
+    { key: "ord", label: "Ordered", w: 34, align: "right" },
+    { key: "rcv", label: "Rcvd", w: 28, align: "center" },
+    { key: "rcvDt", label: "Recv Date", w: 46, align: "center" },
+    { key: "chk", label: "Checked", w: 34, align: "center" },
     { key: "ok", label: "OK", w: 16, align: "center" },
   ];
   let accX = LAND_MARGIN;
@@ -1819,17 +1836,18 @@ async function generateReception(p: ReceptionParams): Promise<Uint8Array> {
         p.quantity > 0 ? Math.round(line.qtyNeeded / p.quantity) : 0;
       drawCell(page, col[0], rowY, String(displayNum));
       drawCell(page, col[1], rowY, line.referenceDesignator ?? "");
-      drawCell(page, col[2], rowY, line.mpn ?? "—", true, true);
-      drawCell(page, col[3], rowY, line.description ?? "");
-      drawCell(page, col[4], rowY, line.manufacturer ?? "");
-      drawCell(page, col[5], rowY, line.mCode ?? "—");
-      drawCell(page, col[6], rowY, line.isBG ? "BG" : line.supplier ?? "");
-      drawCell(page, col[7], rowY, line.supplierPn ?? "");
-      drawCell(page, col[8], rowY, String(qtyPb));
-      drawCell(page, col[9], rowY, String(line.qtyExtra));
+      drawCell(page, col[2], rowY, line.cpc ?? "—", true, true);
+      drawCell(page, col[3], rowY, line.mpn ?? "—", true, true);
+      drawCell(page, col[4], rowY, line.description ?? "");
+      drawCell(page, col[5], rowY, line.manufacturer ?? "");
+      drawCell(page, col[6], rowY, line.mCode ?? "—");
+      drawCell(page, col[7], rowY, line.isBG ? "BG" : line.supplier ?? "");
+      drawCell(page, col[8], rowY, line.supplierPn ?? "");
+      drawCell(page, col[9], rowY, String(qtyPb));
+      drawCell(page, col[10], rowY, String(line.qtyExtra));
       drawCell(
         page,
-        col[10],
+        col[11],
         rowY,
         String(line.qtyNeeded + line.qtyExtra),
         true,
@@ -1837,19 +1855,19 @@ async function generateReception(p: ReceptionParams): Promise<Uint8Array> {
       );
       drawCell(
         page,
-        col[11],
+        col[12],
         rowY,
         (line.qtyOrdered ?? 0) > 0 ? String(line.qtyOrdered) : ""
       );
       drawCell(
         page,
-        col[12],
+        col[13],
         rowY,
         (line.qtyReceived ?? 0) > 0 ? String(line.qtyReceived) : ""
       );
       // Recv Date, Checked — blank for manual fill
 
-      const ok = col[15];
+      const ok = col[16];
       const cb = 9;
       page.drawRectangle({
         x: ok.x + (ok.w - cb) / 2,

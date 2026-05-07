@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { calculateQuote } from "@/lib/pricing/engine";
@@ -5,9 +6,8 @@ import { searchPartPrice } from "@/lib/pricing/digikey";
 import { searchMouserPrice } from "@/lib/pricing/mouser";
 import { searchLCSCPrice } from "@/lib/pricing/lcsc";
 import type { PricingLine, OverageTier, PricingSettings, TierInput } from "@/lib/pricing/types";
-
 // ---------------------------------------------------------------------------
-// POST /api/quotes/preview — Calculate pricing with live API lookups
+// POST /api/quotes/preview â€” Calculate pricing with live API lookups
 // ---------------------------------------------------------------------------
 
 interface PreviewTierInput {
@@ -22,14 +22,15 @@ interface PreviewBody {
   bom_id: string;
   /** New per-tier inputs */
   tiers?: PreviewTierInput[];
-  /** @deprecated — legacy flat fields for backward compat */
+  /** @deprecated â€” legacy flat fields for backward compat */
   quantities?: number[];
   pcb_unit_price?: number;
   nre_charge?: number;
   shipping_flat: number;
-  /** Assembly type (TB, TS, etc.) for programming fee lookup */
-  assembly_type?: string;
-  /** Per-quote markup overrides (optional — fall back to global settings) */
+  /** Physical board layout â€” drives single- vs double-sided programming fee.
+   *  Sourced from `gmps.board_side`. */
+  board_side?: "single" | "double" | null;
+  /** Per-quote markup overrides (optional â€” fall back to global settings) */
   component_markup_pct?: number;
   pcb_markup_pct?: number;
 }
@@ -42,6 +43,18 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Admin-only: preview hits the supplier APIs and writes into
+  // api_pricing_cache (admin-only RLS). A production caller would either
+  // 403 from RLS or get a partially-populated preview â€” gate up-front.
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   const body = (await req.json()) as PreviewBody;
@@ -157,7 +170,7 @@ export async function POST(req: NextRequest) {
           hits.push({ source: "digikey", unit_price: r.unit_price, supplier_pn: r.digikey_pn, stock_qty: null, mpn: r.mpn, currency: r.currency });
           await supabase.from("api_pricing_cache").upsert(
             { source: "digikey", mpn: r.mpn, search_key: mpn, response: r as unknown as Record<string, unknown>, unit_price: r.unit_price, stock_qty: null, currency: r.currency, expires_at: expiresAt },
-            { onConflict: "source,search_key" }
+            { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
           );
         }
         if (mouser.status === "fulfilled" && mouser.value) {
@@ -165,7 +178,7 @@ export async function POST(req: NextRequest) {
           hits.push({ source: "mouser", unit_price: r.unit_price, supplier_pn: r.mouser_pn, stock_qty: r.stock_qty, mpn: r.mpn, currency: r.currency });
           await supabase.from("api_pricing_cache").upsert(
             { source: "mouser", mpn: r.mpn, search_key: mpn, response: r as unknown as Record<string, unknown>, unit_price: r.unit_price, stock_qty: r.stock_qty, currency: r.currency, expires_at: expiresAt },
-            { onConflict: "source,search_key" }
+            { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
           );
         }
         if (lcsc.status === "fulfilled" && lcsc.value) {
@@ -173,7 +186,7 @@ export async function POST(req: NextRequest) {
           hits.push({ source: "lcsc", unit_price: r.unit_price, supplier_pn: r.lcsc_pn, stock_qty: r.stock_qty, mpn: r.mpn, currency: r.currency });
           await supabase.from("api_pricing_cache").upsert(
             { source: "lcsc", mpn: r.mpn, search_key: mpn, response: r as unknown as Record<string, unknown>, unit_price: r.unit_price, stock_qty: r.stock_qty, currency: r.currency, expires_at: expiresAt },
-            { onConflict: "source,search_key" }
+            { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
           );
         }
 
@@ -187,7 +200,7 @@ export async function POST(req: NextRequest) {
           if (desc.length > 5) {
             // Extract key terms: package size + value + type (e.g. "0603 10K resistor")
             const descKeywords = desc
-              .replace(/[,;()±%]/g, " ")
+              .replace(/[,;()Â±%]/g, " ")
               .split(/\s+/)
               .filter((w: string) => w.length > 1)
               .slice(0, 5)
@@ -213,7 +226,7 @@ export async function POST(req: NextRequest) {
                 // Cache with original MPN as search key
                 await supabase.from("api_pricing_cache").upsert(
                   { source: best.source, mpn: best.mpn, search_key: mpn.toUpperCase(), response: { description_fallback: true, search_terms: descKeywords } as unknown as Record<string, unknown>, unit_price: best.unit_price, stock_qty: null, currency: "CAD", expires_at: expiresAt },
-                  { onConflict: "source,search_key" }
+                  { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
                 );
               }
             }
@@ -237,6 +250,7 @@ export async function POST(req: NextRequest) {
     return {
       bom_line_id: line.id,
       mpn: line.mpn ?? "",
+      cpc: line.cpc ?? null,
       description: line.description ?? "",
       m_code: (line.m_code as PricingLine["m_code"]) ?? null,
       qty_per_board: line.quantity,
@@ -272,6 +286,25 @@ export async function POST(req: NextRequest) {
     settings.pcb_markup_pct = body.pcb_markup_pct;
   }
 
+  // --- Load per-tier pricing selections from the Component Pricing Review page ---
+  // Map shape: bom_line_id â†’ (tier_qty â†’ unit_price_cad). Empty when the user
+  // hasn't picked any suppliers yet â€” engine then falls back to cache prices.
+  const bomLineIds = bomLines.map((l) => l.id);
+  const { data: selectionRows } = bomLineIds.length > 0
+    ? await supabase
+        .from("bom_line_pricing")
+        .select("bom_line_id, tier_qty, selected_unit_price_cad")
+        .in("bom_line_id", bomLineIds)
+    : { data: [] };
+
+  const pricingOverrides = new Map<string, Map<number, number>>();
+  for (const row of selectionRows ?? []) {
+    if (row.selected_unit_price_cad == null) continue;
+    const inner = pricingOverrides.get(row.bom_line_id) ?? new Map<number, number>();
+    inner.set(row.tier_qty, Number(row.selected_unit_price_cad));
+    pricingOverrides.set(row.bom_line_id, inner);
+  }
+
   // --- Calculate pricing ---
   const pricing = calculateQuote({
     lines: pricingLines,
@@ -279,7 +312,8 @@ export async function POST(req: NextRequest) {
     overages: overageTiers,
     settings,
     tier_inputs: resolvedTiers,
-    assembly_type: body.assembly_type,
+    board_side: body.board_side ?? null,
+    pricing_overrides: pricingOverrides,
   });
 
   return NextResponse.json({

@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -8,7 +9,7 @@ import {
   type SupplierName,
 } from "@/lib/supplier-credentials";
 
-async function requireCeo() {
+async function requireAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -25,10 +26,10 @@ async function requireCeo() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
+  if (!isAdminRole(profile?.role)) {
     return {
       user: null,
-      error: NextResponse.json({ error: "CEO role required" }, { status: 403 }),
+      error: NextResponse.json({ error: "Admin role required" }, { status: 403 }),
     };
   }
 
@@ -55,7 +56,7 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ supplier: string }> }
 ) {
-  const { user, error } = await requireCeo();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   const { supplier } = await params;
@@ -122,7 +123,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ supplier: string }> }
 ) {
-  const { user, error } = await requireCeo();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   const { supplier } = await params;
@@ -145,7 +146,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ supplier: string }> }
 ) {
-  const { user, error } = await requireCeo();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   const { supplier } = await params;

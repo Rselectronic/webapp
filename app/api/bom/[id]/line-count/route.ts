@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { calculateProgrammingCost, isDoubleSidedAssembly } from "@/lib/pricing/programming-cost";
+import { calculateProgrammingCost, isDoubleSidedBoard } from "@/lib/pricing/programming-cost";
 
 export async function GET(
   _req: Request,
@@ -24,25 +24,17 @@ export async function GET(
 
   const lineCount = count ?? 0;
 
-  // Check if the board is double-sided (TB) by looking at related jobs
+  // Check if the board is double-sided by reading gmps.board_side directly.
+  // GMP is the canonical source of physical layout (single vs double sided).
   const { data: bom } = await admin
     .from("boms")
-    .select("gmp_id")
+    .select("gmp_id, gmps(board_side)")
     .eq("id", bomId)
     .single();
 
-  let isDouble = true; // Default to double-sided (TB is most common)
-  if (bom?.gmp_id) {
-    const { data: jobs } = await admin
-      .from("jobs")
-      .select("assembly_type")
-      .eq("gmp_id", bom.gmp_id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (jobs?.[0]?.assembly_type) {
-      isDouble = isDoubleSidedAssembly(jobs[0].assembly_type);
-    }
-  }
+  const boardSide =
+    (bom?.gmps as unknown as { board_side?: string | null } | null)?.board_side ?? null;
+  const isDouble = isDoubleSidedBoard(boardSide); // unknown → defaults to double
 
   const programmingCost = calculateProgrammingCost(lineCount, isDouble);
 

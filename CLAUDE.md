@@ -339,8 +339,9 @@ CREATE TABLE public.jobs (
     'production', 'inspection', 'shipping', 'delivered', 'invoiced', 'archived'
   )),
   quantity INT NOT NULL,               -- Accepted quantity tier
-  assembly_type TEXT DEFAULT 'TB' CHECK (assembly_type IN ('TB', 'TS', 'CS', 'CB', 'AS')),
-  -- TB=Top+Bottom, TS=Top-side only, CS=Consignment, CB=Customer Board, AS=Assembly-only
+  -- Physical layout (single- vs double-sided SMT) lives on `gmps.board_side`
+  -- ('single' | 'double'). Billing model lives on `procurement_mode` on quotes
+  -- + procurements ('turnkey' | 'consignment' | 'assembly_only').
   scheduled_start DATE,
   scheduled_completion DATE,
   actual_start TIMESTAMPTZ,

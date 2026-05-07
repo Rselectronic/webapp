@@ -1,28 +1,46 @@
 "use client";
 
+// ----------------------------------------------------------------------------
+// invoice-actions.tsx
+//
+// Header action row on the invoice detail page. "Mark as Sent",
+// "Record Payment" (opens the modal RecordPaymentDialog), "Cancel
+// Invoice". The Record Payment used to expand inline which stretched the
+// flex row and made the Delete button next to it grow taller; the modal
+// keeps the row tight.
+//
+// All payments now go through /api/payments (the partial-payment API
+// added in migration 101). The legacy /api/invoices PATCH path with
+// {status: 'paid', paid_date, payment_method} is no longer used here —
+// it bypassed the payments table and produced phantom-paid invoices
+// without payment events to back them.
+// ----------------------------------------------------------------------------
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const PAYMENT_METHODS = ["cheque", "wire", "credit_card", "cash"] as const;
+import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog";
 
 interface InvoiceActionsProps {
   invoiceId: string;
+  invoiceNumber: string;
+  invoiceTotal: number;
+  paidSoFar: number;
   currentStatus: string;
+  invoiceCurrency?: "CAD" | "USD";
 }
 
 export function InvoiceActions({
   invoiceId,
+  invoiceNumber,
+  invoiceTotal,
+  paidSoFar,
   currentStatus,
+  invoiceCurrency = "CAD",
 }: InvoiceActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [paidDate, setPaidDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [paymentMethod, setPaymentMethod] = useState<string>("cheque");
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
 
   async function handleMarkSent() {
     setLoading(true);
@@ -38,7 +56,6 @@ export function InvoiceActions({
       }
       router.refresh();
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error("Invoice status update failed:", err);
       alert(err instanceof Error ? err.message : "Failed to update invoice");
     } finally {
@@ -46,36 +63,38 @@ export function InvoiceActions({
     }
   }
 
-  async function handleRecordPayment() {
+  async function handleCancel() {
+    const confirmed = window.confirm(
+      currentStatus === "paid"
+        ? "This invoice is marked as paid. Cancelling it will NOT reverse any recorded payment. Continue?"
+        : "Cancel this invoice? It can be re-opened later by changing the status."
+    );
+    if (!confirmed) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/invoices/${invoiceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "paid",
-          paid_date: paidDate,
-          payment_method: paymentMethod,
-        }),
+        body: JSON.stringify({ status: "cancelled" }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Failed to record payment");
+        throw new Error(body.error ?? "Failed to cancel invoice");
       }
-      setShowPaymentForm(false);
       router.refresh();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("Payment recording failed:", err);
-      alert(err instanceof Error ? err.message : "Failed to record payment");
+      alert(err instanceof Error ? err.message : "Failed to cancel invoice");
     } finally {
       setLoading(false);
     }
   }
 
+  const recordingDisabled =
+    currentStatus === "cancelled" || paidSoFar >= invoiceTotal;
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-2">
+    <>
+      <div className="flex items-start gap-2">
         {currentStatus === "draft" && (
           <Button size="sm" disabled={loading} onClick={handleMarkSent}>
             {loading ? "Updating..." : "Mark as Sent"}
@@ -85,8 +104,8 @@ export function InvoiceActions({
         {(currentStatus === "sent" || currentStatus === "overdue") && (
           <Button
             size="sm"
-            disabled={loading}
-            onClick={() => setShowPaymentForm((prev) => !prev)}
+            disabled={loading || recordingDisabled}
+            onClick={() => setPaymentDialogOpen(true)}
           >
             Record Payment
           </Button>
@@ -98,102 +117,26 @@ export function InvoiceActions({
             size="sm"
             disabled={loading}
             className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-            onClick={async () => {
-              const confirmed = window.confirm(
-                currentStatus === "paid"
-                  ? "This invoice is marked as paid. Cancelling it will NOT reverse any recorded payment. Continue?"
-                  : "Cancel this invoice? It can be re-opened later by changing the status."
-              );
-              if (!confirmed) return;
-              setLoading(true);
-              try {
-                const res = await fetch(`/api/invoices/${invoiceId}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ status: "cancelled" }),
-                });
-                if (!res.ok) {
-                  const body = await res.json().catch(() => ({}));
-                  throw new Error(body.error ?? "Failed to cancel invoice");
-                }
-                router.refresh();
-              } catch (err) {
-                alert(err instanceof Error ? err.message : "Failed to cancel invoice");
-              } finally {
-                setLoading(false);
-              }
-            }}
+            onClick={handleCancel}
           >
             {loading ? "Cancelling..." : "Cancel Invoice"}
           </Button>
         )}
       </div>
 
-      {showPaymentForm && (
-        <Card className="max-w-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Record Payment</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <label
-                htmlFor="paid-date"
-                className="mb-1 block text-sm font-medium text-gray-700"
-              >
-                Payment Date
-              </label>
-              <input
-                id="paid-date"
-                type="date"
-                value={paidDate}
-                onChange={(e) => setPaidDate(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="payment-method"
-                className="mb-1 block text-sm font-medium text-gray-700"
-              >
-                Payment Method
-              </label>
-              <select
-                id="payment-method"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                {PAYMENT_METHODS.map((method) => (
-                  <option key={method} value={method}>
-                    {method
-                      .replace("_", " ")
-                      .replace(/\b\w/g, (c) => c.toUpperCase())}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <Button
-                size="sm"
-                disabled={loading || !paidDate}
-                onClick={handleRecordPayment}
-              >
-                {loading ? "Saving..." : "Confirm Payment"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loading}
-                onClick={() => setShowPaymentForm(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+      <RecordPaymentDialog
+        invoiceId={invoiceId}
+        invoiceNumber={invoiceNumber}
+        invoiceTotal={invoiceTotal}
+        paidSoFar={paidSoFar}
+        invoiceCurrency={invoiceCurrency}
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        onSuccess={() => {
+          setPaymentDialogOpen(false);
+          router.refresh();
+        }}
+      />
+    </>
   );
 }

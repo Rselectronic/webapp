@@ -1,10 +1,10 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateApiKey, hashApiKey, type ApiKeyRole } from "@/lib/api-keys";
+const ALLOWED_ROLES: ApiKeyRole[] = ["admin", "production"];
 
-const ALLOWED_ROLES: ApiKeyRole[] = ["ceo", "operations_manager", "shop_floor"];
-
-async function requireCeo() {
+async function requireAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,11 +22,11 @@ async function requireCeo() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") {
+  if (!isAdminRole(profile?.role)) {
     return {
       supabase,
       user: null,
-      error: NextResponse.json({ error: "CEO role required" }, { status: 403 }),
+      error: NextResponse.json({ error: "Admin role required" }, { status: 403 }),
     };
   }
 
@@ -34,7 +34,7 @@ async function requireCeo() {
 }
 
 export async function POST(req: NextRequest) {
-  const { supabase, user, error } = await requireCeo();
+  const { supabase, user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   let body: unknown;
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
   const name = rawName.trim();
 
-  let role: ApiKeyRole = "ceo";
+  let role: ApiKeyRole = "admin";
   if (rawRole !== undefined) {
     if (
       typeof rawRole !== "string" ||
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   }
 
   // IMPORTANT: the raw key is returned ONCE here and never again. Only the
-  // SHA-256 hash is stored server-side, so there is no recovery path — the
+  // SHA-256 hash is stored server-side, so there is no recovery path â€” the
   // caller must copy the key now.
   return NextResponse.json(
     {
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  const { supabase, user, error } = await requireCeo();
+  const { supabase, user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   const { data, error: selectError } = await supabase

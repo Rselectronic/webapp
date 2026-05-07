@@ -62,17 +62,27 @@ export async function POST(
   // components with "0402" in description to miss the 0402 M-code keyword)
   const keywords = await fetchKeywords(admin);
 
-  // Batch-fetch component details (dimensions, package, mounting type) for enrichment
-  const mpns = [...new Set(lines.map((l) => l.mpn).filter(Boolean))];
+  // Batch-fetch component details (dimensions, package, mounting type) for enrichment.
+  // The components table is CPC-keyed (UNIQUE on cpc, manufacturer) — looking up by
+  // MPN here returned nothing, so Layer-2 rule classification ran without enrichment.
+  // The classifier's detailsMap is keyed on the same lookup key it uses internally
+  // (cpc when available, mpn fallback), so build the map with the same precedence.
+  const lookupKeys = [
+    ...new Set(
+      lines
+        .map((l) => (l.cpc && l.cpc.trim() ? l.cpc : l.mpn))
+        .filter((v): v is string => Boolean(v))
+    ),
+  ];
   const detailsMap = new Map<string, { mounting_type: string | null; package_case: string | null; category: string | null; length_mm: number | null; width_mm: number | null }>();
-  if (mpns.length > 0) {
+  if (lookupKeys.length > 0) {
     const { data: compData } = await admin
       .from("components")
-      .select("mpn, mounting_type, package_case, category, length_mm, width_mm")
-      .in("mpn", mpns);
+      .select("cpc, mounting_type, package_case, category, length_mm, width_mm")
+      .in("cpc", lookupKeys);
     for (const row of compData ?? []) {
       if (row.mounting_type || row.package_case || row.length_mm || row.width_mm) {
-        detailsMap.set(row.mpn, {
+        detailsMap.set(row.cpc, {
           mounting_type: row.mounting_type,
           package_case: row.package_case,
           category: row.category,

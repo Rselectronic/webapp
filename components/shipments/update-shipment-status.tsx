@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { todayMontreal } from "@/lib/utils/format";
 
 const STATUS_FLOW: Record<string, string[]> = {
   pending: ["shipped"],
@@ -37,7 +38,7 @@ export function UpdateShipmentStatus({
     try {
       const updates: Record<string, unknown> = { id: shipmentId, status: newStatus };
       if (newStatus === "delivered") {
-        updates.actual_delivery = new Date().toISOString().split("T")[0];
+        updates.actual_delivery = todayMontreal();
       }
       const res = await fetch("/api/shipments", {
         method: "PATCH",

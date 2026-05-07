@@ -22,7 +22,12 @@ export async function GET(req: NextRequest) {
     .range(offset, offset + limit - 1);
 
   if (search) {
-    query = query.ilike("mpn", `%${search}%`);
+    // Match against CPC, MPN, or description so the search box behaves the
+    // way the placeholder advertises.
+    const escaped = search.replace(/[%,]/g, (c) => `\\${c}`);
+    query = query.or(
+      `cpc.ilike.%${escaped}%,mpn.ilike.%${escaped}%,description.ilike.%${escaped}%`
+    );
   }
 
   const { data, error, count } = await query;

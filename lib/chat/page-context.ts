@@ -238,12 +238,12 @@ async function summarizeJob(sb: SupabaseClient, id: string): Promise<string | nu
   const { data } = await sb
     .from("jobs")
     .select(
-      `job_number, status, quantity, assembly_type, po_number,
+      `job_number, status, quantity, po_number,
        scheduled_start, scheduled_completion,
        customers(code, company_name),
-       gmps(gmp_number, board_name),
+       gmps(gmp_number, board_name, board_side),
        boms(file_name, component_count),
-       quotes(quote_number, pricing)`
+       quotes!jobs_quote_id_fkey(quote_number, pricing)`
     )
     .eq("id", id)
     .maybeSingle();
@@ -258,7 +258,7 @@ async function summarizeJob(sb: SupabaseClient, id: string): Promise<string | nu
     `Job ${data.job_number} — status: ${data.status}`,
     `Customer: ${customer?.code ?? "?"} (${customer?.company_name ?? ""})`,
     `GMP: ${gmp?.gmp_number ?? "?"}${gmp?.board_name ? ` — ${gmp.board_name}` : ""}`,
-    `Quantity: ${data.quantity}, Assembly type: ${data.assembly_type ?? "?"}`,
+    `Quantity: ${data.quantity}, Board side: ${gmp?.board_side ?? "?"}`,
     data.po_number ? `Customer PO: ${data.po_number}` : "No PO uploaded yet",
     `BOM: ${bom?.file_name ?? "?"} (${bom?.component_count ?? 0} lines)`,
     quote?.quote_number ? `Linked quote: ${quote.quote_number}` : "",

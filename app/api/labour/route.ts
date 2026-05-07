@@ -169,10 +169,8 @@ export async function POST(req: NextRequest) {
   // NRE breakdown
   const nreProgramming = settings.nre_programming ?? 0;
   const nreStencil = settings.nre_stencil ?? 0;
-  const nreSetup = settings.nre_setup ?? 0;
   const nrePcbFab = settings.nre_pcb_fab ?? 0;
-  const nreMisc = settings.nre_misc ?? 0;
-  const nreTotal = nreProgramming + nreStencil + nreSetup + nrePcbFab + nreMisc;
+  const nreTotal = nreProgramming + nreStencil + nrePcbFab;
 
   return NextResponse.json({
     bom_id,
@@ -203,9 +201,7 @@ export async function POST(req: NextRequest) {
     nre: {
       programming: nreProgramming,
       stencil: nreStencil,
-      setup: nreSetup,
       pcb_fab: nrePcbFab,
-      misc: nreMisc,
       total: nreTotal,
     },
     // Grand total (labour + NRE)

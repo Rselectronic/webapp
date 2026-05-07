@@ -10,6 +10,38 @@
 
 ---
 
+## ⚠️ Pre-Launch Cleanup Items
+
+Before switching off the Excel workflow for good, sweep the open items below.
+Each is a conscious split-decision that needs one approach picked and the
+other deleted — not an actual bug.
+
+### Global Part Search — streaming vs. batched fetch (added 2026-04-24)
+
+`/api/parts/search` currently uses an NDJSON stream: the server fires all 12
+distributor calls in parallel (`Promise.all`) and writes one
+`{type:"supplier", result}` event per distributor as each resolves. Earlier
+it used `Promise.allSettled` + a single JSON response.
+
+Both approaches do the same amount of work and make the same API calls. The
+streamed path just lets faster distributors (LCSC, Mouser) render before
+slower ones (DigiKey, Arrow) instead of waiting for the whole batch.
+
+**Decision to make at launch:**
+- Keep streaming → better perceived responsiveness but more moving parts
+  (server `ReadableStream`, client NDJSON reader loop, `"loading"`
+  placeholder supplier status, `InFlightSupplierFooter` component,
+  incremental state merge in `handleSubmit`).
+- Revert to batched → simpler code path. Swap the stream for
+  `Promise.allSettled` + `NextResponse.json`. Delete the `"loading"` status
+  variant, the footer component, the stream reader, and the
+  placeholder-seeding in `init` handler.
+
+Anas + Piyush to field-test during the pilot phase and pick the one that
+actually feels better in daily use. Remove the other.
+
+---
+
 ## PART 1: THE BUSINESS — Why This App Exists
 
 ### What RS PCB Assembly Actually Does
@@ -261,7 +293,10 @@ jobs {
   po_number: "PO-12345",                 // Customer's purchase order
   status: "created",                     // → procurement → parts_ordered → production → shipped → invoiced
   quantity: 100,                         // Quantity from qty_2 tier
-  assembly_type: "TB"                    // TB=Top+Bottom, TS=Top-side only, etc.
+  // Physical layout lives on `gmps.board_side` ('single' | 'double').
+  // Billing model lives on `procurement_mode` ('turnkey' | 'consignment' |
+  // 'assembly_only') on quotes + procurements. The legacy `assembly_type`
+  // column was dropped in migration 091.
 }
 
 // Immutable history
@@ -1942,13 +1977,12 @@ The first thing you see after login. It has two tabs at the top: **Overview** an
 | **Active Jobs** | Count of jobs NOT in delivered/invoiced/archived | `jobs` table, excluding terminal statuses |
 | **Outstanding Invoices** | Dollar total of all sent + overdue invoices | `invoices` table, sum of `total` where `status IN ('sent', 'overdue')` |
 
-**Secondary KPI Cards (second row, 4 cards):**
+**Secondary KPI Cards (second row, 3 cards):**
 
 | Card | What it shows | Source |
 |---|---|---|
 | **Quotes This Month** | How many quotes were created this calendar month | `quotes` where `created_at >= start of month` |
 | **Jobs in Production** | Jobs with `status = 'production'` | `jobs` table |
-| **Avg Quote Value** | Average per-unit price from the first tier across all quotes | Computed from `quotes.pricing` JSONB, first tier's `per_unit` |
 | **Overdue Invoices** | Count of invoices past their due date | `invoices` where `status = 'overdue'` |
 
 **Recent Activity (bottom section):** A feed of the last 10 events across the system. It pulls the 5 most recent quotes, 5 most recent jobs, and 5 most recent invoices, merges them, and sorts by date. Each row shows:
@@ -4958,12 +4992,13 @@ A new "Board Details" card appears on the quote form (`/quotes/new`) after a BOM
 
 | Field | Options | Default | Effect |
 |---|---|---|---|
-| **Assembly Type** | TB (Double-sided), TS (Single-sided), CS (Consignment), AS (Assembly only) | TB | Controls how many SMT passes the assembly cost assumes. |
+| **Board Side** (`gmps.board_side`) | `single` (Single-sided), `double` (Double-sided) | `double` | Controls how many SMT passes the assembly cost assumes. Stored on the GMP — every BOM revision and every quote under that GMP shares the same physical layout. |
+| **Procurement Mode** (`quotes.procurement_mode`) | `turnkey`, `consignment`, `assembly_only` | `turnkey` | Billing model — what RS supplies vs what the customer supplies. Lives on the quote and on each procurement record. |
 | **Boards per Panel** | Number >= 1 | 1 | Panelization factor for PCB cost division. |
 | **IPC Class** | 1 (General), 2 (Dedicated Service), 3 (High Reliability) | 2 | Higher class = stricter inspection, higher assembly cost. |
 | **Solder Type** | Lead-Free (RoHS), Leaded | Lead-Free | Affects reflow profile and solder paste type. |
 
-These values are sent to the pricing engine in `POST /api/quotes/preview` and stored on the quote when saved. They replace the old single `assembly_type` field on the jobs table -- now they live at the quote level so Anas sets them during quoting, not after job creation.
+The old single `assembly_type` column ('TB' | 'TS' | 'CS' | 'CB' | 'AS') was a confused mash-up of physical layout + billing model. Migration 091 split it: physical layout → `gmps.board_side`, billing model → `procurement_mode`. There is now exactly one place to look for each.
 
 Files: `components/quotes/new-quote-form.tsx`, `app/api/quotes/preview/route.ts`, `app/api/quotes/route.ts`
 

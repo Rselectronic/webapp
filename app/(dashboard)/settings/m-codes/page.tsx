@@ -1,5 +1,9 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -38,7 +42,7 @@ export default async function MCodeRulesPage() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") redirect("/");
+  if (!isAdminRole(profile?.role)) redirect("/");
 
   const { data: rules, error } = await supabase
     .from("m_code_rules")
@@ -49,11 +53,17 @@ export default async function MCodeRulesPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      <Link href="/settings">
+        <Button variant="ghost" size="sm">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Settings
+        </Button>
+      </Link>
       <div>
         <h2 className="text-2xl font-bold text-gray-900">M-Code Rules</h2>
         <p className="text-sm text-gray-500">
           Classification rules (PAR-01 through PAR-47) used by the M-Code
-          engine. Read-only view — the active classification logic is in the
+          engine. Read-only view â€” the active classification logic is in the
           TypeScript rule engine.
         </p>
       </div>

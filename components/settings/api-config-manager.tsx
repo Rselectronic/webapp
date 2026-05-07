@@ -67,6 +67,7 @@ const BUILT_IN_NAMES = new Set([
   "future",
   "avnet",
   "arrow",
+  "arrow_com",
   "tti",
   "esonic",
   "newark",

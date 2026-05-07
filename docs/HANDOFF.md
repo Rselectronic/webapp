@@ -6,6 +6,32 @@
 
 ---
 
+## Pre-Launch Cleanup Items
+
+> One-liner punch-list of things to revisit before cutting over from the
+> Excel workflow to the web app in production. Keep this at the top so it's
+> the first thing a fresh session sees.
+
+### Global Part Search — streaming vs. batched fetch (added 2026-04-24)
+
+The `/api/parts/search` route currently streams results via NDJSON
+(one `{type:"supplier", result}` event per distributor as each resolves).
+Earlier it used `Promise.allSettled` + a single `NextResponse.json` payload —
+both approaches hit the same 12 suppliers in parallel; only the transport
+differs.
+
+**Before launch:** decide which to keep and delete the other. The batched
+variant is simpler (fewer moving parts, no streaming reader on the client,
+no placeholder supplier state). The streamed variant feels faster because
+LCSC / Mouser land before DigiKey / Arrow.
+
+- Streamed path: [app/api/parts/search/route.ts](../app/api/parts/search/route.ts) stream handler + [app/(dashboard)/parts/page.tsx](<../app/(dashboard)/parts/page.tsx>) NDJSON reader + `InFlightSupplierFooter` component.
+- Reverting to batched = swap the stream back for `Promise.allSettled` + `NextResponse.json`; drop the `SupplierStatus` `"loading"` variant + the footer component + the reader loop in `handleSubmit`.
+
+Anas + Piyush to field-test a week's worth of searches, then decide.
+
+---
+
 ## Project Identity
 
 - **App:** Custom ERP replacing 11 Excel/VBA workbooks for RS PCB Assembly (Montreal)
@@ -604,7 +630,7 @@ Full API implementation details: **ABDULS_WIKI.md Part 16**.
 - Standard (single-sided) vs double-sided pricing ($100 difference)
 - New API: `GET /api/bom/[id]/line-count` — returns line count + auto-calculated programming cost
 - Quote form auto-fills NRE Programming when a BOM is selected (all tiers updated)
-- Double-sided detection: checks job assembly_type (TB = double-sided, default)
+- Double-sided detection: reads `gmps.board_side` ('double' = double-sided, default when unset). Migration 091 dropped the legacy `assembly_type` columns on jobs/quotes — physical layout now lives only on the GMP, billing model lives on `procurement_mode`.
 - Extrapolation for 300+ lines at $75/10-line tier
 
 **8. Dead code audit + cleanup:**
@@ -1474,7 +1500,7 @@ Impact: any quote generated today under commit `042c366` that used the fallback 
 **Part A — New `programming_fees` table:**
 - 28 rows from DM V11 Programming sheet.
 - Schema: `bom_lines (PK) | additional_cost | standard_price | double_side_price | source`.
-- Query pattern: `SELECT * FROM programming_fees WHERE bom_lines <= $1 ORDER BY bom_lines DESC LIMIT 1; pick standard_price or double_side_price based on assembly_type`.
+- Query pattern: `SELECT * FROM programming_fees WHERE bom_lines <= $1 ORDER BY bom_lines DESC LIMIT 1`; pick `standard_price` or `double_side_price` based on `gmps.board_side` (single → standard, double → double_side). _Historical: prior to migration 091 this used `quotes.assembly_type` (TB/TS)._
 - Coverage: 1 line → $300/$400 up to 300 lines → $2250/$2350. Incremental: $50/10 lines below 70 lines, $75/10 lines above.
 - RLS: read-only for any authenticated user (reference data, not transactional).
 
@@ -1544,7 +1570,7 @@ TypeScript clean (`tsc --noEmit` exit 0).
 ### What's still open
 
 - **SMT time model port** (4-6 hrs) — described above. The biggest remaining gap between web app quotes and DM Excel.
-- **Use `programming_fees` in engine.ts** — right now the table exists but `engine.ts` still uses `settings.programming_time_hours × labour_rate`. Should switch to a DB lookup based on `bomLines` + `assembly_type`. 30-60 min wire-up.
+- **Use `programming_fees` in engine.ts** — right now the table exists but `engine.ts` still uses `settings.programming_time_hours × labour_rate`. Should switch to a DB lookup based on `bomLines` + `gmps.board_side` (single → standard, double → double_side). 30-60 min wire-up.
 - **Keyword suffix variants** (from entry 47 follow-up list) — 1206L, SOD323F, HTSSOP-16, STQFP100 — trivial data migration to push classification from 90.5% → 95%+.
 - **Settings → AI Usage page** — once `ai_call_log` has a few days of data.
 
@@ -2021,4 +2047,323 @@ The server page (`customers/page.tsx`) now fetches ALL customers in a single que
 Commits: `657189f` (instant search), `810b963` (client-side status filters). Both pushed to main.
 
 *Entry 55 written: April 18, 2026, Session 14 (continued)*
+
+## Entry 56 — TH Pin Count on BOM Lines (April 20, 2026)
+
+Every BOM line classified as `m_code = 'TH'` (Through-Hole) now carries a pin count that feeds the time-based assembly model (TH cost per board = `pin_count × th_cost_per_pin`). This ports the DM Common File V11 behaviour where `THpinsExists()` (VBA `Module1_V3.bas:1284`) blocks the 11-button quote sequence if any TH line is missing its pin count. Real quote example from the VBA extract: `TL265-5001-000-T` = 20 TH parts, 149 TH pins.
+
+### 1. UI — new "TH Pins" column on BOM detail table
+
+`components/bom/bom-table.tsx`:
+
+- Added `pin_count: number | null` to the `BomLine` interface.
+- New "TH Pins" column rendered between M-Code and Reasoning. Cell shows `—` for non-TH lines; renders an inline `PinCountInput` (editable number 0–9999) for TH lines.
+- Empty TH inputs are highlighted amber (border + background) so missing pin data is visible at a glance.
+- Optimistic update on blur/Enter → `PATCH /api/bom/lines/:id`. Rolls back if the request fails.
+- Two new summary badges above the table:
+  - `N TH parts` (amber) — total count of TH-classified lines.
+  - `N missing TH pins` (red) — count of TH lines with no pin_count.
+
+### 2. API — PATCH handler on `/api/bom/lines/[id]`
+
+`app/api/bom/lines/[id]/route.ts`: added a `PATCH` handler alongside the existing `DELETE`. Accepts `{ pin_count: number | null }`. Validates integer 0–9999 or null. CEO / operations_manager role required (same as DELETE). Returns `{ ok: true, id, pin_count }`.
+
+### 3. Data source strategy
+
+Pin count lives in two places by design:
+
+- **`components.pin_count`** (per-MPN, reusable) — master library value. Populated from DM Common File V11 `Procurement!K` (extracted 1,509 unique MPN/mfr pairs, saved to `supabase/seed-data/dm-file/th_pins_extracted.json`). Migrations `041_components_pin_count.sql` + `042_seed_th_pins.sql` drafted but **not applied yet** — user asked to ship UI first.
+- **`bom_lines.pin_count`** (per-BOM-line, override) — per-design value the user can adjust on that specific quote. The UI currently writes here.
+
+Classifier integration (not yet built): when Layer 1 (DB lookup) assigns `m_code='TH'` to a BOM line, it should also pull `components.pin_count` and pre-fill `bom_lines.pin_count`. Until that wiring ships, TH pins are filled manually by Piyush on the BOM detail page.
+
+### What's still pending
+
+- **Apply migrations 041 + 042** to add `components.pin_count` column and seed 1,509 TH pin values from the DM file. The UI PATCH endpoint will 500 on DB write until the column exists.
+- **Add `bom_lines.pin_count` column** via a new migration (042-pair or 043). Without this, the PATCH also 500s.
+- **Classifier pre-fill** — FastAPI `m_code_classifier` should include pin_count in its Layer 1 response when m_code resolves to TH.
+- **Quote-approval gate** — port VBA `THpinsExists()`: block quote approval / PDF generation when any TH line has NULL `pin_count`. Belongs in the quote preview + approve API routes.
+- **BOM export** — add `pin_count` column to CSV/XLSX export so users can see it outside the app.
+
+### Files touched
+
+- `components/bom/bom-table.tsx` — `BomLine` type, `handlePinCountChange`, TH pin column + cell, `PinCountInput` component, summary badges.
+- `app/api/bom/lines/[id]/route.ts` — new `PATCH` handler with role check and pin_count validation.
+- `supabase/migrations/041_components_pin_count.sql` — new migration (drafted, not applied).
+- `supabase/migrations/042_seed_th_pins.sql` — 1,509-row seed (drafted, not applied).
+- `supabase/seed-data/dm-file/th_pins_extracted.json` — extract source (1,546 rows from `Procurement!K`).
+
+*Entry 56 written: April 20, 2026 — UI shipped; DB migrations drafted, awaiting apply.*
+
+## Entry 57 — Component Pricing Review + 12-distributor pricing system (April 20, 2026)
+
+Major subsystem: a new page at `/bom/[id]/pricing` that queries up to 12 distributors in parallel for every BOM line, shows their quotes side-by-side with FX-converted CAD prices, and lets the user pin a specific supplier per qty tier. Those picks persist in `bom_line_pricing` and feed directly into the existing quote pricing engine.
+
+### 1. Supplier API clients — 9 new + 1 rewrite + 2 adapters
+
+Each client exports a function that returns `SupplierQuote[]` — a unified shape with MPN, manufacturer, supplier_part_number, price_breaks (`{min_qty, max_qty, unit_price, currency}[]`), stock, lead_time_days, MOQ, order_multiple, lifecycle, NCNR, franchised flag, datasheet/product URLs. Every client follows the same pattern (module-level cred cache with 60s TTL, DB-first with env fallback, 15s AbortSignal timeout, fail-soft returning `[]`).
+
+| Supplier | File | Auth | Native CCY | Price breaks | Lead time | Notes |
+|---|---|---|---|---|---|---|
+| DigiKey | `lib/pricing/digikey.ts` | OAuth2 | USD | — (single-tier adapter) | — | existing client, new adapter in registry |
+| Mouser | `lib/pricing/mouser.ts` | API key | USD | — (single-tier adapter) | — | existing client, new adapter in registry |
+| LCSC | `lib/pricing/lcsc.ts` | SHA1 sig | USD | ✓ | — | **rewritten** — old client used wrong endpoint shape + `sign=` instead of `signature=`; fix sources the signing payload alphabetically (`key/nonce/secret/timestamp`) |
+| TTI | `lib/pricing/tti.ts` | `apiKey` header | USD | ✓ | weeks→days | lead-time string parser handles "25 Weeks"/"Stock" |
+| Newark | `lib/pricing/newark.ts` | `callinfo.apiKey` query | CAD (via `canada.newark.com` store) | ✓ | days | default 10 results; Element14 casing quirk (`callinfo` vs `callInfo`) |
+| Future | `lib/pricing/future.ts` | `x-orbweaver-licensekey` header | CAD | ✓ | weeks→days | `lookup_type=exact`; flat `part_attributes[]` array is flattened to a dict |
+| TI | `lib/pricing/ti.ts` | OAuth2 | **CAD native** | ✓ | — | PN-based lookup; `looksLikeTiPart()` pre-filter avoids 404 noise on non-TI MPNs |
+| Avnet | `lib/pricing/avnet.ts` | OAuth2 + Ocp-Apim-Subscription-Key | USD | — (single-price per call) | weeks→days | multi-row (same MPN across suppliers); needs 4× calls for 4 tiers — future enhancement is batched POST |
+| Arrow | `lib/pricing/arrow.ts` | OAuth2 (Basic header) | USD | ✓ (stringified) | days | multi-row per warehouse; all numeric fields come stringified |
+| TME | `lib/pricing/tme.ts` | HMAC-SHA1 sig | USD | ✓ | null | OAuth1-style signing via Node `crypto`; batch-capable (future) |
+| Samtec | `lib/pricing/samtec.ts` | Bearer JWT (static) | USD | ✓ | days | PN-based; `customerBookPrice[]` preferred over `price[]`; `looksLikeSamtecPart()` pre-filter |
+| e-Sonic | `lib/pricing/esonic.ts` | UUID in URL path | USD | ✓ (stringified) | weeks→days | response is a bare array; everything string-coerced |
+
+**Registry:** `lib/pricing/registry.ts` maps `BuiltInSupplierName` → search function and exposes `runSupplierSearch()` (safe wrapper) + `supplierCanServiceMpn()` (for pre-filtering manufacturer-direct suppliers TI/Samtec).
+
+### 2. Schema additions — 3 new migrations (drafted, **NOT YET APPLIED**)
+
+- `supabase/migrations/043_pricing_cache_enrichment.sql` — adds `manufacturer`, `supplier_part_number`, `price_breaks JSONB`, `lead_time_days`, `moq`, `order_multiple`, `lifecycle_status`, `ncnr`, `franchised`, `warehouse_code` columns to `api_pricing_cache`. All nullable; existing rows unaffected.
+- `supabase/migrations/044_bom_line_pricing.sql` — new table holding per-tier supplier selections. One row per `(bom_line_id, tier_qty)`. RLS: CEO + operations_manager read/write.
+- `supabase/migrations/045_fx_rates.sql` — FX cache table keyed on `(from_currency, to_currency)`. Seeded with `CAD→CAD = 1.0`. Source field distinguishes `live` (fetched from provider) vs `manual` (CEO override). Manual picks aren't overwritten by live fetches.
+
+### 3. FX helper
+
+`lib/pricing/fx.ts`:
+- `fetchLiveRates(currencies, to="CAD")` — hits `https://open.er-api.com/v6/latest/{to}` (free, no auth), inverts the rates, writes back to `fx_rates` with `source="live"`.
+- `setManualRate(from, to, rate)` — writes with `source="manual"`.
+- `getRate(from, to)` — DB cache read; returns null if never fetched.
+- `convertAmount(amount, from, to)` — convenience wrapper.
+
+### 4. API routes
+
+- `POST /api/bom/[id]/pricing-review/fetch` — body `{ suppliers[], bom_line_ids? }`. For each BOM line × selected supplier, fires `runSupplierSearch()` (4-lines-at-a-time concurrency control to cap ~24 in-flight). Persists each quote to `api_pricing_cache` with 7-day TTL. Returns `{ results: [{bom_line_id, quotes: QuoteWithCad[]}], api_calls, fx_rates_used }`.
+- `POST /api/bom/lines/[id]/pricing-selection` — body `{ tier_qty, supplier, selected_unit_price, selected_currency, ... }`. Looks up cached FX rate; if foreign currency and no rate cached, returns 400 prompting user to click "Fetch Live Rates". Upserts on `(bom_line_id, tier_qty)`.
+- `DELETE /api/bom/lines/[id]/pricing-selection?tier_qty=N` — removes a pick.
+- `GET /api/fx?to=CAD&from=USD,EUR` — reads cached rates.
+- `POST /api/fx` — body `{ action: "fetch_live", currencies? }` OR `{ action: "manual", from, to, rate }`.
+
+### 5. UI page — `/bom/[id]/pricing`
+
+Server page loads BOM + lines + existing selections + cached quotes + FX rates + credential status in parallel, hydrates the client component so the review is instant on reload.
+
+Client component `components/pricing-review/pricing-review-panel.tsx`:
+- **Section 1 — Distributor checkbox grid** (12 suppliers). Suppliers without credentials are greyed out with "no creds" label, link to `/settings/api-config`.
+- **Section 2 — Tier qty editor** (default `1, 10, 100, 500, 1000`, comma-separated).
+- **Section 3 — FX rates panel** with "Fetch Live Rates" button + per-currency manual override inputs. USD/EUR/GBP/CNY/JPY displayed.
+- **Fetch Prices button** (large) — fires the pricing-review fetch endpoint.
+- **Per-line expandable rows** — shows MPN/manufacturer/m_code/qty-per-board + badge with quotes count and `N/M picked` status. Expanding reveals a table with one row per supplier quote: Supplier badge, warehouse, stock, lead time, MOQ, Auth/NCNR/lifecycle flags, then one column per tier showing CAD price (and native under it). Click a tier's cell to pin that supplier; click again to unpin.
+
+### 6. Engine wire-up
+
+- New optional `pricing_overrides: Map<bom_line_id, Map<tier_qty, unit_price_cad>>` on `QuoteInput`.
+- In the per-tier loop, `effectiveUnitPrice = override ?? line.unit_price` — pinned picks beat cache-resolved prices, absent entries fall through to the existing supplier cache chain.
+- `/api/quotes/preview` loads `bom_line_pricing` for the quote's BOM lines and builds the override map before calling `calculateQuote`.
+
+### 7. Entry points
+
+- **BOM detail page** — new "Review Pricing" outlined button next to "Create Quote" (visible when bom.status = 'parsed').
+- **New Quote form** — a subtle blue callout card between BOM selection and Board Details: "Review Component Pricing (optional)" with an "Open Pricing Review" button (opens in a new tab so the quote form state isn't lost).
+
+### ⚠ Required before this is usable — migrations must be applied
+
+`psql` / `supabase` CLI aren't available in this environment, so I couldn't apply the DDL directly. Anas (or Piyush with DB rights) needs to run these three SQL files in the Supabase SQL editor — paste each file's contents, click Run:
+
+1. `supabase/migrations/043_pricing_cache_enrichment.sql`
+2. `supabase/migrations/044_bom_line_pricing.sql`
+3. `supabase/migrations/045_fx_rates.sql`
+
+(Also `041` and `042` from Entry 56 if those haven't been applied yet.)
+
+Until these run: the `/bom/[id]/pricing` page loads fine but both "Fetch Prices" and saving selections will 500 with "column 'price_breaks' does not exist" / "relation 'bom_line_pricing' does not exist".
+
+### What's still pending
+
+- **Avnet batching** — current client fires 1 API call per (MPN, qty=1). Future enhancement: send multiple `items[]` per call with different quantities to cut API volume. User was uncertain whether Avnet's Postman collection batches.
+- **DigiKey / Mouser full price breaks** — the existing flat clients are wrapped as single-tier adapters in `registry.ts`. Eventually we should extract the `StandardPricing`/`PriceBreaks` arrays they already return so tier-break pricing shows up on the review page without a re-fetch per tier.
+- **TME + Samtec lead time** — both APIs have separate endpoints for lead time (`GetDeliveryTime.json` / per-series quote form). Skipped per user decision #9 / #5.
+- **Credential field updates** — Avnet's `SUPPLIER_METADATA` still lists `subscription_key` as expected; confirm the live credential record in `supplier_credentials` has this populated. If not, Piyush needs to re-save Avnet creds in `/settings/api-config`.
+- **LCSC creds rotation** — the rewritten client uses the correct signature recipe but the LCSC account still needs valid `key` + `secret` (vendor confirmed they're unblocked in theory).
+- **Multi-tier Avnet / batch TME** — on-demand enhancements.
+
+### Files added
+
+**Migrations (awaiting apply):**
+- `supabase/migrations/043_pricing_cache_enrichment.sql`
+- `supabase/migrations/044_bom_line_pricing.sql`
+- `supabase/migrations/045_fx_rates.sql`
+
+**Library:**
+- `lib/pricing/fx.ts`, `lib/pricing/registry.ts`
+- `lib/pricing/ti.ts`, `lib/pricing/avnet.ts`, `lib/pricing/arrow.ts`, `lib/pricing/tti.ts`, `lib/pricing/newark.ts`, `lib/pricing/future.ts`, `lib/pricing/tme.ts`, `lib/pricing/samtec.ts`, `lib/pricing/esonic.ts`
+
+**API routes:**
+- `app/api/bom/[id]/pricing-review/fetch/route.ts`
+- `app/api/bom/lines/[id]/pricing-selection/route.ts`
+- `app/api/fx/route.ts`
+
+**UI:**
+- `app/(dashboard)/bom/[id]/pricing/page.tsx`
+- `components/pricing-review/pricing-review-panel.tsx`
+
+### Files modified
+
+- `lib/pricing/types.ts` — added `SupplierQuote`, `PriceBreak`, `pricing_overrides` on `QuoteInput`
+- `lib/pricing/lcsc.ts` — rewritten signing + endpoint + added `searchLcscQuotes`
+- `lib/pricing/engine.ts` — reads `pricing_overrides` in the per-tier loop
+- `app/api/quotes/preview/route.ts` — loads `bom_line_pricing` and threads overrides
+- `app/(dashboard)/bom/[id]/page.tsx` — "Review Pricing" button
+- `components/quotes/new-quote-form.tsx` — blue callout card linking to review page
+
+*Entry 57 written: April 20, 2026 — full code shipped, DB migrations awaiting manual apply.*
+
+## Entry 58 — Quote Wizard + pricing-review polish (April 20, 2026, cont.)
+
+Multi-session day. Entry 57 shipped the 12-distributor pricing-review *foundation*; this entry documents everything built on top after that: a brand-new 3-step quote wizard that replaces `/quotes/new` as the canonical quoting flow, a pile of pricing-review refinements, and a set of BOM-page polish tasks. All applied against prod data (Anas applied migrations 041–048 via Supabase SQL editor). Classic quote form `/quotes/new` still works but no longer has a UI entry point from the BOM page.
+
+### 1. Quote wizard — new canonical flow
+
+New routes/files:
+
+- `app/(dashboard)/quotes/wizard/[id]/page.tsx` — server page. Loads quote + BOM lines (excl. qty=0 / PCB / DNI) + fx_rates + overage_table + pricing_preferences + quote_customer_supplied + fresh api_pricing_cache rows (24h TTL) + credential status, passes the bundle to `QuoteWizard`.
+- `components/quote-wizard/quote-wizard.tsx` — client stepper. Renders **all three steps mounted simultaneously**, toggling visibility via `className={step === N ? "" : "hidden"}`. Earlier versions used conditional unmount which was wiping the pricing panel's fetched quotes / selections whenever the user switched steps. Procurement modes that skip step 2 (`consign_parts_supplied`, `assembly_only`) never render step 2 at all.
+- `components/quote-wizard/start-quote-button.tsx` — POSTs `/api/quotes/wizard/start`, pushes `/quotes/wizard/<id>` on success.
+
+#### Step 1 — Quantities & Procurement Mode
+
+UI: tier quantities input (required, positive integers, no default) + procurement-mode radio card with four options:
+- **Turnkey** — RS procures all components + PCB, assembles. Uses step 2 + step 3 PCB.
+- **Consignment — customer supplies parts** — customer ships components; RS procures PCB + assembles. **Skips step 2.**
+- **Consignment — customer supplies PCB** — customer ships bare PCBs; RS procures parts + assembles. Uses step 2; step 3 hides the PCB-price input.
+- **Assembly Only** — customer ships both; RS charges labour only. **Skips step 2 AND step 3 PCB.**
+
+"Save & Continue" writes tier_quantities into `quantities` JSONB + procurement_mode column + `wizard_status = 'quantities_done'`, then advances to step 2 (or 3 if step 2 is skipped).
+
+#### Step 2 — Component Pricing
+
+Embeds the full `PricingReviewPanel` with wizard context (`quoteId`, `tiersFromQuote`, `initialPreferences`, `pinnedPreferenceId`, `initialCustomerSupplied`). In wizard mode the tier editor is replaced with a read-only badge list — tiers are locked to step 1. "Continue to Step 3" writes `wizard_status = 'pricing_done'`.
+
+#### Step 3 — Board Details & Calculate
+
+Form: boards-per-panel / IPC class (1/2/3) / solder type (leaded | leadfree) / assembly type (TB | TS). Per-tier PCB unit price table (hidden for consign_pcb_supplied + assembly_only). NRE inputs: programming / stencil / setup / PCB fab / misc. Shipping flat. Calculate button runs the engine and renders a tier-breakdown table inline.
+
+### 2. Quote numbering
+
+`POST /api/quotes/wizard/start` generates `quote_number` per Anas's rule (2026-04-20):
+
+- **First quote for a given GMP** → `<CUSTOMER_CODE><4-digit sequence>`, e.g. `TLAN0001`. Sequence counter is **per-customer**, computed by regex-parsing existing quote numbers in the customer's set and taking `max(seq) + 1`.
+- **Re-quote of same GMP** (any new BOM revision of that board) → strip any trailing `R\d+` from the oldest existing quote for that GMP to get a **base**, then append `R<next>` where next = count of existing R-quotes for that GMP + 1. Example timeline: `TLAN0001` → `TLAN0001R1` → `TLAN0001R2`.
+- Duplicate-collision on `quote_number` (unique constraint) surfaces as HTTP 409 so the client can retry.
+
+### 3. Pricing review — big finish
+
+Everything on top of Entry 57's foundation that shipped today:
+
+**Per-tier order-qty math:** panel computes `orderQtysByLine[id][tierIdx] = qty_per_board × tier + getOverage(m_code, tier)` on the client using the overage table passed in as a prop. Each tier column header now shows three lines — `qty 100` / `10 × 100 + 35` / `order 1035`. `priceAtTier(quote, orderQty)` uses the order qty (not the raw tier) for break lookup.
+
+**Real price-break ladders for DigiKey + Mouser.** The adapters previously synthesized a single-entry `price_breaks` array with the headline unit_price, which meant every tier saw the same price. Now:
+- `lib/pricing/digikey.ts` — extracts `ProductVariations[0].StandardPricing[]` → `price_breaks: DigiKeyPriceBreak[]`.
+- `lib/pricing/mouser.ts` — extracts the full `PriceBreaks[]` array, not just `[0]`.
+- `lib/pricing/registry.ts` — new `toUnifiedBreaks()` converts `{quantity, unit_price}` lists into unified `{min_qty, max_qty, unit_price, currency}` shape with max_qty computed from the next tier.
+
+**Avnet per-tier calls.** Avnet returns a single price for a single qty. `SupplierSearchContext` gains a `quantity?: number` field. Registry routes Avnet calls through with the tier's order qty. Fetch route loops `body.tier_order_qtys[line.id]` unique values for `SINGLE_QTY_SUPPLIERS` (currently just Avnet) and `mergeSingleQtyResults()` collapses the per-qty single-entry ladders into one sorted `price_breaks` array per supplier-part-number.
+
+**Customer-supplied parts:** `quote_customer_supplied` table (migration 046) stores per-quote flags. `PricingReviewPanel` shows a checkbox on each row; toggling POSTs to `/api/quotes/[id]/customer-supplied`. Marking a line supplied also deletes any pinned `bom_line_pricing` for that line so the engine doesn't accidentally charge for it. Lines with zero fetched quotes get a yellow "Candidate for customer-supplied" badge.
+
+**Distributor preferences:** `pricing_preferences` table (migration 047) seeds five system presets (Cheapest / Cheapest in stock / Cheapest in stock (authorized) / Shortest lead time / DigiKey→Mouser→LCSC→others priority). `/api/pricing-preferences` GET/POST/DELETE (system presets are read-only). Panel adds a 4th card "Apply Distributor Preference" with a dropdown + Apply button — server-side `/api/quotes/[id]/auto-pick` loads cached quotes, normalizes prices to CAD, applies the rule per (line, tier), upserts winners into `bom_line_pricing`, and records `pinned_preference` on the quote.
+
+**Stock indicator.** `computeStockStatus(quotes, maxOrderQty)` returns `green` (someone stocks enough), `amber` (partial stock), `red` (nobody stocks it), or `none` (no quotes). Rendered as a `StockBadge` inline on each line.
+
+**Summary badges → filter pills.** The row of summary badges above the per-line list is now clickable — each badge filters the list to lines matching its bucket. Buckets: `quoted` / `unquoted` / `fullyPicked` / `partialPicks` / `noPicks` / `customerSuppliedCount`. The `classifyLine()` memo feeds both the counts and the filter.
+
+**"Stale" pick indicator.** When a line has `bom_line_pricing` selections but no current quotes visible (cache expired or was never reloaded), the N/M picked badge renders in amber with a `(stale)` suffix instead of green.
+
+**Cache lookups — multi-warehouse fix.** Arrow / Newark cache rows are written with keys like `MPN#VM5`, `MPN#V72` to avoid primary-key collisions. The server page's `.in("search_key", [MPN])` was only reading exact matches, so warehouse-keyed quotes vanished on reload (leaving pinned selections without visible quotes). Fix: query with an `or()` filter that accepts both `search_key.eq.X` and `search_key.like.X#*`. Panel hydration strips `#WAREHOUSE` to group all warehouse variants under the base MPN key.
+
+**Cache TTL reduced to 24h** for the pricing-review fetch (was 7 days). Legacy `/api/quotes/preview` still uses 7 days.
+
+**Warehouse column removed** from the per-line quotes sub-table (Piyush felt it was noise; Arrow's multi-warehouse rows still appear as distinct rows).
+
+### 4. BOM page polish (independent of the wizard)
+
+- **Resizable columns.** `bom-table.tsx` now uses `table-layout: fixed` with a `<colgroup>` of pixel-width `<col>`s. Initial widths seeded from container measurement in a `useLayoutEffect`. Each header has a 4px drag handle; dragging only grows/shrinks that column and lets the table overflow horizontally (container has `overflow-x-auto`).
+- **Sort added to Designator + Description.** `SortField` type extended; comparator maps `designator` → `reference_designator` field.
+- **Qty=0 filtering everywhere.**
+  - `/api/bom/[id]/classify` — skips qty=0 from both rule + AI mode; clears existing m_code on qty=0 lines to stay consistent.
+  - BOM detail tiles (Components / Classified / Need Review) exclude qty=0.
+  - M-Code chart + summary badges + M-Code filter pills exclude qty=0.
+  - AI Classify button unclassified count excludes qty=0.
+  - All 5 pricing flow routes filter with `.gt("quantity", 0)`.
+- **`router.refresh()` on line delete** so the 4 summary tiles update (they live on the parent server page).
+- **Per-line delete confirmation uses shadcn AlertDialog** instead of browser `confirm()` — single dialog at table level, target tracked in state.
+- **Tooltip alignment fix.** `CellWithTooltip` gets `align="start"` + `sideOffset={8}` + `alignOffset={8}` so the arrow points at the truncated text, not the cell's center.
+- **Customer typeahead on BOM upload form.** Replaced the `Select` dropdown with an `Input` + filtered dropdown matching the GMP typeahead pattern. Filters by code OR company name, case-insensitive. Shows a `/settings/customers` nudge when no match.
+- **Column mapper — blank Header Row handling.** Changed the mapper's visibility from `showMapper && previewHeaders.length > 0` to `showMapper && allFileRows.length > 0` so the entire section no longer vanishes when the user picks a blank row. Added an amber warning inside the mapper when the selected row has no headers.
+- **Header Row + Last Row inputs** in the column mapper (already existed in Entry 54; this session only fixed the vanishing-section bug).
+
+### 5. BOM detail page — single entry point
+
+Removed **Review Pricing** and **New Classic Quote** buttons from the BOM detail page. The only quoting entry now is the **Start Quote** button (which goes through the wizard). `/bom/[id]/pricing` and `/quotes/new` still exist as addressable routes for debugging, but no UI links to them.
+
+### 6. Schema — 3 new migrations applied
+
+- `046_quote_customer_supplied.sql` — per-(quote_id, bom_line_id) with notes, added_by, added_at. RLS for CEO + ops.
+- `047_pricing_preferences.sql` — preferences table + 5 seeded system presets. RLS: all authed read, CEO/ops write.
+- `048_quotes_wizard_fields.sql` — adds `wizard_status`, `procurement_mode`, `pinned_preference` to `quotes`. Backfills existing quotes as `complete`.
+
+All four post-Entry-57 RLS-bearing migrations (044, 045, 046, 047) were retrofitted with `DROP POLICY IF EXISTS` so they're safely re-runnable after a partial failure.
+
+### 7. Small bug fixes surfaced during the session
+
+- **`&amp;` rendering in buttons.** JSX decodes `&amp;` in text children but not inside JS string literals like `{saving ? "…" : "Save &amp; Continue"}`. Replaced both affected literals (`Save & Continue`, `Calculate & Save`) with plain ampersands.
+- **Tiers not syncing wizard → panel.** `PricingReviewPanel` was snapshotting `tiersFromQuote` into `useState` on first mount. After step 1 saved new tiers + `router.refresh()` fired, the panel state stayed stale. Fix: in wizard mode the panel derives `tiers` directly from the `tiersFromQuote` prop on every render; standalone mode keeps the editable local-state path.
+- **Selections not syncing after auto-pick / customer-supplied toggle.** Added `useEffect`s that watch `initialSelections` + `initialCustomerSupplied` prop references and re-hydrate local state after `router.refresh()`.
+- **Summary badges not updating after preference apply.** The summary `useMemo` dep chain (via `classifyLine` callback) already depended on the right state, but was coupled to a stale classifier before the dependency chain was normalised. Now recomputes cleanly after both fetchPrices and applyPreference.
+
+### Files added
+
+**Migrations:**
+- `supabase/migrations/046_quote_customer_supplied.sql`
+- `supabase/migrations/047_pricing_preferences.sql`
+- `supabase/migrations/048_quotes_wizard_fields.sql`
+
+**API routes:**
+- `app/api/quotes/wizard/start/route.ts` — quote-number generator + draft creation.
+- `app/api/quotes/[id]/wizard/route.ts` — generic step saver.
+- `app/api/quotes/[id]/customer-supplied/route.ts` — GET/POST/DELETE.
+- `app/api/quotes/[id]/auto-pick/route.ts` — apply preference rule.
+- `app/api/quotes/[id]/calculate/route.ts` — step-3 Calculate + persist.
+- `app/api/pricing-preferences/route.ts` — GET + POST.
+- `app/api/pricing-preferences/[id]/route.ts` — DELETE.
+
+**UI:**
+- `app/(dashboard)/quotes/wizard/[id]/page.tsx`
+- `components/quote-wizard/quote-wizard.tsx`
+- `components/quote-wizard/start-quote-button.tsx`
+
+### Files modified (the big ones)
+
+- `components/pricing-review/pricing-review-panel.tsx` — wizard-mode props, read-only tier display, preferences card, customer-supplied checkbox, stock badges, summary-filter pills, stale pick indicator, base-key cache hydration.
+- `components/bom/bom-table.tsx` — resizable columns, designator/description sort, AlertDialog delete, router.refresh() on delete, qty=0 filtering.
+- `components/bom/upload-form.tsx` — customer typeahead textbox (replaces Select dropdown).
+- `components/bom/column-mapper.tsx` — amber warning when header row is blank.
+- `app/api/bom/[id]/pricing-review/fetch/route.ts` — 24h cache TTL, `tier_order_qtys` body param, per-tier Avnet loop, qty=0 filter.
+- `app/(dashboard)/bom/[id]/pricing/page.tsx` + `app/(dashboard)/quotes/wizard/[id]/page.tsx` — `or()` cache query for MPN + MPN#* keys, qty=0 filter.
+- `app/(dashboard)/bom/[id]/page.tsx` — removed Review Pricing + Classic Quote buttons.
+- `app/api/bom/[id]/classify/route.ts` — qty=0 skip + existing-m_code clearing.
+- `app/api/quotes/[id]/calculate/route.ts` — procurement-mode-driven SKIP_COMPONENTS / SKIP_PCB sets, customer-supplied exclusion, pricing_overrides build-up.
+- `lib/pricing/digikey.ts` — `StandardPricing[]` → `price_breaks`.
+- `lib/pricing/mouser.ts` — full `PriceBreaks[]` → `price_breaks`.
+- `lib/pricing/avnet.ts` — `quantity` parameter.
+- `lib/pricing/registry.ts` — `quantity` in context, `toUnifiedBreaks()` helper, DigiKey/Mouser adapters use real ladders.
+
+### What's still pending after today
+
+- **Wizard PDF generation** — step 3 saves `quote.pricing` but the existing quote PDF generator doesn't yet render a "Customer to supply" section for the customer-supplied lines.
+- **Custom preference rule editor** — schema supports it (`rule = 'custom'`, `config` JSONB), API accepts it, but there's no UI to create / edit a custom rule yet. Users can only pick from the 5 system presets right now.
+- **LCSC vendor unblock** — key still returns 401 at times; waiting on Piyush's follow-up with LCSC support.
+- **Avnet multi-item batching** — we still fire one call per (MPN, tier) because the user was unsure whether their Postman collection batches. Future optimization.
+- **Classic `/quotes/new` form** — left in place as a shortcut for power users but no longer has a UI entry point. Candidate for deletion once the wizard is fully proven in prod.
+- **Step 3 NRE is flat-per-quote**, not per-tier like the classic form. Upgrade if Piyush finds the flat model too coarse.
+
+*Entry 58 written: April 20, 2026 — full day's worth of work shipped and applied to prod.*
 

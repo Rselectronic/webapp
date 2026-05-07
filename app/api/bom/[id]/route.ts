@@ -1,5 +1,89 @@
-import { NextResponse } from "next/server";
+﻿import { isAdminRole } from "@/lib/auth/roles";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
+
+/**
+ * PATCH /api/bom/[id] — update editable BOM-level fields.
+ *
+ * The set is intentionally narrow: bom_name, revision, gerber_name, and
+ * gerber_revision. These are the user-facing labels that operators forget
+ * to fill on upload and want to fix without re-parsing the whole file.
+ *
+ * Anything that affects parsing (column_mapping, header_row, file content
+ * itself) is NOT editable here — those require a re-upload so the parser
+ * regenerates bom_lines from a consistent input.
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as {
+    bom_name?: string | null;
+    revision?: string | null;
+    gerber_name?: string | null;
+    gerber_revision?: string | null;
+  };
+
+  // The boms table has no updated_at column (only created_at), so don't
+  // include it in the patch — Supabase rejects unknown columns.
+  const updates: Record<string, unknown> = {};
+
+  // Each field: trim whitespace; an explicitly empty trimmed value clears
+  // the column to NULL. `undefined` (key absent from the body) leaves the
+  // column untouched.
+  if (body.bom_name !== undefined) {
+    const v = typeof body.bom_name === "string" ? body.bom_name.trim() : "";
+    updates.bom_name = v.length > 0 ? v : null;
+  }
+  if (body.revision !== undefined) {
+    const v = typeof body.revision === "string" ? body.revision.trim() : "";
+    updates.revision = v.length > 0 ? v : null;
+  }
+  if (body.gerber_name !== undefined) {
+    const v = typeof body.gerber_name === "string" ? body.gerber_name.trim() : "";
+    updates.gerber_name = v.length > 0 ? v : null;
+  }
+  if (body.gerber_revision !== undefined) {
+    const v =
+      typeof body.gerber_revision === "string" ? body.gerber_revision.trim() : "";
+    updates.gerber_revision = v.length > 0 ? v : null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json(
+      { error: "No fields supplied to update" },
+      { status: 400 }
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("boms")
+    .update(updates)
+    .eq("id", id)
+    .select(
+      "id, bom_name, file_name, revision, gerber_name, gerber_revision"
+    )
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
+}
 
 export async function DELETE(
   _req: Request,
@@ -12,7 +96,7 @@ export async function DELETE(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: profile } = await supabase.from("users").select("role").eq("id", user.id).single();
-  if (profile?.role !== "ceo" && profile?.role !== "operations_manager") {
+  if (!isAdminRole(profile?.role)) {
     return NextResponse.json({ error: "Permission denied" }, { status: 403 });
   }
 
@@ -45,7 +129,7 @@ export async function DELETE(
     if (hasJobs) parts.push(`${blockingJobs!.length} job(s)`);
     return NextResponse.json(
       {
-        error: `Cannot delete — ${parts.join(" and ")} reference this BOM. Delete them first.`,
+        error: `Cannot delete â€” ${parts.join(" and ")} reference this BOM. Delete them first.`,
         blocking: {
           quotes: blockingQuotes ?? [],
           jobs: blockingJobs ?? [],

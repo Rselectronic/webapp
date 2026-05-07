@@ -130,7 +130,7 @@ export function ManualPriceEditor({
             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900">
               <tr className="border-b border-gray-200 dark:border-gray-800">
                 <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
-                  MPN / CPC
+                  CPC / MPN
                 </th>
                 <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
                   Description

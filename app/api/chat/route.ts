@@ -5,6 +5,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { classifyWithAI } from "@/lib/mcode/ai-classifier";
 import { detectPageContext, fetchPageContextSummary } from "@/lib/chat/page-context";
 import { recordAiCall } from "@/lib/ai/telemetry";
+import { todayMontreal, addDaysMontreal, montrealInvoiceNumber } from "@/lib/utils/format";
 
 const anthropic = createAnthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -84,10 +85,9 @@ Pricing: DigiKey + Mouser + LCSC APIs queried in parallel. If MPN search fails, 
 - Complete CAAF form (root cause, corrective action, preventive action)
 
 ### 7. INVENTORY
-- BG (Background) feeder stock at /inventory — common passives on SMT feeders
-- Track additions/subtractions with full log history
-- Low stock and out-of-stock alerts
-- BG parts are auto-deducted when procurement is created
+- BG / Safety stock parts tracked at /inventory under the new inventory_parts model
+- Stock is allocated to procurements automatically when a PROC is created
+- Movements are recorded in inventory_movements for full audit history
 
 ### 8. PRICING
 - Real-time pricing from DigiKey, Mouser, and LCSC (all 3 queried in parallel)
@@ -128,11 +128,12 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
   }
   const { data: profile } = await userSupabase.from("users").select("role").eq("id", user.id).single();
-  const userRole = profile?.role ?? "shop_floor";
+  // Default to the most restrictive role if no profile row is found.
+  const userRole = profile?.role ?? "production";
 
-  // Shop floor gets read-only access (no write tools)
-  // Only CEO and operations_manager get full access
-  const isPrivileged = userRole === "ceo" || userRole === "operations_manager";
+  // Production users get read-only access (no write tools).
+  // Only admins get full access.
+  const isPrivileged = userRole === "admin";
 
   const body = await req.json();
   const supabase = createAdminClient();
@@ -365,23 +366,6 @@ export async function POST(req: Request) {
           return { ncr_reports: data ?? [] };
         },
       },
-      getBGStock: {
-        description: "Get BG (background) feeder stock levels. Shows low stock and out of stock alerts.",
-        inputSchema: z.object({
-          low_stock_only: z.boolean().optional().describe("Only show low/out of stock items"),
-        }),
-        execute: async ({ low_stock_only }: { low_stock_only?: boolean }) => {
-          const { data } = await supabase.from("bg_stock").select("mpn, description, m_code, current_qty, min_qty, feeder_slot").order("mpn");
-          const items = data ?? [];
-          const filtered = low_stock_only ? items.filter((i: { current_qty: number; min_qty: number }) => i.current_qty <= i.min_qty) : items;
-          const summary = {
-            total: items.length,
-            low_stock: items.filter((i: { current_qty: number; min_qty: number }) => i.current_qty > 0 && i.current_qty <= i.min_qty).length,
-            out_of_stock: items.filter((i: { current_qty: number }) => i.current_qty <= 0).length,
-          };
-          return { summary, items: filtered };
-        },
-      },
       getJobSerials: {
         description: "Get serial numbers for a specific job",
         inputSchema: z.object({ job_number: z.string().describe("Job number like JB-2604-TLAN-001") }),
@@ -508,14 +492,13 @@ export async function POST(req: Request) {
               page: "/quality",
             },
             inventory: {
-              title: "How to Manage BG Feeder Stock",
+              title: "How to Manage BG / Safety Stock",
               steps: [
-                "1. Go to /inventory to see all BG (background) feeder parts",
-                "2. Dashboard shows: total items, healthy, low stock, out of stock",
-                "3. Color-coded rows: green=OK, yellow=low, red=out of stock",
-                "4. Stock is auto-subtracted when PROC files are generated",
-                "5. Stock is auto-added when 'Add Stock to BG' is done in procurement",
-                "6. Periodically do physical inventory count to reconcile",
+                "1. Go to /inventory to see all BG (Background feeder) and Safety stock parts",
+                "2. Dashboard shows on-hand quantities and min-stock thresholds per part",
+                "3. Stock is automatically allocated to procurements when a PROC is created",
+                "4. All movements (receipts, adjustments, allocations) are logged in inventory_movements",
+                "5. Periodically do a physical count and post adjustments to reconcile",
               ],
               page: "/inventory",
             },
@@ -534,7 +517,7 @@ export async function POST(req: Request) {
         execute: async ({ job_number }: { job_number: string }) => {
           const { data: job } = await supabase
             .from("jobs")
-            .select("*, customers(code, company_name), gmps(gmp_number, board_name), quotes(quote_number, pricing), boms(id, file_name, component_count)")
+            .select("*, customers(code, company_name), gmps(gmp_number, board_name), quotes!jobs_quote_id_fkey(quote_number, pricing), boms(id, file_name, component_count)")
             .eq("job_number", job_number)
             .single();
           if (!job) return { error: "Job not found" };
@@ -574,7 +557,7 @@ export async function POST(req: Request) {
           const unclassified = bomLines.filter((l: any) => !l.m_code && !l.is_pcb && !l.is_dni);
 
           return {
-            job: { id: job.id, job_number: job.job_number, status: job.status, quantity: job.quantity, assembly_type: job.assembly_type, po_number: job.po_number },
+            job: { id: job.id, job_number: job.job_number, status: job.status, quantity: job.quantity, po_number: job.po_number },
             customer: job.customers,
             gmp: job.gmps,
             quote: job.quotes,
@@ -709,7 +692,7 @@ export async function POST(req: Request) {
         inputSchema: z.object({ job_number: z.string().describe("Job number to create procurement for") }),
         execute: async ({ job_number }: { job_number: string }) => {
           if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can create procurement." };
-          const { data: job } = await supabase.from("jobs").select("id, customer_id, bom_id, quantity, assembly_type, customers(code)").eq("job_number", job_number).single();
+          const { data: job } = await supabase.from("jobs").select("id, customer_id, bom_id, quantity, customers(code)").eq("job_number", job_number).single();
           if (!job) return { error: "Job not found" };
 
           // Call the procurements API internally
@@ -809,13 +792,42 @@ export async function POST(req: Request) {
         description: "Correct an M-Code classification based on user feedback. Updates both the BOM line AND the master components table so the system learns. Use when the user says something like 'C1 should be CP not IP' or 'that MPN is actually TH'.",
         inputSchema: z.object({
           mpn: z.string().describe("Manufacturer Part Number"),
+          cpc: z
+            .string()
+            .optional()
+            .describe(
+              "Customer Part Code (preferred match key — bom_lines and components are CPC-keyed). If omitted, the tool will look up the CPC from bom_lines via the MPN."
+            ),
           correct_m_code: z.string().describe("The correct M-Code: CP, IP, TH, CPEXP, 0402, 0201, MANSMT, MEC, Accs, CABLE, DEV"),
           reason: z.string().optional().describe("Why this correction is being made"),
         }),
-        execute: async ({ mpn, correct_m_code, reason }: { mpn: string; correct_m_code: string; reason?: string }) => {
+        execute: async ({ mpn, cpc, correct_m_code, reason }: { mpn: string; cpc?: string; correct_m_code: string; reason?: string }) => {
           if (!isPrivileged) return { error: "Permission denied. Only CEO or Operations Manager can correct M-Codes." };
 
-          // 1. Update all BOM lines with this MPN
+          // Resolve the CPC. Components is CPC-keyed (UNIQUE on cpc, manufacturer);
+          // bom_lines and components both prefer cpc as the stable identity key.
+          // If the caller didn't pass one, look it up from bom_lines via mpn.
+          let resolvedCpc = cpc?.trim() || null;
+          let resolvedManufacturer: string | null = null;
+          if (!resolvedCpc) {
+            const { data: bomMatch } = await supabase
+              .from("bom_lines")
+              .select("cpc, manufacturer")
+              .eq("mpn", mpn)
+              .not("cpc", "is", null)
+              .limit(1)
+              .maybeSingle();
+            resolvedCpc = bomMatch?.cpc ?? null;
+            resolvedManufacturer = bomMatch?.manufacturer ?? null;
+          }
+
+          if (!resolvedCpc) {
+            return {
+              error: `Could not resolve a CPC for MPN ${mpn}. Pass cpc explicitly or ensure a bom_line exists with both mpn and cpc populated.`,
+            };
+          }
+
+          // 1. Update all BOM lines with this CPC
           const { data: updatedLines, error: lineErr } = await supabase
             .from("bom_lines")
             .update({
@@ -823,25 +835,30 @@ export async function POST(req: Request) {
               m_code_source: "manual",
               m_code_confidence: 1.0,
             })
-            .eq("mpn", mpn)
+            .eq("cpc", resolvedCpc)
             .select("id, bom_id");
 
           if (lineErr) return { error: lineErr.message };
 
-          // 2. Upsert into components table (learning loop)
+          // 2. Upsert into components table (learning loop).
+          // The real unique constraint is (cpc, manufacturer) — keying on mpn
+          // here would have always failed silently.
           const { error: compErr } = await supabase
             .from("components")
             .upsert(
               {
+                cpc: resolvedCpc,
                 mpn,
+                manufacturer: resolvedManufacturer ?? undefined,
                 m_code: correct_m_code,
                 m_code_source: "manual",
                 updated_at: new Date().toISOString(),
               },
-              { onConflict: "mpn,manufacturer", ignoreDuplicates: false }
+              { onConflict: "cpc,manufacturer", ignoreDuplicates: false }
             );
 
-          // Also try without manufacturer constraint (update any matching MPN)
+          // Also update any other components rows sharing this CPC (different manufacturer),
+          // so a single correction propagates across manufacturer variants.
           await supabase
             .from("components")
             .update({
@@ -849,16 +866,17 @@ export async function POST(req: Request) {
               m_code_source: "manual",
               updated_at: new Date().toISOString(),
             })
-            .eq("mpn", mpn);
+            .eq("cpc", resolvedCpc);
 
           return {
             success: true,
             mpn,
+            cpc: resolvedCpc,
             new_m_code: correct_m_code,
             bom_lines_updated: updatedLines?.length ?? 0,
             components_updated: !compErr,
             reason: reason ?? "User correction via chat",
-            note: "This correction will be used for future auto-classification of this MPN.",
+            note: "This correction will be used for future auto-classification of this CPC.",
           };
         },
       },
@@ -874,13 +892,23 @@ export async function POST(req: Request) {
           quantities: z.array(z.number()).describe("Quantity tiers, e.g. [50, 100, 250, 500]"),
           pcb_cost_per_unit: z.number().optional().describe("PCB cost per unit"),
           nre_charge: z.number().optional().describe("NRE charge (default $350)"),
-          component_markup: z.number().optional().describe("Component markup % (default 20)"),
+          component_markup: z.number().optional().describe("Component markup % (falls back to global Pricing Settings)"),
           notes: z.string().optional(),
         }),
         execute: async ({ bom_id, quantities, pcb_cost_per_unit, nre_charge, component_markup, notes }: { bom_id: string; quantities: number[]; pcb_cost_per_unit?: number; nre_charge?: number; component_markup?: number; notes?: string }) => {
           if (!isPrivileged) return { error: "Permission denied." };
           const { data: bom } = await supabase.from("boms").select("id, gmp_id, customer_id").eq("id", bom_id).single();
           if (!bom) return { error: "BOM not found" };
+          // Pull global default from Pricing Settings instead of hardcoding 20%.
+          const { data: pricingRow } = await supabase
+            .from("app_settings")
+            .select("value")
+            .eq("key", "pricing")
+            .maybeSingle();
+          const globalComponentMarkup = Number(
+            (pricingRow?.value as { component_markup_pct?: number } | null)
+              ?.component_markup_pct ?? 25
+          );
           const now = new Date();
           const prefix = `QT-${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, "0")}`;
           const { count } = await supabase.from("quotes").select("id", { count: "exact", head: true }).ilike("quote_number", `${prefix}%`);
@@ -890,7 +918,7 @@ export async function POST(req: Request) {
           const { data: quote, error } = await supabase.from("quotes").insert({
             quote_number: quoteNumber, customer_id: bom.customer_id, gmp_id: bom.gmp_id, bom_id: bom.id,
             status: "draft", quantities: quantitiesObj, pricing: {},
-            component_markup: component_markup ?? 20, pcb_cost_per_unit: pcb_cost_per_unit ?? 0,
+            component_markup: component_markup ?? globalComponentMarkup, pcb_cost_per_unit: pcb_cost_per_unit ?? 0,
             nre_charge: nre_charge ?? 350, notes, created_by: user.id,
           }).select("id, quote_number").single();
           if (error) return { error: error.message };
@@ -918,14 +946,13 @@ export async function POST(req: Request) {
       },
 
       createJobFromQuote: {
-        description: isPrivileged ? "Create a job from a quote. Auto-generates job number." : "DISABLED",
+        description: isPrivileged ? "Create a job from a quote. Auto-generates job number. Physical layout (single-/double-sided) lives on the GMP — set it via /gmp/[id] before creating the job." : "DISABLED",
         inputSchema: z.object({
           quote_number: z.string().describe("Quote number"),
           quantity: z.number().describe("Quantity tier to use"),
           po_number: z.string().optional().describe("Customer PO number"),
-          assembly_type: z.enum(["TB", "TS", "CS", "CB", "AS"]).optional().describe("Assembly type (default TB)"),
         }),
-        execute: async ({ quote_number, quantity, po_number, assembly_type }: { quote_number: string; quantity: number; po_number?: string; assembly_type?: string }) => {
+        execute: async ({ quote_number, quantity, po_number }: { quote_number: string; quantity: number; po_number?: string }) => {
           if (!isPrivileged) return { error: "Permission denied." };
           const { data: quote } = await supabase.from("quotes").select("id, customer_id, gmp_id, bom_id, customers(code)").eq("quote_number", quote_number).single();
           if (!quote) return { error: "Quote not found" };
@@ -937,7 +964,7 @@ export async function POST(req: Request) {
           const { data: job, error } = await supabase.from("jobs").insert({
             job_number: jobNumber, quote_id: quote.id, customer_id: quote.customer_id,
             gmp_id: quote.gmp_id, bom_id: quote.bom_id, po_number, quantity,
-            assembly_type: assembly_type ?? "TB", status: "created", created_by: user.id,
+            status: "created", created_by: user.id,
           }).select("id, job_number").single();
           if (error) return { error: error.message };
           await supabase.from("job_status_log").insert({ job_id: job!.id, old_status: null, new_status: "created", notes: `Created from quote ${quote_number} via AI` });
@@ -972,7 +999,7 @@ export async function POST(req: Request) {
         }),
         execute: async ({ job_numbers, discount, freight, notes }: { job_numbers: string[]; discount?: number; freight?: number; notes?: string }) => {
           if (!isPrivileged) return { error: "Permission denied." };
-          const { data: jobs } = await supabase.from("jobs").select("id, job_number, customer_id, quantity, quotes(pricing)").in("job_number", job_numbers);
+          const { data: jobs } = await supabase.from("jobs").select("id, job_number, customer_id, quantity, quotes!jobs_quote_id_fkey(pricing)").in("job_number", job_numbers);
           if (!jobs || jobs.length === 0) return { error: "No jobs found" };
           const customerIds = [...new Set(jobs.map((j: any) => j.customer_id))];
           if (customerIds.length > 1) return { error: "All jobs must be from the same customer" };
@@ -990,15 +1017,24 @@ export async function POST(req: Request) {
           const gst = subtotal * 0.05;
           const qst = subtotal * 0.09975;
           const total = subtotal - (discount ?? 0) + gst + qst + (freight ?? 0);
-          const now = new Date();
-          const prefix = `INV-${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, "0")}`;
-          const { count } = await supabase.from("invoices").select("id", { count: "exact", head: true }).ilike("invoice_number", `${prefix}%`);
-          const invoiceNumber = `${prefix}-${String((count ?? 0) + 1).padStart(3, "0")}`;
+          // 14-digit YYYYMMDDHHMMSS Montreal time; -1, -2 on the rare
+          // collision. Same scheme as /api/invoices POST — see
+          // montrealInvoiceNumber for rationale.
+          const baseInvoiceNumber = montrealInvoiceNumber();
+          let invoiceNumber = baseInvoiceNumber;
+          for (let collisionSuffix = 1; collisionSuffix < 100; collisionSuffix++) {
+            const { count: dupCount } = await supabase
+              .from("invoices")
+              .select("id", { count: "exact", head: true })
+              .eq("invoice_number", invoiceNumber);
+            if (!dupCount) break;
+            invoiceNumber = `${baseInvoiceNumber}-${collisionSuffix}`;
+          }
           const { data: inv, error } = await supabase.from("invoices").insert({
             invoice_number: invoiceNumber, job_id: jobs[0].id, customer_id: customerIds[0],
             subtotal, discount: discount ?? 0, tps_gst: gst, tvq_qst: qst, freight: freight ?? 0,
-            total, status: "draft", issued_date: now.toISOString().split("T")[0],
-            due_date: new Date(now.getTime() + netDays * 86400000).toISOString().split("T")[0], notes,
+            total, status: "draft", issued_date: todayMontreal(),
+            due_date: addDaysMontreal(netDays), notes,
           }).select("id, invoice_number").single();
           if (error) return { error: error.message };
           return { success: true, invoice_number: inv!.invoice_number, total: `$${total.toFixed(2)}`, link: `/invoices/${inv!.id}` };
@@ -1008,7 +1044,7 @@ export async function POST(req: Request) {
       markInvoicePaid: {
         description: isPrivileged ? "Mark an invoice as paid and record payment details" : "DISABLED",
         inputSchema: z.object({
-          invoice_number: z.string().describe("Invoice number like INV-2604-001"),
+          invoice_number: z.string().describe("Invoice number — new invoices use RSINV_YYYYMMDDhhmmss (e.g. RSINV_20260430210347); legacy invoices use INV-YYMM-NNN (e.g. INV-2604-001)"),
           payment_method: z.string().optional().describe("cheque, wire, credit card"),
           paid_date: z.string().optional().describe("YYYY-MM-DD (defaults to today)"),
         }),
@@ -1017,7 +1053,7 @@ export async function POST(req: Request) {
           const { data: inv } = await supabase.from("invoices").select("id, status, total").eq("invoice_number", invoice_number).single();
           if (!inv) return { error: "Invoice not found" };
           const { error } = await supabase.from("invoices").update({
-            status: "paid", paid_date: paid_date ?? new Date().toISOString().split("T")[0],
+            status: "paid", paid_date: paid_date ?? todayMontreal(),
             payment_method: payment_method ?? "unspecified", updated_at: new Date().toISOString(),
           }).eq("id", inv.id);
           if (error) return { error: error.message };
@@ -1140,14 +1176,14 @@ export async function POST(req: Request) {
         }),
         execute: async ({ view }: { view?: string }) => {
           const { data: jobs } = await supabase.from("jobs")
-            .select("job_number, status, quantity, assembly_type, scheduled_start, scheduled_completion, customers(code, company_name), gmps(gmp_number, board_name)")
+            .select("job_number, status, quantity, scheduled_start, scheduled_completion, customers(code, company_name), gmps(gmp_number, board_name, board_side)")
             .not("status", "in", '("delivered","invoiced","archived","created")')
             .order("scheduled_completion", { ascending: true, nullsFirst: false });
           const allJobs = jobs ?? [];
-          const now = new Date().toISOString().split("T")[0];
+          const now = todayMontreal();
           if (view === "overdue") return { jobs: allJobs.filter((j: any) => j.scheduled_completion && j.scheduled_completion < now) };
           if (view === "upcoming") {
-            const week = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+            const week = addDaysMontreal(7);
             return { jobs: allJobs.filter((j: any) => j.scheduled_start && j.scheduled_start <= week && j.scheduled_start >= now) };
           }
           if (view === "kanban") {

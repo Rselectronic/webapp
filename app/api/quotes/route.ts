@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth/api-auth";
 import { recomputeQuotePricing } from "@/lib/pricing/recompute";
 import type { TierInput } from "@/lib/pricing/types";
+import type { TaxRegion } from "@/lib/tax/regions";
+import { resolveFxRate } from "@/lib/fx/boc";
+import {
+  taxRegionForAddress,
+  currencyForAddress,
+  normalizeCountry,
+} from "@/lib/address/regions";
 
 // ---------------------------------------------------------------------------
 // GET /api/quotes — List quotes with optional filters
@@ -64,8 +71,6 @@ interface CreateQuoteBody {
   nre_charge?: number;
   shipping_flat: number;
   notes?: string;
-  /** Assembly type (TB, TS, etc.) for programming fee lookup */
-  assembly_type?: string;
   /** Per-tier lead times, e.g. {"tier_1": "4-6 weeks", "tier_2": "3-4 weeks"} */
   lead_times?: Record<string, string>;
   /** Per-quote markup overrides (optional — fall back to global settings) */
@@ -127,6 +132,19 @@ export async function POST(req: NextRequest) {
 
   const quantities = resolvedTiers.map((t) => t.qty);
 
+  // Pull physical board layout off the GMP — drives the single- vs
+  // double-sided programming fee lookup. Falls back to NULL (engine treats
+  // unknown as double-sided, which is the most common board style at RS).
+  const { data: gmpRow } = await supabase
+    .from("gmps")
+    .select("board_side")
+    .eq("id", gmp_id)
+    .maybeSingle();
+  const boardSide =
+    gmpRow?.board_side === "single" || gmpRow?.board_side === "double"
+      ? gmpRow.board_side
+      : null;
+
   // --- Run pricing engine via shared helper ---
   let pricing;
   let settings;
@@ -136,7 +154,7 @@ export async function POST(req: NextRequest) {
       bom_id,
       resolvedTiers,
       shipping_flat,
-      body.assembly_type,
+      boardSide,
       {
         component_markup_pct: body.component_markup_pct,
         pcb_markup_pct: body.pcb_markup_pct,
@@ -164,6 +182,75 @@ export async function POST(req: NextRequest) {
 
   const seq = String((count ?? 0) + 1).padStart(3, "0");
   const quoteNumber = `${prefix}-${seq}`;
+
+  // --- Snapshot the billing address used for this quote. tax_region +
+  // currency derive from the address; customer-level fields are LEGACY
+  // fallbacks for customers with no billing addresses yet.
+  const { data: customerForSnap } = await supabase
+    .from("customers")
+    .select("default_currency, tax_region, billing_addresses")
+    .eq("id", customer_id)
+    .maybeSingle();
+
+  type BillingAddr = {
+    label?: string;
+    street?: string;
+    city?: string;
+    province?: string;
+    postal_code?: string;
+    country?: string;
+    country_code?: "CA" | "US" | "OTHER";
+    is_default?: boolean;
+  };
+  const billingAddresses =
+    (customerForSnap?.billing_addresses as BillingAddr[] | null) ?? [];
+  const requestedLabel = (body as { billing_address_label?: string })
+    .billing_address_label;
+  const requestedAddr = (body as { billing_address?: BillingAddr })
+    .billing_address;
+
+  let resolvedAddr: BillingAddr | null = null;
+  if (requestedAddr && typeof requestedAddr === "object") {
+    resolvedAddr = requestedAddr;
+  } else if (requestedLabel) {
+    resolvedAddr =
+      billingAddresses.find((a) => a.label === requestedLabel) ?? null;
+  }
+  if (!resolvedAddr) {
+    resolvedAddr =
+      billingAddresses.find((a) => a.is_default) ??
+      billingAddresses[0] ??
+      null;
+  }
+
+  let quoteTaxRegion: TaxRegion;
+  let quoteCurrency: "CAD" | "USD";
+  if (resolvedAddr) {
+    quoteTaxRegion = taxRegionForAddress({
+      country_code: resolvedAddr.country_code,
+      country: resolvedAddr.country,
+      province: resolvedAddr.province,
+    });
+    quoteCurrency = currencyForAddress({
+      country_code: resolvedAddr.country_code,
+      country: resolvedAddr.country,
+    });
+  } else {
+    quoteTaxRegion = (customerForSnap?.tax_region as TaxRegion) ?? "QC";
+    quoteCurrency =
+      (customerForSnap?.default_currency as "CAD" | "USD" | undefined) === "USD"
+        ? "USD"
+        : "CAD";
+  }
+  const billingSnapshot: BillingAddr | null = resolvedAddr
+    ? {
+        ...resolvedAddr,
+        country_code:
+          resolvedAddr.country_code ??
+          normalizeCountry(resolvedAddr.country ?? ""),
+      }
+    : null;
+  const quoteFx = await resolveFxRate(quoteCurrency, null);
 
   // --- Insert quote ---
   const { data: quote, error: insertError } = await supabase
@@ -194,10 +281,13 @@ export async function POST(req: NextRequest) {
       validity_days: settings.quote_validity_days ?? 30,
       notes: notes ?? null,
       lead_times: body.lead_times ?? {},
-      assembly_type: body.assembly_type ?? "TB",
       boards_per_panel: body.boards_per_panel ?? 1,
       ipc_class: body.ipc_class ?? "2",
       solder_type: body.solder_type ?? "lead-free",
+      currency: quoteCurrency,
+      fx_rate_to_cad: quoteFx.rate,
+      tax_region: quoteTaxRegion,
+      billing_address: billingSnapshot,
       created_by: user.id,
     })
     .select("id, quote_number")

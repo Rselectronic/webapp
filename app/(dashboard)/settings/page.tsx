@@ -1,7 +1,8 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import Link from "next/link";
-import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database, CreditCard, Key, Plug } from "lucide-react";
+import { DollarSign, FileSpreadsheet, Cpu, ScrollText, Mail, Database, CreditCard, Key, Plug, Clock, Building2, Package, Users, History } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
+import { createClient } from "@/lib/supabase/server";
 const settingsLinks = [
   {
     title: "Pricing Settings",
@@ -9,6 +10,13 @@ const settingsLinks = [
       "Adjust markup rates, assembly costs, labour rates, and NRE defaults.",
     href: "/settings/pricing",
     icon: DollarSign,
+  },
+  {
+    title: "Labour Settings",
+    description:
+      "Monthly overhead + cycle times â†’ burdened shop rate used by the assembly pricing engine.",
+    href: "/settings/labour",
+    icon: Clock,
   },
   {
     title: "Payment Terms",
@@ -23,6 +31,20 @@ const settingsLinks = [
       "View and edit per-customer BOM parsing configurations (column mappings, encoding, header rows).",
     href: "/settings/customers",
     icon: FileSpreadsheet,
+  },
+  {
+    title: "Suppliers",
+    description:
+      "Approved supplier list, contacts, and default currencies. Suppliers must be approved by the CEO before they can be selected on a PO.",
+    href: "/settings/suppliers",
+    icon: Building2,
+  },
+  {
+    title: "Inventory",
+    description:
+      "Manage BG (background feeder) and Safety stock parts. Set min-stock thresholds, import lists, retire inactive parts.",
+    href: "/settings/inventory",
+    icon: Package,
   },
   {
     title: "M-Code Rules",
@@ -66,9 +88,46 @@ const settingsLinks = [
     href: "/settings/api-config",
     icon: Plug,
   },
+  {
+    title: "Historic Invoice Import",
+    description:
+      "Bulk-load pre-web-app invoices (CAD only) so the Revenue Report spans the full RS history. Operational queries hide these rows automatically.",
+    href: "/settings/historic-import",
+    icon: History,
+  },
 ];
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  let isAdmin = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("users")
+      .select("role, is_active")
+      .eq("id", user.id)
+      .maybeSingle();
+    isAdmin = !!profile?.is_active && isAdminRole(profile?.role);
+  }
+
+  // The "Users" tile is admin-only â€” the page itself also redirects
+  // non-admins, but hiding the tile keeps the index clean for ops users
+  // who can land here via other tiles.
+  const visibleLinks = isAdmin
+    ? [
+        {
+          title: "Users",
+          description:
+            "Add team members, change roles, deactivate accounts, and trigger password resets. Admin only.",
+          href: "/settings/users",
+          icon: Users,
+        },
+        ...settingsLinks,
+      ]
+    : settingsLinks;
+
   return (
     <div className="space-y-6">
       <div>
@@ -79,7 +138,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {settingsLinks.map((item) => (
+        {visibleLinks.map((item) => (
           <Link key={item.href} href={item.href}>
             <Card className="h-full transition-colors hover:border-gray-400">
               <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 
 export const API_KEY_PREFIX = "rs_live_";
 
-export type ApiKeyRole = "ceo" | "operations_manager" | "shop_floor";
+export type ApiKeyRole = "admin" | "production";
 
 export interface ValidatedApiKey {
   id: string;

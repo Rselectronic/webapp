@@ -1,6 +1,6 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -15,6 +15,7 @@ export async function GET(
     .order("board_number", { ascending: true });
 
   if (error) {
+    console.error("[/api/jobs/[id]/serials] GET error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -35,8 +36,25 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Fetch the job to get job_number and quantity
-  const { data: job, error: jobError } = await supabase
+  // Admin-only: serials are a commercial / shipping artefact (the SHIPDOC
+  // certificate of compliance shows them). Production users have only a
+  // SELECT policy on serial_numbers, so a user-scoped insert silently no-ops
+  // anyway â€” gate explicitly here for a clean 403 rather than a confusing
+  // partial success.
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+
+  // Fetch the job to get job_number and quantity (admin client so RLS doesn't
+  // interfere â€” we already authorized the caller above).
+  const { data: job, error: jobError } = await admin
     .from("jobs")
     .select("id, job_number, quantity")
     .eq("id", id)
@@ -47,7 +65,7 @@ export async function POST(
   }
 
   // Check if serials already exist for this job
-  const { count } = await supabase
+  const { count } = await admin
     .from("serial_numbers")
     .select("id", { count: "exact", head: true })
     .eq("job_id", id);
@@ -67,7 +85,7 @@ export async function POST(
       quantity = body.quantity;
     }
   } catch {
-    // No body or invalid JSON — use job quantity
+    // No body or invalid JSON â€” use job quantity
   }
 
   // Generate serial numbers: {job_number}-{board_number padded to 3 digits}
@@ -78,12 +96,13 @@ export async function POST(
     status: "produced" as const,
   }));
 
-  const { data: inserted, error: insertError } = await supabase
+  const { data: inserted, error: insertError } = await admin
     .from("serial_numbers")
     .insert(serials)
     .select("id, serial_number, board_number, status, created_at");
 
   if (insertError) {
+    console.error("[/api/jobs/[id]/serials] POST insert error:", insertError);
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 

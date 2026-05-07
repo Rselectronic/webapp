@@ -1,6 +1,12 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/auth/api-auth";
+import { deriveInitialProgrammingStatus } from "@/lib/jobs/programming-status";
+import {
+  computeDueDate,
+  findMatchingTierIndex,
+} from "@/lib/jobs/due-date";
 
 async function generateJobNumber(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -28,10 +34,14 @@ export async function GET(req: NextRequest) {
   // Special mode: return jobs eligible for invoicing (shipped/delivered, not yet invoiced)
   if (invoicable === "true" && customerId) {
     // Get jobs that are shipped or delivered for this customer
+    // jobs has TWO FKs to quotes (quote_id and source_quote_id), so the
+    // embed must be explicitly hinted with the constraint name â€”
+    // otherwise PostgREST returns a 300 ambiguity error and the
+    // dialog silently lands on an empty list.
     const { data: candidateJobs, error: jobsErr } = await supabase
       .from("jobs")
       .select(
-        "id, job_number, quantity, gmps(gmp_number, board_name), quotes(pricing)"
+        "id, job_number, quantity, gmps(gmp_number, board_name), quotes!jobs_quote_id_fkey(pricing)"
       )
       .eq("customer_id", customerId)
       .in("status", ["shipping", "delivered"])
@@ -90,7 +100,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("jobs")
     .select(
-      "id, job_number, status, quantity, assembly_type, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name)"
+      "id, job_number, status, quantity, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name, board_side)"
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -108,11 +118,17 @@ export async function POST(req: NextRequest) {
   const { user, supabase } = await getAuthUser(req);
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Job creation from a quote is admin-only â€” production users see jobs
+  // through the kanban but don't author new ones. Middleware now admits
+  // production to /api/jobs (so the shipment dialog can GET ?status=â€¦),
+  // so the role gate has to live here.
+  if (!isAdminRole(user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = (await req.json()) as {
     quote_id: string;
     quantity: number;
-    assembly_type?: string;
     scheduled_start?: string;
     scheduled_completion?: string;
     notes?: string;
@@ -127,24 +143,45 @@ export async function POST(req: NextRequest) {
 
   const { data: quote } = await supabase
     .from("quotes")
-    .select("id, customer_id, gmp_id, bom_id, status, customers(code)")
+    .select(
+      "id, customer_id, gmp_id, bom_id, status, lead_times, pricing, customers(code)"
+    )
     .eq("id", body.quote_id)
     .single();
 
   if (!quote)
     return NextResponse.json({ error: "Quote not found" }, { status: 404 });
-  if (quote.status !== "accepted") {
-    return NextResponse.json(
-      { error: "Quote must be accepted first" },
-      { status: 400 }
-    );
-  }
 
   const customer = quote.customers as unknown as { code: string } | null;
   const jobNumber = await generateJobNumber(
     supabase,
     customer?.code ?? "UNK"
   );
+
+  // Programming readiness: 'ready' if we've already built this exact BOM
+  // before (no revision change), otherwise 'not_ready'.
+  const programmingStatus = await deriveInitialProgrammingStatus(
+    supabase,
+    quote.bom_id
+  );
+
+  // Customer-promised due date: derived from the matching quote tier's
+  // lead time, anchored to today. Independent of scheduled_completion
+  // (which is a production-internal target). Admin can override later
+  // for rush orders via the job detail page.
+  const tiers =
+    (quote as { pricing?: { tiers?: { board_qty: number }[] } }).pricing
+      ?.tiers ?? null;
+  const tierIdx = findMatchingTierIndex(tiers, body.quantity);
+  const computedDueDate =
+    tierIdx !== null
+      ? computeDueDate({
+          leadTimes: (quote as { lead_times?: Record<string, string> | null })
+            .lead_times,
+          tierIndex: tierIdx,
+          baseDate: new Date(),
+        })
+      : null;
 
   const { data: job, error } = await supabase
     .from("jobs")
@@ -155,10 +192,11 @@ export async function POST(req: NextRequest) {
       gmp_id: quote.gmp_id,
       bom_id: quote.bom_id,
       quantity: body.quantity,
-      assembly_type: body.assembly_type ?? "TB",
       status: "created",
+      programming_status: programmingStatus,
       scheduled_start: body.scheduled_start ?? null,
       scheduled_completion: body.scheduled_completion ?? null,
+      due_date: computedDueDate,
       notes: body.notes ?? null,
       created_by: user.id,
     })

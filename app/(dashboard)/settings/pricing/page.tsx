@@ -1,12 +1,16 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PricingSettingsForm } from "@/components/settings/pricing-settings-form";
 import { PricingSourceReference } from "@/components/settings/pricing-source-reference";
 import type { PricingSettings } from "@/lib/pricing/types";
-
 const DEFAULTS: PricingSettings = {
   component_markup_pct: 20,
   pcb_markup_pct: 30,
+  assembly_markup_pct: 30,
   smt_cost_per_placement: 0.035,
   th_cost_per_placement: 0.75,
   mansmt_cost_per_placement: 1.25,
@@ -18,9 +22,7 @@ const DEFAULTS: PricingSettings = {
   currency: "CAD",
   nre_programming: 100,
   nre_stencil: 100,
-  nre_setup: 100,
   nre_pcb_fab: 0,
-  nre_misc: 50,
   setup_time_hours: 1,
   programming_time_hours: 1,
   // Time-based assembly model (CPH rates from DM/TIME V11)
@@ -48,7 +50,7 @@ export default async function PricingSettingsPage() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") redirect("/");
+  if (!isAdminRole(profile?.role)) redirect("/");
 
   const { data: settingsRow } = await supabase
     .from("app_settings")
@@ -62,6 +64,12 @@ export default async function PricingSettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <Link href="/settings">
+        <Button variant="ghost" size="sm">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Settings
+        </Button>
+      </Link>
       <div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
           Pricing &amp; Labour Settings

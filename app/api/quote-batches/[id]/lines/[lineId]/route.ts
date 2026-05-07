@@ -45,9 +45,9 @@ export async function PATCH(
 
   // Learning loop: save manual override to components table
   // so Layer 1 catches this MPN automatically next time
-  if (body.m_code_override && data?.mpn) {
+  if (body.m_code_override && (data?.cpc || data?.mpn)) {
     await saveManualOverride(
-      data.mpn,
+      data.cpc || data.mpn,
       body.m_code_override,
       data.description,
       data.manufacturer,

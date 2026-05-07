@@ -1,6 +1,6 @@
-import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent, LabourBreakdown, TierInput } from "./types";
+import type { QuoteInput, QuotePricing, PricingTier, MissingPriceComponent, LabourBreakdown, TierInput, LineCostBreakdown } from "./types";
 import { getOrderQty } from "./overage";
-import { calculateProgrammingCost, isDoubleSidedAssembly } from "./programming-cost";
+import { calculateProgrammingCost, isDoubleSidedBoard } from "./programming-cost";
 
 const SMT_MCODES = new Set(["CP", "CPEXP", "0402", "0201", "IP"]);
 const TH_MCODES = new Set(["TH"]);
@@ -28,8 +28,12 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     overages,
     settings,
     tier_inputs,
-    assembly_type,
+    board_side,
+    pricing_overrides,
+    boards_per_panel,
   } = input;
+
+  const boardsPerPanel = Math.max(1, Math.floor(Number(boards_per_panel ?? 1) || 1));
 
   // Resolve per-tier inputs: prefer new tier_inputs, fall back to legacy flat values
   const resolvedTiers: TierInput[] = tier_inputs && tier_inputs.length > 0
@@ -44,6 +48,10 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
 
   const markupMultiplier = 1 + settings.component_markup_pct / 100;
   const pcbMarkupMultiplier = 1 + settings.pcb_markup_pct / 100;
+  // Assembly margin — applied on labour + machine + setup + programming
+  // costs (i.e. everything in the "assembly" bucket). Default 30%.
+  const assemblyMarkupPct = settings.assembly_markup_pct ?? 30;
+  const assemblyMarkupMultiplier = 1 + assemblyMarkupPct / 100;
   const warnings: string[] = [];
   const tiers: PricingTier[] = [];
 
@@ -53,6 +61,7 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     .map((l) => ({
       bom_line_id: l.bom_line_id,
       mpn: l.mpn || l.bom_line_id,  // fallback so mpn is never empty
+      cpc: l.cpc ?? null,
       description: l.description,
       qty_per_board: l.qty_per_board,
     }));
@@ -70,6 +79,12 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
   let cpCpexpPlacementSum = 0;  // CP + CPEXP placements per board
   let smallPlacementSum = 0;     // 0402 placements per board
   let ultraSmallPlacementSum = 0; // 0201 placements per board
+
+  // TH pin aggregate — for exact per-pin time when labour_settings supplies
+  // th_base_seconds + th_per_pin_seconds. Parts contribute base × qty; pins
+  // contribute pin_count × qty × per_pin.
+  let thPartsPerBoard = 0;       // sum of qty_per_board across TH lines
+  let thPinsPerBoard = 0;        // sum of (pin_count × qty_per_board) across TH lines
 
   for (const line of lines) {
     if (line.qty_per_board > 0) {
@@ -90,6 +105,11 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       mansmtCountSum += line.qty_per_board;
     } else if (mc && TH_MCODES.has(mc)) {
       thPlacementSum += line.qty_per_board;
+      thPartsPerBoard += line.qty_per_board;
+      const pins = Number(line.pin_count ?? 0);
+      if (Number.isFinite(pins) && pins > 0) {
+        thPinsPerBoard += pins * line.qty_per_board;
+      }
     }
   }
 
@@ -100,11 +120,14 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
   const smtRate = settings.smt_rate_per_hour ?? 165;
   const setupTimeHours = settings.setup_time_hours ?? 0;
   const programmingTimeHours = settings.programming_time_hours ?? 0;
-  const setupCost = round2(setupTimeHours * labourRate);
+  // First-article inspection time (labour_settings) folds into setup hours.
+  const firstArticleHours = (settings.first_article_minutes ?? 0) / 60;
+  const setupCost = round2((setupTimeHours + firstArticleHours) * labourRate);
 
   // Programming cost: use the tiered DM V11 lookup table based on BOM line count
-  // and assembly type. Falls back to flat programmingTimeHours * labourRate if lookup returns 0.
-  const isDouble = assembly_type ? isDoubleSidedAssembly(assembly_type) : true;
+  // and physical board layout (gmps.board_side). Falls back to flat
+  // programmingTimeHours * labourRate if lookup returns 0.
+  const isDouble = isDoubleSidedBoard(board_side ?? undefined);
   const tieredProgrammingCost = totalUniqueLines > 0
     ? calculateProgrammingCost(totalUniqueLines, isDouble)
     : 0;
@@ -128,10 +151,6 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
   const ipLoadTimeMin = settings.ip_load_time_min ?? 3;
   const printerSetupMin = settings.printer_setup_min ?? 15;
 
-  // NRE settings-level defaults (setup + misc — not per-tier)
-  const nreSetup = settings.nre_setup ?? 0;
-  const nreMisc = settings.nre_misc ?? 0;
-
   // Pre-compute feeder setup time (independent of board qty — one-time per run)
   // 2 sides (top + bottom) for printer setup
   const feederSetupTimeHours = round6(
@@ -145,7 +164,7 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     const nreProgramming = tierInput.nre_programming ?? 0;
     const nreStencil = tierInput.nre_stencil ?? 0;
     const nrePcbFab = tierInput.nre_pcb_fab ?? 0;
-    const perTierNreTotal = nreProgramming + nreStencil + nrePcbFab + nreSetup + nreMisc;
+    const perTierNreTotal = nreProgramming + nreStencil + nrePcbFab;
 
     // If new per-tier NRE is all 0 AND we have a legacy nre_charge, use that
     const nreTotal = perTierNreTotal > 0
@@ -167,6 +186,7 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     let mansmtPlacements = 0;
     let componentsWithPrice = 0;
     let componentsMissingPrice = 0;
+    const lineBreakdowns: LineCostBreakdown[] = [];
 
     for (const line of lines) {
       const orderQty = getOrderQty(
@@ -178,20 +198,49 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       const baseQty = line.qty_per_board * boardQty;
       const extras = orderQty - baseQty;
 
-      const unitPrice = line.unit_price ?? 0;
+      // Prefer the user-pinned per-tier price from the Component Pricing Review
+      // page. Falls back to the cache-resolved line.unit_price when absent.
+      const overrideForLine = pricing_overrides?.get(line.bom_line_id);
+      const overridePrice = overrideForLine?.get(boardQty);
+      const effectiveUnitPrice = typeof overridePrice === "number" ? overridePrice : line.unit_price;
+      const unitPrice = effectiveUnitPrice ?? 0;
+      const priceSource: LineCostBreakdown["unit_price_source"] =
+        typeof overridePrice === "number"
+          ? "override"
+          : typeof line.unit_price === "number"
+            ? "cache"
+            : "missing";
 
-      if (line.unit_price === null) {
+      if (effectiveUnitPrice === null || effectiveUnitPrice === undefined) {
         componentsMissingPrice++;
       } else {
         componentsWithPrice++;
       }
 
-      componentCost += unitPrice * orderQty * markupMultiplier;
+      const lineExtendedBefore = unitPrice * orderQty;
+      const lineExtendedAfter = lineExtendedBefore * markupMultiplier;
+      componentCost += lineExtendedAfter;
 
       if (extras > 0) {
         overageCost += unitPrice * extras * markupMultiplier;
         overageQty += extras;
       }
+
+      lineBreakdowns.push({
+        bom_line_id: line.bom_line_id,
+        mpn: line.mpn || line.bom_line_id,
+        cpc: line.cpc ?? null,
+        m_code: line.m_code ?? null,
+        qty_per_board: line.qty_per_board,
+        board_qty: boardQty,
+        overage_extras: extras,
+        order_qty: orderQty,
+        unit_price: round2(unitPrice),
+        unit_price_source: priceSource,
+        markup_pct: settings.component_markup_pct,
+        extended_before_markup: round2(lineExtendedBefore),
+        extended_after_markup: round2(lineExtendedAfter),
+      });
 
       if (line.m_code && SMT_MCODES.has(line.m_code)) {
         smtPlacements += line.qty_per_board;
@@ -224,12 +273,61 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     const smallTimeHours = smallCph > 0 ? round6(totalSmallPlacements / smallCph) : 0;
     const ultraSmallTimeHours = ultraSmallCph > 0 ? round6(totalUltraSmallPlacements / ultraSmallCph) : 0;
     const ipTimeHours = ipCph > 0 ? round6(totalIpPlacements / ipCph) : 0;
-    const thTimeHours = thCph > 0 ? round6(totalThPlacements / thCph) : 0;
+    // TH: prefer exact base-seconds + per-pin-seconds from labour_settings
+    // when both are configured. Falls back to the th_cph estimate otherwise.
+    let thTimeHours: number;
+    if (
+      (settings.th_base_seconds ?? null) !== null ||
+      (settings.th_per_pin_seconds ?? null) !== null
+    ) {
+      const baseSec = Number(settings.th_base_seconds ?? 0);
+      const perPinSec = Number(settings.th_per_pin_seconds ?? 0);
+      const thSecPerBoard = thPartsPerBoard * baseSec + thPinsPerBoard * perPinSec;
+      thTimeHours = round6((thSecPerBoard * boardQty) / 3600);
+    } else {
+      thTimeHours = thCph > 0 ? round6(totalThPlacements / thCph) : 0;
+    }
     const mansmtTimeHours = mansmtCph > 0 ? round6(totalMansmtPlacements / mansmtCph) : 0;
 
-    // Aggregate time categories
-    const smtTimeHoursTotal = round6(cpCpexpTimeHours + smallTimeHours + ultraSmallTimeHours + ipTimeHours);
-    const assemblyPlacementTimeHours = round6(smtTimeHoursTotal + thTimeHours + mansmtTimeHours);
+    // Aggregate SMT placement time, then apply the oven-throughput bottleneck.
+    // If oven_length_mm + conveyor_mm_per_sec are configured, the line cannot
+    // run SMT faster than `oven_dwell_sec × reflow_passes × boardQty`. The
+    // effective SMT time is max(placement-time, oven-time) — this is the
+    // cycle-time correction the old TIME V11 flat model was missing.
+    const rawSmtTimeHours = round6(
+      cpCpexpTimeHours + smallTimeHours + ultraSmallTimeHours + ipTimeHours
+    );
+    const ovenLen = Number(settings.oven_length_mm ?? 0);
+    const conveyor = Number(settings.conveyor_mm_per_sec ?? 0);
+    const passes = Number(settings.reflow_passes ?? (isDouble ? 2 : 1));
+    // Panels-through-oven, not boards. With boardsPerPanel > 1 each oven pass
+    // carries multiple boards so the oven-bound hours drop proportionally.
+    const panelsNeeded = Math.ceil(boardQty / boardsPerPanel);
+    let ovenBoundHours = 0;
+    if (ovenLen > 0 && conveyor > 0 && passes > 0) {
+      const dwellSec = ovenLen / conveyor;
+      ovenBoundHours = round6((dwellSec * passes * panelsNeeded) / 3600);
+    }
+    const smtTimeHoursTotal = Math.max(rawSmtTimeHours, ovenBoundHours);
+
+    // Depanelisation — scales with individual boards, only when panelised.
+    const depanelSecPerBoard = Number(settings.depanel_seconds_per_board ?? 0);
+    const depanelHours =
+      boardsPerPanel > 1 && depanelSecPerBoard > 0
+        ? round6((depanelSecPerBoard * boardQty) / 3600)
+        : 0;
+
+    // Per-board manual operations (inspection, touch-up, packing) scale with
+    // boardQty. Added to overall assembly hours, distinct from SMT time.
+    const perBoardManualMin =
+      (settings.inspection_minutes_per_board ?? 0) +
+      (settings.touchup_minutes_per_board ?? 0) +
+      (settings.packing_minutes_per_board ?? 0);
+    const perBoardManualHours = round6((perBoardManualMin * boardQty) / 60);
+
+    const assemblyPlacementTimeHours = round6(
+      smtTimeHoursTotal + thTimeHours + mansmtTimeHours + perBoardManualHours + depanelHours
+    );
 
     // Total assembly hours = placement time + feeder setup (one-time per run, not per board)
     const totalAssemblyHours = round6(assemblyPlacementTimeHours + feederSetupTimeHours);
@@ -260,7 +358,14 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       assemblyCost = totalPlacementCost;
     }
 
-    // Total labour = assembly + setup + programming
+    // Apply the assembly margin AFTER the base cost is computed. We mirror
+    // component / PCB markup pattern: subtotal uses the post-markup figure;
+    // we expose the pre-markup amount + delta for cost transparency.
+    const assemblyCostBeforeMarkup = assemblyCost;
+    assemblyCost = round2(assemblyCost * assemblyMarkupMultiplier);
+    const assemblyMarkupAmount = round2(assemblyCost - assemblyCostBeforeMarkup);
+
+    // Total labour = assembly (post-markup) + setup + programming
     const totalLabourCost = round2(assemblyCost + setupCost + programmingCost);
 
     const labour: LabourBreakdown = {
@@ -273,9 +378,7 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       total_labour_cost: totalLabourCost,
       nre_programming: round2(nreProgramming),
       nre_stencil: round2(nreStencil),
-      nre_setup: round2(nreSetup),
       nre_pcb_fab: round2(nrePcbFab),
-      nre_misc: round2(nreMisc),
       nre_total: round2(nreTotal),
       total_unique_lines: totalUniqueLines,
       total_smt_placements: totalSmtPlacements,
@@ -322,8 +425,12 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       pcb_cost_before_markup: round2(pcbCost / pcbMarkupMultiplier),
       pcb_markup_amount: round2(pcbCost - pcbCost / pcbMarkupMultiplier),
       pcb_markup_pct: settings.pcb_markup_pct,
+      assembly_cost_before_markup: round2(assemblyCostBeforeMarkup),
+      assembly_markup_amount: assemblyMarkupAmount,
+      assembly_markup_pct: assemblyMarkupPct,
       overage_cost: round2(overageCost),
       overage_qty: overageQty,
+      line_breakdowns: lineBreakdowns,
       labour,
     });
   }

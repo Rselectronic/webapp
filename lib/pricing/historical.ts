@@ -148,19 +148,35 @@ export async function lookupHistoricalPricesBulk(
  * Look up supplier part numbers from the components table.
  * These can be used as better search keys for API calls
  * (e.g. DigiKey PN instead of generic MPN search).
+ *
+ * The components table is keyed on (cpc, manufacturer) — cpc is the canonical
+ * lookup column (see migrations 049, 051). Callers should pass the cpc when
+ * available. If only an mpn is available we log a warning and skip the
+ * components join, since `.eq("mpn", ...)` against this table would silently
+ * miss rows that were inserted under a cpc which differs from the BOM mpn.
  */
 export async function lookupComponentSupplierPNs(
   supabase: SupabaseClient,
-  mpn: string
+  mpn: string,
+  cpc?: string | null
 ): Promise<{
   digikey_pn: string | null;
   mouser_pn: string | null;
   lcsc_pn: string | null;
 }> {
+  const empty = { digikey_pn: null, mouser_pn: null, lcsc_pn: null };
+
+  if (!cpc) {
+    console.warn(
+      `[lookupComponentSupplierPNs] called without cpc for mpn="${mpn}"; skipping components join (cpc is the lookup key).`
+    );
+    return empty;
+  }
+
   const { data: component } = await supabase
     .from("components")
     .select("digikey_pn, mouser_pn, lcsc_pn")
-    .ilike("mpn", mpn)
+    .ilike("cpc", cpc)
     .limit(1)
     .maybeSingle();
 
@@ -174,10 +190,15 @@ export async function lookupComponentSupplierPNs(
 /**
  * Bulk lookup supplier part numbers from the components table.
  * Returns a Map keyed by uppercase MPN.
+ *
+ * Accepts either a list of MPN strings (legacy) or a list of `{ mpn, cpc }`
+ * pairs. The components table is keyed on cpc (see migrations 049 / 051),
+ * so we look up by cpc when supplied. MPNs without a cpc are logged once
+ * and skipped — querying components.mpn directly would silently miss rows.
  */
 export async function lookupComponentSupplierPNsBulk(
   supabase: SupabaseClient,
-  mpns: string[]
+  input: string[] | Array<{ mpn: string; cpc?: string | null }>
 ): Promise<
   Map<
     string,
@@ -188,23 +209,58 @@ export async function lookupComponentSupplierPNsBulk(
     string,
     { digikey_pn: string | null; mouser_pn: string | null; lcsc_pn: string | null }
   >();
-  if (mpns.length === 0) return results;
+  if (input.length === 0) return results;
 
-  const upperMpns = mpns.map((m) => m.toUpperCase());
-  const allVariants = [...new Set([...mpns, ...upperMpns])];
+  // Normalize input to { mpn, cpc } pairs.
+  const pairs: Array<{ mpn: string; cpc: string | null }> = input.map((item) =>
+    typeof item === "string"
+      ? { mpn: item, cpc: null }
+      : { mpn: item.mpn, cpc: item.cpc ?? null }
+  );
+
+  // Initialize all MPN keys with empty results so callers always get a hit.
+  for (const { mpn } of pairs) {
+    if (mpn) results.set(mpn.toUpperCase(), { digikey_pn: null, mouser_pn: null, lcsc_pn: null });
+  }
+
+  const cpcs = [...new Set(pairs.map((p) => p.cpc).filter((c): c is string => Boolean(c)))];
+  const missingCpcCount = pairs.filter((p) => !p.cpc).length;
+  if (missingCpcCount > 0) {
+    console.warn(
+      `[lookupComponentSupplierPNsBulk] ${missingCpcCount} of ${pairs.length} entries have no cpc; their components join will be skipped (cpc is the lookup key).`
+    );
+  }
+  if (cpcs.length === 0) return results;
+
+  const upperCpcs = cpcs.map((c) => c.toUpperCase());
+  const allVariants = [...new Set([...cpcs, ...upperCpcs])];
   const { data: rows } = await supabase
     .from("components")
-    .select("mpn, digikey_pn, mouser_pn, lcsc_pn")
-    .in("mpn", allVariants);
+    .select("cpc, digikey_pn, mouser_pn, lcsc_pn")
+    .in("cpc", allVariants);
 
   if (!rows) return results;
 
+  // Build cpc → supplier-pn map (case-insensitive on cpc).
+  const byCpc = new Map<string, { digikey_pn: string | null; mouser_pn: string | null; lcsc_pn: string | null }>();
   for (const row of rows) {
-    results.set((row.mpn as string).toUpperCase(), {
-      digikey_pn: row.digikey_pn ?? null,
-      mouser_pn: row.mouser_pn ?? null,
-      lcsc_pn: row.lcsc_pn ?? null,
-    });
+    const key = (row.cpc as string).toUpperCase();
+    if (!byCpc.has(key)) {
+      byCpc.set(key, {
+        digikey_pn: row.digikey_pn ?? null,
+        mouser_pn: row.mouser_pn ?? null,
+        lcsc_pn: row.lcsc_pn ?? null,
+      });
+    }
+  }
+
+  // Fan back out to MPN-keyed result map via the original pairs.
+  for (const { mpn, cpc } of pairs) {
+    if (!mpn || !cpc) continue;
+    const hit = byCpc.get(cpc.toUpperCase());
+    if (hit) {
+      results.set(mpn.toUpperCase(), hit);
+    }
   }
 
   return results;
@@ -242,6 +298,6 @@ export async function cacheHistoricalPrice(
       currency: "CAD",
       expires_at: expiresAt,
     },
-    { onConflict: "source,search_key" }
+    { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
   );
 }

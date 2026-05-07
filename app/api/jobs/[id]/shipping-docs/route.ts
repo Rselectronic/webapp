@@ -19,6 +19,7 @@ import {
   COLOR_BORDER,
   type PdfFonts,
 } from "@/lib/pdf/helpers";
+import { todayMontreal } from "@/lib/utils/format";
 
 // Brand accent matching the SHIPDOC template Lead-Free title (#1F487C)
 const COLOR_ACCENT = rgb(31 / 255, 72 / 255, 124 / 255);
@@ -38,6 +39,10 @@ export async function GET(
   }
 
   const docType = req.nextUrl.searchParams.get("type") ?? "packing_slip";
+  // Optional: a specific shipment to slip-print. With partial shipments
+  // a single job has multiple shipment rows, each with its own quantity.
+  // Legacy callers omit this and we default to the most-recent shipment.
+  const shipmentIdParam = req.nextUrl.searchParams.get("shipment_id");
 
   const { data: job, error } = await supabase
     .from("jobs")
@@ -65,13 +70,135 @@ export async function GET(
   } | null;
 
   const metadata = (job.metadata ?? {}) as Record<string, unknown>;
-  const shipDate =
-    (metadata.ship_date as string) ?? new Date().toISOString().split("T")[0];
-  const courierName = (metadata.courier_name as string) ?? null;
-  const trackingId = (metadata.tracking_id as string) ?? null;
   const fob = (metadata.fob as string) ?? "Saint-Laurent, QC";
   const deliveryTerms = (metadata.delivery_terms as string) ?? "Ground";
   const serialNumbers = (metadata.serial_numbers as string) ?? null;
+
+  // Find the target shipment_line for this packing slip. Per migration
+  // 099 the data is now: shipment_lines (job_id, quantity, shipment_id)
+  // joined with shipments (carrier, tracking, ship_date, picked_up_by).
+  // Caller can pin a specific line via `?shipment_line_id`, or pin a
+  // whole shipment via `?shipment_id` (we'll find the line for THIS job
+  // within it). Without either we default to the most-recent line for
+  // this job — keeps the legacy "print latest packing slip" affordance
+  // working.
+  const shipmentLineIdParam = req.nextUrl.searchParams.get("shipment_line_id");
+  const lineSelect =
+    "id, shipment_id, quantity, created_at, shipments!inner(id, carrier, tracking_number, ship_date, picked_up_by, created_at)";
+
+  type LineRow = {
+    id: string;
+    shipment_id: string;
+    quantity: number;
+    created_at: string;
+    shipments:
+      | {
+          id: string;
+          carrier: string;
+          tracking_number: string | null;
+          ship_date: string | null;
+          picked_up_by: string | null;
+          created_at: string;
+        }
+      | {
+          id: string;
+          carrier: string;
+          tracking_number: string | null;
+          ship_date: string | null;
+          picked_up_by: string | null;
+          created_at: string;
+        }[]
+      | null;
+  };
+
+  let targetLine: LineRow | null = null;
+
+  if (shipmentLineIdParam) {
+    const { data } = await supabase
+      .from("shipment_lines")
+      .select(lineSelect)
+      .eq("id", shipmentLineIdParam)
+      .eq("job_id", id)
+      .maybeSingle();
+    targetLine = (data as LineRow | null) ?? null;
+  }
+  if (!targetLine && shipmentIdParam) {
+    const { data } = await supabase
+      .from("shipment_lines")
+      .select(lineSelect)
+      .eq("shipment_id", shipmentIdParam)
+      .eq("job_id", id)
+      .maybeSingle();
+    targetLine = (data as LineRow | null) ?? null;
+  }
+  if (!targetLine) {
+    const { data } = await supabase
+      .from("shipment_lines")
+      .select(lineSelect)
+      .eq("job_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    targetLine = (data as LineRow | null) ?? null;
+  }
+
+  const targetShipment = targetLine
+    ? Array.isArray(targetLine.shipments)
+      ? targetLine.shipments[0]
+      : targetLine.shipments
+    : null;
+
+  // Column semantics (RS convention):
+  //   ORDERED    = customer's total order quantity
+  //   SHIPPED    = boards already shipped on PRIOR slips (strictly before
+  //                this one) — i.e. the customer's running balance going
+  //                INTO this shipment
+  //   CURRENT    = THIS slip's quantity
+  //   BACK ORDER = ordered − shipped − current (still owed after this slip)
+  //
+  // For a 55-board job with shipments of 20 then 35, the two slips read:
+  //   Slip 1: 55 / 0 / 20 / 35
+  //   Slip 2: 55 / 20 / 35 / 0
+  //
+  // Strict `<` on created_at: anything created before the target line is
+  // counted. Reprinting an older slip preserves its historical state.
+  let priorShipped = 0;
+  if (targetLine) {
+    // Embed shipments(status) so cancelled shipments drop out of the
+    // running balance — a slip that was voided didn't actually leave the
+    // building and shouldn't count toward "already shipped".
+    const { data: priorLines } = await supabase
+      .from("shipment_lines")
+      .select("quantity, created_at, shipments!inner(status)")
+      .eq("job_id", id)
+      .lt("created_at", targetLine.created_at);
+    type PriorRow = {
+      quantity: number | null;
+      shipments:
+        | { status?: string | null }
+        | { status?: string | null }[]
+        | null;
+    };
+    priorShipped = ((priorLines ?? []) as PriorRow[]).reduce((sum, l) => {
+      const ship = Array.isArray(l.shipments) ? l.shipments[0] : l.shipments;
+      if (ship?.status === "cancelled") return sum;
+      return sum + (l.quantity ?? 0);
+    }, 0);
+  }
+
+  const isPickup = targetShipment?.carrier === "Customer Pickup";
+  const courierName =
+    targetShipment?.carrier ?? (metadata.courier_name as string) ?? null;
+  const trackingId =
+    targetShipment?.tracking_number ?? (metadata.tracking_id as string) ?? null;
+  const pickedUpBy = targetShipment?.picked_up_by ?? null;
+  const shipDate =
+    targetShipment?.ship_date ??
+    (metadata.ship_date as string) ??
+    todayMontreal();
+
+  const currentQty = targetLine?.quantity ?? job.quantity;
+  const backorderQty = Math.max(0, job.quantity - priorShipped - currentQty);
 
   const formatAddress = (
     addr: Record<string, string> | null | undefined
@@ -129,6 +256,8 @@ export async function GET(
       billToLines,
       courierName,
       trackingId,
+      isPickup,
+      pickedUpBy,
       shipDate,
       deliveryTerms,
       fob,
@@ -136,11 +265,16 @@ export async function GET(
         {
           lineNumber: 1,
           partNumber: gmpNumber,
-          description:
-            gmp?.board_name ? `PCB Assembly — ${gmp.board_name}` : `PCB Assembly — ${gmpNumber}`,
+          // Description is just "PCB Assembly" — the GMP / part number
+          // is already in its own column.
+          description: "PCB Assembly",
+          // ordered = total customer order; shipped = boards on PRIOR
+          // slips (running balance into this slip); current = THIS slip's
+          // qty; backOrder = ordered − shipped − current.
           ordered: job.quantity,
-          shipped: job.quantity,
-          backOrder: 0,
+          shipped: priorShipped,
+          current: currentQty,
+          backOrder: backorderQty,
         },
       ],
       notes: job.notes,
@@ -307,8 +441,15 @@ interface PackingSlipItem {
   lineNumber: number;
   partNumber: string;
   description: string;
+  /** Customer's full order quantity for this line. */
   ordered: number;
+  /** Boards in THIS shipment for this line (per-slip qty). */
   shipped: number;
+  /** Cumulative quantity shipped through THIS slip's date — including
+   *  this shipment plus all earlier ones. So a 2nd partial slip for a
+   *  100-board job that previously shipped 20 and now ships 35 reads
+   *  shipped=35, current=55, backOrder=45. */
+  current: number;
   backOrder: number;
 }
 
@@ -322,6 +463,10 @@ interface PackingSlipParams {
   billToLines: string[];
   courierName: string | null;
   trackingId: string | null;
+  /** True when the customer collected boards in person. Toggles the
+   *  COURIER / TRACKING ID row to PICKUP / PICKED UP BY. */
+  isPickup?: boolean;
+  pickedUpBy?: string | null;
   shipDate: string | null;
   deliveryTerms: string;
   fob: string;
@@ -365,8 +510,16 @@ async function generatePackingSlip(p: PackingSlipParams): Promise<Uint8Array> {
   drawKV("DELIVERY", p.deliveryTerms, labelCol1X, r);
   drawKV("FOB", p.fob, labelCol2X, r);
   r -= lineH;
-  drawKV("COURIER", p.courierName ?? "—", labelCol1X, r);
-  drawKV("TRACKING ID", p.trackingId ?? "—", labelCol2X, r);
+  // Pickup vs courier: relabel the bottom info row. For pickups the
+  // delivery-terms line above already says "Customer Pickup" via the
+  // generator's caller, so this row records who took the boards.
+  if (p.isPickup) {
+    drawKV("PICKUP", "Customer Pickup", labelCol1X, r);
+    drawKV("PICKED UP BY", p.pickedUpBy ?? "—", labelCol2X, r);
+  } else {
+    drawKV("COURIER", p.courierName ?? "—", labelCol1X, r);
+    drawKV("TRACKING ID", p.trackingId ?? "—", labelCol2X, r);
+  }
   r -= lineH + 4;
 
   // Border around info strip
@@ -450,17 +603,30 @@ async function generatePackingSlip(p: PackingSlipParams): Promise<Uint8Array> {
 
   y = boxTop - boxHeight - 18;
 
-  // ---- Line items table: # | LINE # | PART NUMBER | DESCRIPTION | ORDERED | SHIPPED | CURRENT | BACK ORDER ----
+  // ---- Line items table: PART NUMBER | DESCRIPTION | ORDERED | SHIPPED | CURRENT | BACK ORDER ----
+  // Numeric columns anchored to the right edge of the table walking
+  // leftward — this way every column is mathematically inside
+  // CONTENT_WIDTH, regardless of how I tweak individual widths later.
   const tableX = MARGIN;
+  const W_BACK = 52;
+  const W_CURRENT = 44;
+  const W_SHIPPED = 44;
+  const W_ORDERED = 52;
+  const W_PART = 130;
+  const right = CONTENT_WIDTH; // table-relative right edge
+  const backX = right - W_BACK;
+  const currentX = backX - W_CURRENT;
+  const shippedX = currentX - W_SHIPPED;
+  const orderedX = shippedX - W_ORDERED;
+  const descX = 4 + W_PART; // immediately after PART NUMBER
+  const W_DESC = orderedX - descX; // fills the gap to ORDERED
   const col = {
-    num: { x: tableX + 4, w: 22, label: "#", align: "center" as const },
-    line: { x: tableX + 26, w: 36, label: "LINE #", align: "center" as const },
-    part: { x: tableX + 62, w: 120, label: "PART NUMBER", align: "left" as const },
-    desc: { x: tableX + 182, w: 175, label: "DESCRIPTION", align: "left" as const },
-    ordered: { x: tableX + 357, w: 48, label: "ORDERED", align: "right" as const },
-    shipped: { x: tableX + 405, w: 44, label: "SHIPPED", align: "right" as const },
-    current: { x: tableX + 449, w: 36, label: "CURRENT", align: "right" as const },
-    back: { x: tableX + 485, w: 30, label: "BACK ORDER", align: "right" as const },
+    part: { x: tableX + 4, w: W_PART, label: "PART NUMBER", align: "left" as const },
+    desc: { x: tableX + descX, w: W_DESC, label: "DESCRIPTION", align: "left" as const },
+    ordered: { x: tableX + orderedX, w: W_ORDERED, label: "ORDERED", align: "right" as const },
+    shipped: { x: tableX + shippedX, w: W_SHIPPED, label: "SHIPPED", align: "right" as const },
+    current: { x: tableX + currentX, w: W_CURRENT, label: "CURRENT", align: "right" as const },
+    back: { x: tableX + backX, w: W_BACK, label: "BACK ORDER", align: "right" as const },
   };
 
   // Header row
@@ -476,8 +642,7 @@ async function generatePackingSlip(p: PackingSlipParams): Promise<Uint8Array> {
   for (const c of Object.values(col)) {
     const w = fonts.bold.widthOfTextAtSize(c.label, 7);
     let tx = c.x;
-    if (c.align === "center") tx = c.x + (c.w - w) / 2;
-    else if (c.align === "right") tx = c.x + c.w - w - 2;
+    if (c.align === "right") tx = c.x + c.w - w - 2;
     page.drawText(c.label, {
       x: tx,
       y: hdrTextY,
@@ -492,14 +657,19 @@ async function generatePackingSlip(p: PackingSlipParams): Promise<Uint8Array> {
   const rowH = 22;
   let totalOrdered = 0;
   let totalShipped = 0;
+  let totalCurrent = 0;
   let totalBack = 0;
 
   for (let i = 0; i < p.items.length; i++) {
     const item = p.items[i];
     totalOrdered += item.ordered;
     totalShipped += item.shipped;
+    totalCurrent += item.current;
     totalBack += item.backOrder;
-    const current = item.shipped;
+    // "TO DATE" column = cumulative shipped through THIS slip. Distinct
+    // from `shipped` (this slip's qty alone) so a partial 2nd slip can
+    // show shipped=35, to-date=55 on a 100-board job.
+    const current = item.current;
 
     if (i % 2 === 1) {
       page.drawRectangle({
@@ -526,8 +696,6 @@ async function generatePackingSlip(p: PackingSlipParams): Promise<Uint8Array> {
       page.drawText(text, { x: tx, y: ty, size, font, color: COLOR_TEXT });
     };
 
-    drawCell(col.num, String(i + 1));
-    drawCell(col.line, String(item.lineNumber));
     drawCell(col.part, item.partNumber, fonts.bold);
     drawCell(col.desc, item.description);
     drawCell(col.ordered, String(item.ordered));
@@ -607,7 +775,7 @@ async function generatePackingSlip(p: PackingSlipParams): Promise<Uint8Array> {
   );
   drawTextRight(
     page,
-    String(totalShipped),
+    String(totalCurrent),
     col.current.x + col.current.w - 2,
     y,
     fonts.bold,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils/format";
 import type { PricingTier, MissingPriceComponent } from "@/lib/pricing/types";
@@ -11,6 +11,30 @@ interface PricingTableProps {
   warnings?: string[];
   missingPriceComponents?: MissingPriceComponent[];
   showLabourDetail?: boolean;
+  /**
+   * Quote's billing currency. The pricing engine always outputs CAD, so
+   * USD quotes need every CAD number divided by `fxRateToCad` for
+   * display. Defaults to CAD with a 1:1 rate so older callers keep
+   * rendering identical numbers.
+   */
+  displayCurrency?: "CAD" | "USD";
+  fxRateToCad?: number;
+}
+
+/**
+ * Convert an engine-output CAD number into the quote's display currency.
+ * For CAD quotes the rate is 1 and the number passes through unchanged.
+ * For USD quotes we divide by the rate captured on the quote (Bank of
+ * Canada rate at quote-creation / refresh time).
+ */
+function convertFromCad(
+  cadAmount: number,
+  displayCurrency: "CAD" | "USD",
+  fxRateToCad: number
+): number {
+  if (displayCurrency === "CAD") return cadAmount;
+  if (!Number.isFinite(fxRateToCad) || fxRateToCad <= 0) return cadAmount;
+  return cadAmount / fxRateToCad;
 }
 
 function getRows(timeModelUsed: boolean): { key: keyof PricingTier; label: string; highlight?: boolean }[] {
@@ -25,11 +49,27 @@ function getRows(timeModelUsed: boolean): { key: keyof PricingTier; label: strin
   ];
 }
 
-export function PricingTable({ tiers, warnings, missingPriceComponents, showLabourDetail = true }: PricingTableProps) {
+export function PricingTable({
+  tiers,
+  warnings,
+  missingPriceComponents,
+  showLabourDetail = true,
+  displayCurrency = "CAD",
+  fxRateToCad = 1,
+}: PricingTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Backward compatibility: old quotes may not have labour breakdown
   const hasLabour = tiers.length > 0 && tiers[0].labour != null && typeof tiers[0].labour === "object";
   const hasMarkupData = tiers.length > 0 && tiers[0].component_cost_before_markup != null;
+
+  /** Format a CAD number in the quote's display currency, suffixed with the
+   *  ISO code so the operator (and later, the PDF reader) sees exactly what
+   *  currency the figure is in — no ambiguity between "$579" CAD and USD. */
+  function fmt(cadAmount: number): string {
+    return `${formatCurrency(
+      convertFromCad(cadAmount, displayCurrency, fxRateToCad)
+    )} ${displayCurrency}`;
+  }
 
   function toggleRow(key: string) {
     setExpandedRows((prev) => {
@@ -59,6 +99,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b bg-orange-100 dark:bg-orange-900/40">
+                      <th className="px-3 py-1.5 text-left font-medium text-orange-800 dark:text-orange-200">CPC</th>
                       <th className="px-3 py-1.5 text-left font-medium text-orange-800 dark:text-orange-200">MPN</th>
                       <th className="px-3 py-1.5 text-left font-medium text-orange-800 dark:text-orange-200">Description</th>
                       <th className="px-3 py-1.5 text-right font-medium text-orange-800 dark:text-orange-200">Qty/Board</th>
@@ -67,6 +108,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                   <tbody>
                     {missingPriceComponents.map((c, i) => (
                       <tr key={i} className="border-b border-orange-100 dark:border-orange-800">
+                        <td className="px-3 py-1 font-mono text-gray-900 dark:text-gray-100">{c.cpc || "---"}</td>
                         <td className="px-3 py-1 font-mono text-gray-900 dark:text-gray-100">{c.mpn || "---"}</td>
                         <td className="px-3 py-1 max-w-xs truncate text-gray-600 dark:text-gray-400" title={c.description}>{c.description || "---"}</td>
                         <td className="px-3 py-1 text-right font-mono text-gray-700 dark:text-gray-300">{c.qty_per_board}</td>
@@ -100,12 +142,16 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
           </thead>
           <tbody>
             {getRows(tiers[0]?.labour?.time_model_used ?? false).map(({ key, label, highlight }) => {
-              const expandable = hasMarkupData && (key === "component_cost" || key === "pcb_cost");
+              const expandable =
+                (hasMarkupData &&
+                  (key === "component_cost" ||
+                    key === "pcb_cost" ||
+                    key === "assembly_cost")) ||
+                (key === "nre_charge" && hasLabour);
               const isExpanded = expandedRows.has(key);
               return (
-                <>
+                <Fragment key={key}>
                   <tr
-                    key={key}
                     className={
                       highlight
                         ? "border-t bg-gray-50 font-semibold dark:border-gray-800 dark:bg-gray-900"
@@ -131,7 +177,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                         key={t.board_qty}
                         className={`px-4 py-2 text-right font-mono ${highlight ? "text-gray-900 dark:text-gray-100" : "text-gray-700 dark:text-gray-300"}`}
                       >
-                        {formatCurrency((t[key] as number) ?? 0)}
+                        {fmt((t[key] as number) ?? 0)}
                       </td>
                     ))}
                   </tr>
@@ -144,7 +190,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                         </td>
                         {tiers.map((t) => (
                           <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
-                            {formatCurrency(t.component_cost_before_markup ?? 0)}
+                            {fmt(t.component_cost_before_markup ?? 0)}
                           </td>
                         ))}
                       </tr>
@@ -154,10 +200,82 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                         </td>
                         {tiers.map((t) => (
                           <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-green-600 dark:text-green-400">
-                            +{formatCurrency(t.component_markup_amount ?? 0)}
+                            +{fmt(t.component_markup_amount ?? 0)}
                           </td>
                         ))}
                       </tr>
+                      {/* Per-line detail for the first tier — lets the user
+                          diff each line against their Excel system when totals
+                          don't agree. Shown only for tier[0] to keep the grid
+                          readable; expand the row on any other tier to see
+                          that tier's numbers. */}
+                      {tiers[0]?.line_breakdowns && tiers[0].line_breakdowns.length > 0 && (
+                        <tr key="comp_lines_header" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                          <td colSpan={tiers.length + 1} className="px-4 py-2">
+                            <details>
+                              <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:text-blue-900 dark:text-blue-300">
+                                Show per-line math for tier {tiers[0].board_qty} ({tiers[0].line_breakdowns.length} lines)
+                              </summary>
+                              <div className="mt-2 overflow-x-auto">
+                                <table className="w-full text-[11px]">
+                                  <thead>
+                                    <tr className="border-b text-gray-500 dark:border-gray-800">
+                                      <th className="px-2 py-1 text-left">CPC</th>
+                                      <th className="px-2 py-1 text-left">MPN</th>
+                                      <th className="px-2 py-1 text-center">M-Code</th>
+                                      <th className="px-2 py-1 text-right">Qty/Board</th>
+                                      <th className="px-2 py-1 text-right">× Boards</th>
+                                      <th className="px-2 py-1 text-right">+ Overage</th>
+                                      <th className="px-2 py-1 text-right">= Order Qty</th>
+                                      <th className="px-2 py-1 text-right">Unit $ CAD</th>
+                                      <th className="px-2 py-1 text-center">Source</th>
+                                      <th className="px-2 py-1 text-right">Before Markup</th>
+                                      <th className="px-2 py-1 text-right">After Markup</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="font-mono">
+                                    {[...tiers[0].line_breakdowns]
+                                      .sort((a, b) => b.extended_after_markup - a.extended_after_markup)
+                                      .map((lb) => (
+                                        <tr
+                                          key={lb.bom_line_id}
+                                          className={`border-b dark:border-gray-900 ${
+                                            lb.unit_price_source === "missing"
+                                              ? "bg-red-50 dark:bg-red-950/20"
+                                              : ""
+                                          }`}
+                                        >
+                                          <td className="px-2 py-1 text-left">{lb.cpc ?? "—"}</td>
+                                          <td className="px-2 py-1 text-left">{lb.mpn}</td>
+                                          <td className="px-2 py-1 text-center text-gray-500">{lb.m_code ?? "—"}</td>
+                                          <td className="px-2 py-1 text-right">{lb.qty_per_board}</td>
+                                          <td className="px-2 py-1 text-right text-gray-500">{lb.board_qty}</td>
+                                          <td className="px-2 py-1 text-right text-gray-500">{lb.overage_extras}</td>
+                                          <td className="px-2 py-1 text-right font-semibold">{lb.order_qty}</td>
+                                          <td className="px-2 py-1 text-right">
+                                            {/* Per-line unit price stays in CAD — that's the
+                                                cache-resolved supplier rate, not a customer-facing
+                                                figure. The header column already labels it CAD. */}
+                                            {lb.unit_price > 0 ? `$${lb.unit_price.toFixed(4)}` : "—"}
+                                          </td>
+                                          <td className="px-2 py-1 text-center text-gray-500 uppercase text-[10px]">
+                                            {lb.unit_price_source}
+                                          </td>
+                                          <td className="px-2 py-1 text-right">
+                                            {fmt(lb.extended_before_markup)}
+                                          </td>
+                                          <td className="px-2 py-1 text-right font-semibold">
+                                            {fmt(lb.extended_after_markup)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          </td>
+                        </tr>
+                      )}
                     </>
                   )}
                   {/* Expandable markup sub-rows for PCB */}
@@ -169,7 +287,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                         </td>
                         {tiers.map((t) => (
                           <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
-                            {formatCurrency(t.pcb_cost_before_markup ?? 0)}
+                            {fmt(t.pcb_cost_before_markup ?? 0)}
                           </td>
                         ))}
                       </tr>
@@ -179,13 +297,76 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                         </td>
                         {tiers.map((t) => (
                           <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-green-600 dark:text-green-400">
-                            +{formatCurrency(t.pcb_markup_amount ?? 0)}
+                            +{fmt(t.pcb_markup_amount ?? 0)}
                           </td>
                         ))}
                       </tr>
                     </>
                   )}
-                </>
+                  {/* Expandable markup sub-rows for Assembly */}
+                  {expandable && isExpanded && key === "assembly_cost" && (
+                    <>
+                      <tr key="asm_before" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Cost before markup
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
+                            {fmt(t.assembly_cost_before_markup ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr key="asm_markup" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Markup ({tiers[0].assembly_markup_pct ?? 30}%)
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-green-600 dark:text-green-400">
+                            +{fmt(t.assembly_markup_amount ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                    </>
+                  )}
+                  {/* Expandable NRE breakdown — programming, stencil, PCB fab.
+                      The engine stores each component on labour.nre_*; the
+                      total flips to legacy nre_charge for older quotes that
+                      didn't separate them. */}
+                  {expandable && isExpanded && key === "nre_charge" && (
+                    <>
+                      <tr key="nre_programming" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Programming
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
+                            {fmt(t.labour?.nre_programming ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr key="nre_stencil" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          Stencil
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
+                            {fmt(t.labour?.nre_stencil ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr key="nre_pcb_fab" className="dark:border-gray-800 bg-blue-50/30 dark:bg-blue-950/10">
+                        <td className="pl-10 pr-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          PCB Fab
+                        </td>
+                        {tiers.map((t) => (
+                          <td key={t.board_qty} className="px-4 py-1.5 text-right font-mono text-xs text-gray-500">
+                            {fmt(t.labour?.nre_pcb_fab ?? 0)}
+                          </td>
+                        ))}
+                      </tr>
+                    </>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -202,7 +383,7 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-3">
-              <p className="text-xl font-bold">{formatCurrency(t.per_unit)}</p>
+              <p className="text-xl font-bold">{fmt(t.per_unit)}</p>
               <p className="text-xs text-gray-400">/unit</p>
               {t.components_missing_price > 0 && (
                 <p className="mt-1 text-xs text-orange-500">
@@ -307,14 +488,8 @@ export function PricingTable({ tiers, warnings, missingPriceComponents, showLabo
                     {tiers[0].labour.nre_stencil > 0 && (
                       <NreRow label="Stencil fees" amount={tiers[0].labour.nre_stencil} />
                     )}
-                    {tiers[0].labour.nre_setup > 0 && (
-                      <NreRow label="Setup fees" amount={tiers[0].labour.nre_setup} />
-                    )}
                     {tiers[0].labour.nre_pcb_fab > 0 && (
                       <NreRow label="PCB fabrication NRE" amount={tiers[0].labour.nre_pcb_fab} />
-                    )}
-                    {tiers[0].labour.nre_misc > 0 && (
-                      <NreRow label="Misc NRE" amount={tiers[0].labour.nre_misc} />
                     )}
                     <tr className="border-t bg-purple-50 font-semibold dark:border-gray-800 dark:bg-purple-950/30">
                       <td className="px-4 py-2 text-purple-800 dark:text-purple-200">NRE Total</td>

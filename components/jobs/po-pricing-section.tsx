@@ -14,10 +14,18 @@ interface PoPricingSectionProps {
   jobQuantity: number;
   quoteId: string | null;
   /** The full pricing object from quotes.pricing */
-  quotePricing: { tiers?: { board_qty: number; subtotal: number }[] } | null;
+  quotePricing: {
+    tiers?: { board_qty: number; subtotal: number; per_unit?: number }[];
+  } | null;
   /** The full quantities object from quotes.quantities */
   quoteQuantities: Record<string, number> | null;
-  /** Current metadata JSONB from the job */
+  /** Unit price the customer stated on the PO (jobs.po_unit_price). Authoritative. */
+  jobPoUnitPrice?: number | null;
+  /** NRE charge the customer included on the PO (jobs.nre_charge_cad). */
+  jobNreChargeCad?: number | null;
+  /** Whether the customer included NRE on the PO (jobs.nre_included_on_po). */
+  jobNreIncludedOnPo?: boolean | null;
+  /** Legacy metadata JSONB from the job — used only if po_unit_price is null. */
   metadata: { po_price?: number; [key: string]: unknown } | null;
 }
 
@@ -30,13 +38,19 @@ function getPoStatus(quotePrice: number | null, poPrice: number | null): PoStatu
   return diff <= 0.01 ? "match" : "mismatch";
 }
 
-function getQuotePrice(
+function getQuoteUnitPrice(
   pricing: PoPricingSectionProps["quotePricing"],
   jobQuantity: number
 ): number | null {
   if (!pricing?.tiers?.length) return null;
-  const tier = pricing.tiers.find((t) => t.board_qty === jobQuantity);
-  return tier ? tier.subtotal : pricing.tiers[0].subtotal;
+  const tier =
+    pricing.tiers.find((t) => t.board_qty === jobQuantity) ?? pricing.tiers[0];
+  if (tier.per_unit != null) return tier.per_unit;
+  // Legacy fallback — derive unit from subtotal / qty.
+  if (tier.subtotal != null && tier.board_qty > 0) {
+    return tier.subtotal / tier.board_qty;
+  }
+  return null;
 }
 
 export function PoPricingSection({
@@ -44,24 +58,38 @@ export function PoPricingSection({
   jobQuantity,
   quoteId,
   quotePricing,
+  jobPoUnitPrice,
+  jobNreChargeCad,
+  jobNreIncludedOnPo,
   metadata,
 }: PoPricingSectionProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  // Prefer the authoritative column (jobs.po_unit_price) over legacy metadata.
+  const initialUnit =
+    jobPoUnitPrice != null
+      ? jobPoUnitPrice
+      : metadata?.po_price != null
+        ? metadata.po_price
+        : null;
   const [poPrice, setPoPrice] = useState<string>(
-    metadata?.po_price != null ? String(metadata.po_price) : ""
+    initialUnit != null ? String(initialUnit) : ""
   );
 
-  const quotePrice = getQuotePrice(quotePricing, jobQuantity);
+  const quoteUnitPrice = getQuoteUnitPrice(quotePricing, jobQuantity);
   const poPriceNum = poPrice !== "" ? parseFloat(poPrice) : null;
-  const status = getPoStatus(quotePrice, poPriceNum);
+  const status = getPoStatus(quoteUnitPrice, poPriceNum);
 
-  // Keep local state in sync if metadata changes from server
+  // Keep local state in sync if server value changes (prefer column, fall back).
   useEffect(() => {
-    if (metadata?.po_price != null) {
-      setPoPrice(String(metadata.po_price));
-    }
-  }, [metadata?.po_price]);
+    const next =
+      jobPoUnitPrice != null
+        ? jobPoUnitPrice
+        : metadata?.po_price != null
+          ? metadata.po_price
+          : null;
+    if (next != null) setPoPrice(String(next));
+  }, [jobPoUnitPrice, metadata?.po_price]);
 
   async function handleSave() {
     const value = poPrice !== "" ? parseFloat(poPrice) : null;
@@ -73,7 +101,7 @@ export function PoPricingSection({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          metadata: { ...(metadata ?? {}), po_price: value },
+          po_unit_price: value,
         }),
       });
       if (!res.ok) {
@@ -118,13 +146,13 @@ export function PoPricingSection({
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-3">
-          {/* Quote Price */}
+          {/* Quote Unit Price */}
           <div>
             <p className="mb-1 text-xs font-medium text-gray-500">
-              Quote Price (Qty {jobQuantity})
+              Quote Unit Price (Qty {jobQuantity})
             </p>
             <p className="font-mono text-lg font-semibold">
-              {quotePrice != null ? formatCurrency(quotePrice) : "No quote"}
+              {quoteUnitPrice != null ? formatCurrency(quoteUnitPrice) : "No quote"}
             </p>
             {quoteId && (
               <a
@@ -142,7 +170,7 @@ export function PoPricingSection({
               htmlFor="po-price"
               className="mb-1 block text-xs font-medium text-gray-500"
             >
-              PO Price (Customer)
+              PO Unit Price (Customer)
             </label>
             <div className="flex gap-2">
               <Input
@@ -169,18 +197,18 @@ export function PoPricingSection({
           {/* Variance Display */}
           <div>
             <p className="mb-1 text-xs font-medium text-gray-500">Variance</p>
-            {quotePrice != null && poPriceNum != null ? (
+            {quoteUnitPrice != null && poPriceNum != null ? (
               <div>
                 <p
                   className={`font-mono text-lg font-semibold ${
                     status === "mismatch" ? "text-red-600" : "text-green-600"
                   }`}
                 >
-                  {formatCurrency(poPriceNum - quotePrice)}
+                  {formatCurrency(poPriceNum - quoteUnitPrice)}
                 </p>
                 <p className="text-xs text-gray-500">
                   {(
-                    ((poPriceNum - quotePrice) / quotePrice) *
+                    ((poPriceNum - quoteUnitPrice) / quoteUnitPrice) *
                     100
                   ).toFixed(2)}
                   %
@@ -189,6 +217,34 @@ export function PoPricingSection({
             ) : (
               <p className="text-sm text-gray-400">Enter PO price to compare</p>
             )}
+          </div>
+        </div>
+
+        {/* NRE recap — what the operator captured at PO ingest. */}
+        <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-gray-500">NRE on PO</p>
+              <p className="mt-0.5 text-sm">
+                {jobNreIncludedOnPo ? (
+                  <span className="font-semibold text-green-700 dark:text-green-400">
+                    Included by customer
+                  </span>
+                ) : (
+                  <span className="italic text-gray-500">
+                    Not included on this PO
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-medium text-gray-500">NRE Charge</p>
+              <p className="mt-0.5 font-mono text-lg font-semibold">
+                {jobNreChargeCad != null
+                  ? formatCurrency(jobNreChargeCad)
+                  : "—"}
+              </p>
+            </div>
           </div>
         </div>
 

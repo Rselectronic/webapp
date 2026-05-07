@@ -18,6 +18,13 @@ interface DigikeyCreds {
   client_id: string;
   client_secret: string;
   environment?: "Production" | "Sandbox";
+  /**
+   * DigiKey customer/account id. When present, sent as the
+   * `X-DIGIKEY-Customer-Id` header — this is what unlocks `MyPricing`
+   * (contract rates) in the productdetails response. Without it DigiKey
+   * returns only `StandardPricing`, even for authenticated accounts.
+   */
+  customer_id?: string;
 }
 
 let cachedToken: { access_token: string; expires_at: number } | null = null;
@@ -52,6 +59,7 @@ async function getDigikeyCredentials(): Promise<DigikeyCreds | null> {
     environment:
       (process.env.DIGIKEY_ENVIRONMENT as "Production" | "Sandbox") ??
       "Production",
+    customer_id: process.env.DIGIKEY_CUSTOMER_ID,
   };
   cachedCreds = { creds, expires_at: Date.now() + CREDS_TTL_MS };
   return creds;
@@ -89,14 +97,35 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.access_token;
 }
 
+export interface DigiKeyPriceBreak {
+  quantity: number;
+  unit_price: number;
+  currency: string;
+}
+
 export interface DigiKeyPartResult {
   mpn: string;
+  manufacturer: string | null;
   description: string;
   unit_price: number;
   currency: string;
   in_stock: boolean;
   stock_qty: number;
   digikey_pn: string;
+  /**
+   * Manufacturer lead time, normalized to days (DigiKey publishes weeks on
+   * the root product; multiply by 7). null when the product is in stock or
+   * the field is absent from the response.
+   */
+  lead_time_days: number | null;
+  /** Full volume-break ladder from ProductVariations[0].StandardPricing. */
+  price_breaks: DigiKeyPriceBreak[];
+  /**
+   * DigiKey ProductStatus.Status — "Active", "Obsolete", "Discontinued",
+   * "Last Time Buy", "NRND", etc. Passed straight through; the panel
+   * highlights anything outside of "Active"/"Production".
+   */
+  lifecycle_status: string | null;
   // Component details extracted from Parameters
   mounting_type?: string;
   package_case?: string;
@@ -113,39 +142,66 @@ export async function searchPartPrice(
   if (!creds) return null;
   const token = await getAccessToken();
   const currency = await getPreferredCurrency("digikey");
-  // Ported from lib/supplier-tests.ts fix by Piyush 2026-04-15 (Session 10 entry 1)
-  const searchUrl = `${digikeyBaseUrl(creds.environment)}/products/v4/search/keyword`;
-  const abort = AbortSignal.timeout(15_000); // 15s per API call
+  // Use the productdetails endpoint (exact-MPN lookup) instead of keyword
+  // search. productdetails returns account-specific `MyPricing` alongside
+  // `StandardPricing`; the keyword endpoint strips MyPricing on most accounts,
+  // which is why contract prices never surfaced in the pricing review panel.
+  const searchUrl = `${digikeyBaseUrl(creds.environment)}/products/v4/search/${encodeURIComponent(mpn)}/productdetails`;
+  // 10s per API call. DigiKey's productdetails endpoint routinely takes
+  // 2–4s on first hit for an MPN (upstream cache miss), and 5–7s when the
+  // part has many variants. The previous 2s ceiling was forcing false
+  // timeouts even when the API would have responded a fraction of a second
+  // later — every retry wasted an API-call quota slot against the 1000/day
+  // cap. Keeps parity with the auth-call timeout above.
+  const abort = AbortSignal.timeout(10_000);
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+    "X-DIGIKEY-Client-Id": creds.client_id,
+    "X-DIGIKEY-Locale-Site": "CA",
+    "X-DIGIKEY-Locale-Language": "en",
+    "X-DIGIKEY-Locale-Currency": currency,
+  };
+  // Contract-pricing gate: DigiKey only returns `MyPricing` when the request
+  // is scoped to a specific customer account. Without this header you get
+  // StandardPricing even with valid OAuth + a populated account.
+  if (creds.customer_id) {
+    headers["X-DIGIKEY-Customer-Id"] = creds.customer_id;
+  }
   const res = await fetch(searchUrl, {
-    method: "POST",
+    method: "GET",
     signal: abort,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "X-DIGIKEY-Client-Id": creds.client_id,
-      "X-DIGIKEY-Locale-Site": "CA",
-      "X-DIGIKEY-Locale-Language": "en",
-      "X-DIGIKEY-Locale-Currency": currency,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      Keywords: mpn,
-      Limit: 1,
-      Offset: 0,
-      FilterOptionsRequest: {},
-      SortOptions: { Field: "None", SortOrder: "Ascending" },
-    }),
+    headers,
   });
   if (!res.ok) return null;
-  // DigiKey Product Information v4 response shape
+  // DigiKey Product Information v4 productdetails response shape —
+  // singular `Product` object at the root (keyword endpoint used `Products[]`).
   const data = (await res.json()) as {
-    Products?: Array<{
+    Product?: {
       ManufacturerProductNumber: string;
+      Manufacturer?: { Name?: string; Id?: number };
       Description: { ProductDescription: string; DetailedDescription?: string };
       UnitPrice: number;
       QuantityAvailable: number;
+      // DigiKey publishes manufacturer lead time in weeks on the product root.
+      // Sometimes returned as a number, occasionally as a numeric string ("12")
+      // or — when the product is fully stocked — absent entirely.
+      ManufacturerLeadWeeks?: number | string | null;
       ProductVariations?: Array<{
         DigiKeyProductNumber: string;
         PackageType?: { Name: string };
+        StandardPricing?: Array<{
+          BreakQuantity: number;
+          UnitPrice: number;
+          TotalPrice: number;
+        }>;
+        // Account-specific contract pricing. When present, overrides
+        // StandardPricing for this variation. Same shape as StandardPricing.
+        MyPricing?: Array<{
+          BreakQuantity: number;
+          UnitPrice: number;
+          TotalPrice: number;
+        }>;
       }>;
       Parameters?: Array<{
         ParameterId: number;
@@ -153,10 +209,21 @@ export async function searchPartPrice(
         ValueText: string;
       }>;
       Category?: { Name: string; ChildCategories?: Array<{ Name: string }> };
-    }>;
+      // DigiKey publishes the part lifecycle as a typed object on V4
+      // productdetails — `{ Id: number, Status: string }`. Older accounts /
+      // sandbox sometimes return it as a bare string, so handle both shapes.
+      ProductStatus?: { Id?: number; Status?: string } | string;
+    };
   };
-  const product = data.Products?.[0];
+  const product = data.Product;
   if (!product) return null;
+
+  const lifecycle_status =
+    typeof product.ProductStatus === "string"
+      ? product.ProductStatus.trim() || null
+      : typeof product.ProductStatus?.Status === "string"
+        ? product.ProductStatus.Status.trim() || null
+        : null;
 
   // Extract component details from Parameters array (v4 uses ParameterText/ValueText)
   const params = product.Parameters ?? [];
@@ -208,17 +275,93 @@ export async function searchPartPrice(
   const hMatch = hParen ?? heightStr.match(/([\d.]+)\s*mm/i);
   if (hMatch) heightMm = parseFloat(hMatch[1]);
 
-  // DigiKey PN lives on the first ProductVariation
-  const digikeyPn = product.ProductVariations?.[0]?.DigiKeyProductNumber ?? "";
+  // DigiKey returns one ProductVariation per packaging (Cut Tape, Digi-Reel,
+  // Tape & Reel, etc.). Tape & Reel often sits at index 0 but its pricing only
+  // starts at 5000 pcs — so picking ProductVariations[0] caused order qtys
+  // like 320 to resolve to the 5000-break price. Instead, pick the variation
+  // with the smallest minimum BreakQuantity (typically Cut Tape, which has
+  // the full qty-1 → qty-1000 ladder), and merge in any lower unit prices
+  // from other variations so high-volume tiers still resolve to the best
+  // price across all packagings.
+  const variations = product.ProductVariations ?? [];
+
+  // One-shot diagnostic: log whether MyPricing came back on any variation.
+  // Watch the server logs on the next pricing fetch — if this is `false`, the
+  // productdetails endpoint is not returning MyPricing for this OAuth app,
+  // and nothing we do in the merge logic can surface contract prices.
+  const hasMyPricing = variations.some((v) => (v.MyPricing ?? []).length > 0);
+  console.info(
+    `[digikey] mpn=${mpn} variations=${variations.length} customerIdSent=${!!creds.customer_id} hasMyPricing=${hasMyPricing}`
+  );
+
+  // For each variation, prefer account-specific MyPricing over StandardPricing.
+  // MyPricing reflects contract / negotiated rates tied to the DigiKey account
+  // the API credentials belong to; when absent or empty, fall back to public
+  // StandardPricing so parts without a contract still resolve.
+  const pricingFor = (v: (typeof variations)[number]) => {
+    const my = v.MyPricing ?? [];
+    return my.length > 0 ? my : v.StandardPricing ?? [];
+  };
+
+  const minBreakQty = (v: (typeof variations)[number]) => {
+    const qtys = pricingFor(v)
+      .map((pb) => pb.BreakQuantity)
+      .filter((q) => Number.isFinite(q) && q > 0);
+    return qtys.length ? Math.min(...qtys) : Number.POSITIVE_INFINITY;
+  };
+  const primary =
+    [...variations].sort((a, b) => minBreakQty(a) - minBreakQty(b))[0] ??
+    variations[0];
+  const digikeyPn = primary?.DigiKeyProductNumber ?? "";
+
+  // Merge price breaks across all variations, keeping the lowest unit_price
+  // per BreakQuantity so bigger-reel discounts still apply at higher tiers.
+  const breakByQty = new Map<number, number>();
+  for (const v of variations) {
+    for (const pb of pricingFor(v)) {
+      if (!Number.isFinite(pb.BreakQuantity) || pb.BreakQuantity <= 0) continue;
+      if (!Number.isFinite(pb.UnitPrice) || pb.UnitPrice <= 0) continue;
+      const existing = breakByQty.get(pb.BreakQuantity);
+      if (existing == null || pb.UnitPrice < existing) {
+        breakByQty.set(pb.BreakQuantity, pb.UnitPrice);
+      }
+    }
+  }
+  const priceBreaks: DigiKeyPriceBreak[] = Array.from(breakByQty.entries())
+    .map(([quantity, unit_price]) => ({ quantity, unit_price, currency }))
+    .sort((a, b) => a.quantity - b.quantity);
+
+  // Normalize ManufacturerLeadWeeks → days. Handles number, numeric string,
+  // and the "in stock" case where the field is absent or 0.
+  const rawLeadWeeks = product.ManufacturerLeadWeeks;
+  const leadWeeksNum =
+    typeof rawLeadWeeks === "number"
+      ? rawLeadWeeks
+      : typeof rawLeadWeeks === "string"
+        ? Number.parseFloat(rawLeadWeeks)
+        : NaN;
+  const lead_time_days =
+    Number.isFinite(leadWeeksNum) && leadWeeksNum > 0
+      ? Math.round(leadWeeksNum * 7)
+      : null;
 
   return {
     mpn: product.ManufacturerProductNumber,
-    description: product.Description.ProductDescription,
-    unit_price: product.UnitPrice,
+    manufacturer:
+      typeof product.Manufacturer?.Name === "string" && product.Manufacturer.Name.trim().length > 0
+        ? product.Manufacturer.Name
+        : null,
+    description:
+      product.Description.DetailedDescription ??
+      product.Description.ProductDescription,
+    unit_price: priceBreaks[0]?.unit_price ?? product.UnitPrice,
+    lead_time_days,
     currency,
     in_stock: product.QuantityAvailable > 0,
     stock_qty: product.QuantityAvailable ?? 0,
     digikey_pn: digikeyPn,
+    price_breaks: priceBreaks,
+    lifecycle_status,
     mounting_type: mountingType,
     package_case: packageCase,
     category,

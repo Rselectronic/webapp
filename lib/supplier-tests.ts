@@ -132,6 +132,9 @@ export async function testSupplierConnection(
       case "arrow":
         result = await testArrow(credentials, mpn);
         break;
+      case "arrow_com":
+        result = await testArrowCom(credentials, mpn);
+        break;
       case "tti":
         result = await testTti(credentials, mpn);
         break;
@@ -661,6 +664,94 @@ async function testArrow(
 }
 
 // ---------------------------------------------------------------------------
+// Arrow.com (api.arrow.com itemservice v4) — login + apikey in JSON body
+// ---------------------------------------------------------------------------
+async function testArrowCom(
+  creds: Record<string, string>,
+  mpn?: string
+): Promise<TestResult> {
+  const probeMpn = mpn ?? DEFAULT_PROBE_MPN;
+  const { login, apikey } = creds;
+  if (!login || !apikey) {
+    return { ok: false, message: "Missing login or apikey" };
+  }
+
+  const reqBody = {
+    request: {
+      login,
+      apikey,
+      remoteIp: "",
+      useExact: true,
+      parts: [{ partNum: probeMpn }],
+    },
+  };
+  const rawUrl = `https://api.arrow.com/itemservice/v4/en/search/list?req=${encodeURIComponent(
+    JSON.stringify(reqBody)
+  )}`;
+  // The whole `req` blob carries the apikey — redact it entirely from the
+  // captured URL so secrets never reach the UI / logs / screenshots.
+  const safeUrl = redactUrl(rawUrl, ["req"]);
+
+  try {
+    const res = await timedFetch(rawUrl, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    });
+    const body = await readBody(res);
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        message: `Auth failed: HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${res.status}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    const parsed = body as {
+      itemserviceresult?: {
+        transactionArea?: Array<{ response?: { success?: boolean; returnMsg?: string } }>;
+        data?: Array<{ partsFound?: number; partsRequested?: number }>;
+      };
+    };
+    const apiResp = parsed?.itemserviceresult?.transactionArea?.[0]?.response;
+    if (apiResp && apiResp.success === false) {
+      return {
+        ok: false,
+        message: `API error: ${apiResp.returnMsg || "unknown"}`,
+        raw_response: body,
+        status_code: res.status,
+        request_url: safeUrl,
+      };
+    }
+    const data = parsed?.itemserviceresult?.data?.[0];
+    const found = data?.partsFound ?? 0;
+    return {
+      ok: true,
+      message: `Connected to Arrow.com — probe ${probeMpn} returned ${found} match${found === 1 ? "" : "es"}`,
+      raw_response: body,
+      status_code: res.status,
+      request_url: safeUrl,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      message: `Network error: ${msg}`,
+      request_url: safeUrl,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // TTI — API key via query string
 // ---------------------------------------------------------------------------
 async function testTti(
@@ -778,7 +869,7 @@ async function testEsonic(
 }
 
 // ---------------------------------------------------------------------------
-// Newark / Element14 — REST GET with API key in query params
+// Newark — REST GET with API key in query params
 // ---------------------------------------------------------------------------
 async function testNewark(
   creds: Record<string, string>,

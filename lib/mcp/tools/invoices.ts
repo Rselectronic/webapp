@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { supabase } from "../db";
+import { todayMontreal } from "@/lib/utils/format";
 
 export function registerInvoiceTools(server: McpServer) {
   server.tool(
@@ -42,7 +43,7 @@ export function registerInvoiceTools(server: McpServer) {
       }
 
       if (overdue_only) {
-        const today = new Date().toISOString().split("T")[0];
+        const today = todayMontreal();
         query = query.lt("due_date", today).in("status", ["sent"]);
       }
 
@@ -194,7 +195,7 @@ export function registerInvoiceTools(server: McpServer) {
       let query = supabase
         .from("jobs")
         .select(
-          "id, job_number, quantity, status, customers(code, company_name), quotes(pricing, quantities)"
+          "id, job_number, quantity, status, customers(code, company_name), quotes!jobs_quote_id_fkey(pricing, quantities)"
         )
         .in("status", ["delivered", "invoiced", "archived"]);
 

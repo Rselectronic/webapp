@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   Users,
-  FileSpreadsheet,
+  CircuitBoard,
   Calculator,
   Briefcase,
   ShoppingCart,
@@ -25,23 +25,44 @@ import {
   BarChart3,
   Menu,
   Truck,
+  Search,
+  Package,
+  Layers,
 } from "lucide-react";
 
-const navigation = [
+const fullNavigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, enabled: true },
   { name: "Customers", href: "/customers", icon: Users, enabled: true },
-  { name: "BOMs", href: "/bom", icon: FileSpreadsheet, enabled: true },
+  { name: "GMPs", href: "/gmp", icon: CircuitBoard, enabled: true },
+  { name: "Part Search", href: "/parts", icon: Search, enabled: true },
   { name: "Quotes", href: "/quotes", icon: Calculator, enabled: true },
-  { name: "Jobs", href: "/jobs", icon: Briefcase, enabled: true },
-  { name: "Procurement", href: "/procurement", icon: ShoppingCart, enabled: true },
+  { name: "Job Queue", href: "/jobs", icon: Briefcase, enabled: true },
+  { name: "PROC Batches", href: "/proc", icon: ShoppingCart, enabled: true },
   { name: "Production", href: "/production", icon: Factory, enabled: true },
   { name: "Shipping", href: "/shipping", icon: Truck, enabled: true },
   { name: "Invoices", href: "/invoices", icon: FileText, enabled: true },
+  { name: "Inventory", href: "/inventory", icon: Package, enabled: true },
   { name: "Reports", href: "/reports", icon: BarChart3, enabled: true },
   { name: "Settings", href: "/settings", icon: Settings, enabled: true },
 ];
 
-export function MobileNav() {
+// Production users see Production + Shipping. The home page `/` shows
+// admin KPIs they shouldn't see; the middleware redirects `/` →
+// `/production` for them. Shipping is included because the production
+// user also handles outbound shipments in this shop.
+const productionNavigation = [
+  { name: "Production", href: "/production", icon: Factory, enabled: true },
+  { name: "Shipping", href: "/shipping", icon: Truck, enabled: true },
+  { name: "Stencil Library", href: "/stencils", icon: Layers, enabled: true },
+];
+
+interface MobileNavProps {
+  role?: string | null;
+}
+
+export function MobileNav({ role }: MobileNavProps) {
+  const isProduction = role === "production";
+  const navigation = isProduction ? productionNavigation : fullNavigation;
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -60,10 +81,25 @@ export function MobileNav() {
         </SheetHeader>
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navigation.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href);
+            // Same longest-prefix-wins rule as the desktop sidebar:
+            // `/proc/pending` highlights "Pending Orders" only, not
+            // "PROC Batches" (whose href is `/proc`).
+            let isActive: boolean;
+            if (item.href === "/") {
+              isActive = pathname === "/";
+            } else if (pathname === item.href) {
+              isActive = true;
+            } else if (pathname.startsWith(item.href + "/")) {
+              isActive = !navigation.some(
+                (other) =>
+                  other.href !== item.href &&
+                  other.href.startsWith(item.href + "/") &&
+                  (pathname === other.href ||
+                    pathname.startsWith(other.href + "/"))
+              );
+            } else {
+              isActive = false;
+            }
 
             return (
               <Link

@@ -155,13 +155,14 @@ export async function GET(
         unit_price: r.unit_price,
         stock_qty: r.stock_qty,
         currency: r.currency,
+        fetched_at: new Date().toISOString(),
         expires_at: expiresAt,
       },
-      { onConflict: "source,search_key" }
+      { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
     );
     // Enrich components table with DigiKey details (fire-and-forget)
     enrichComponentFromAPI(adminDb, {
-      mpn: r.mpn,
+      cpc: r.mpn,
       description: r.description,
       mounting_type: r.mounting_type,
       package_case: r.package_case,
@@ -195,13 +196,14 @@ export async function GET(
         unit_price: r.unit_price,
         stock_qty: r.stock_qty,
         currency: r.currency,
+        fetched_at: new Date().toISOString(),
         expires_at: expiresAt,
       },
-      { onConflict: "source,search_key" }
+      { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
     );
     // Enrich components table with Mouser supplier PN
     enrichComponentFromAPI(adminDb, {
-      mpn: r.mpn,
+      cpc: r.mpn,
       description: r.description,
       mouser_pn: r.mouser_pn,
     }).catch(() => {});
@@ -229,13 +231,14 @@ export async function GET(
         unit_price: r.unit_price,
         stock_qty: r.stock_qty,
         currency: r.currency,
+        fetched_at: new Date().toISOString(),
         expires_at: expiresAt,
       },
-      { onConflict: "source,search_key" }
+      { onConflict: "source,search_key,supplier_part_number,warehouse_code" }
     );
     // Enrich components table with LCSC supplier PN
     enrichComponentFromAPI(adminDb, {
-      mpn: r.mpn,
+      cpc: r.mpn,
       description: r.description,
       lcsc_pn: r.lcsc_pn,
     }).catch(() => {});

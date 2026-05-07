@@ -1,7 +1,7 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/auth/api-auth";
-
+import { TAX_REGIONS, type TaxRegion } from "@/lib/tax/regions";
 export async function GET(req: NextRequest) {
   const { user, supabase } = await getAuthUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -11,14 +11,22 @@ export async function GET(req: NextRequest) {
   if (active === "true") query = query.eq("is_active", true);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[customers GET] supabase error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json(data);
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await getAuthUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAdminRole(user.role)) {
+    return NextResponse.json(
+      { error: "Forbidden â€” only admins can create customers." },
+      { status: 403 }
+    );
+  }
 
   const body = await req.json();
 
@@ -26,7 +34,16 @@ export async function POST(req: NextRequest) {
     code, company_name, contact_name, contact_email, contact_phone,
     contacts, billing_addresses, shipping_addresses,
     payment_terms, billing_address, shipping_address, notes,
+    default_currency, tax_region, folder_name,
   } = body;
+
+  // Validate currency + tax_region (both have CHECK constraints in DB,
+  // but reject early so the user gets a clear error instead of a 500).
+  const currency = default_currency === "USD" ? "USD" : "CAD";
+  const region: TaxRegion =
+    TAX_REGIONS.includes(tax_region as TaxRegion)
+      ? (tax_region as TaxRegion)
+      : "QC";
 
   if (!code || !company_name) {
     return NextResponse.json({ error: "Customer code and company name are required" }, { status: 400 });
@@ -38,7 +55,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Customer code "${code}" already exists` }, { status: 409 });
   }
 
-  // Build contacts array — either from new multi-contact field or legacy single contact
+  // Build contacts array â€” either from new multi-contact field or legacy single contact
   let contactsArray = contacts ?? [];
   if (contactsArray.length === 0 && (contact_name || contact_email || contact_phone)) {
     contactsArray = [{
@@ -50,7 +67,7 @@ export async function POST(req: NextRequest) {
     }];
   }
 
-  // Build addresses arrays — either from new multi-address fields or legacy single address
+  // Build addresses arrays â€” either from new multi-address fields or legacy single address
   const billingArray = billing_addresses ?? (billing_address && Object.keys(billing_address).length > 0
     ? [{ ...billing_address, label: "Primary", is_default: true }] : []);
   const shippingArray = shipping_addresses ?? (shipping_address && Object.keys(shipping_address).length > 0
@@ -75,7 +92,13 @@ export async function POST(req: NextRequest) {
       shipping_address: shipping_address || {},
       notes: notes || null,
       is_active: true,
-      created_by: user.id,
+      created_by: user.id ?? null,
+      default_currency: currency,
+      tax_region: region,
+      folder_name:
+        typeof folder_name === "string" && folder_name.trim().length > 0
+          ? folder_name.trim()
+          : null,
     })
     .select("id, code, company_name")
     .single();

@@ -26,7 +26,7 @@ type ComponentDetails = {
  * 4-Layer M-Code classification pipeline.
  *
  * Priority order (from Anas, 2026-04-08):
- *   Layer 1: Database lookup by MPN (components table — includes manual overrides)
+ *   Layer 1: Database lookup by CPC (components table — includes manual overrides)
  *   Layer 1b: Keyword lookup (240+ common terms — package names, mounting types)
  *   Layer 2: Rule engine (PAR rules)
  *   Layer 3: Claude AI classification
@@ -39,17 +39,25 @@ export async function classifyComponent(
   cachedKeywords?: KeywordRow[] | null,
   componentDetails?: Map<string, ComponentDetails> | null
 ): Promise<ClassificationResult> {
-  // Layer 1: Database lookup (components table — includes prior manual overrides)
-  if (input.mpn) {
-    const dbResult = await lookupInDatabase(input.mpn, supabase);
+  // Layer 1: Database lookup by CPC (components table — includes prior manual
+  // overrides). CPC is the customer-facing key; when the BOM has no CPC column
+  // the importer falls back to the MPN, so we try CPC first then MPN.
+  const lookupKey = input.cpc || input.mpn;
+  // When cachedKeywords is provided, the caller is classifyBomLines — which
+  // has already batch-fetched the components cache into a Map and checked it
+  // before invoking us. Repeating the DB lookup here adds one round-trip per
+  // unclassified line, which for a 60-line BOM meant ~6s of pre-classify wait
+  // before the progress bar could move. Skip it in batch mode.
+  if (lookupKey && cachedKeywords === undefined) {
+    const dbResult = await lookupInDatabase(lookupKey, supabase);
     if (dbResult) return dbResult;
   }
 
   // Enrich input with component details (dimensions, package, mounting type)
   // from the components table — populated by DigiKey/Mouser API responses
   let enrichedInput = input;
-  if (input.mpn && componentDetails) {
-    const details = componentDetails.get(input.mpn);
+  if (lookupKey && componentDetails) {
+    const details = componentDetails.get(lookupKey);
     if (details) {
       enrichedInput = {
         ...input,
@@ -108,15 +116,16 @@ export async function classifyComponentFull(
   // Fetch enriched data for this component (dimensions, package from API lookups)
   const keywords = await fetchKeywords(supabase);
   const detailsMap = new Map<string, ComponentDetails>();
-  if (input.mpn) {
+  const singleLookupKey = input.cpc || input.mpn;
+  if (singleLookupKey) {
     const { data } = await supabase
       .from("components")
-      .select("mpn, mounting_type, package_case, category, length_mm, width_mm")
-      .eq("mpn", input.mpn)
+      .select("cpc, mounting_type, package_case, category, length_mm, width_mm")
+      .eq("cpc", singleLookupKey)
       .limit(1)
       .maybeSingle();
     if (data && (data.mounting_type || data.package_case || data.length_mm)) {
-      detailsMap.set(input.mpn, {
+      detailsMap.set(singleLookupKey, {
         mounting_type: data.mounting_type,
         package_case: data.package_case,
         category: data.category,
@@ -141,7 +150,7 @@ export async function classifyComponentFull(
   // instantly on the next classification. Fire-and-forget the enrichment —
   // classifier result is the same whether enrichment succeeds or not.
   void enrichComponentFromAPI(supabase, {
-    mpn: input.mpn,
+    cpc: input.cpc || input.mpn,
     manufacturer: input.manufacturer || "Unknown",
     description: input.description,
     mounting_type: params.mounting_type ?? undefined,
@@ -185,21 +194,21 @@ export async function fetchKeywords(supabase: SupabaseClient): Promise<KeywordRo
 }
 
 async function lookupInDatabase(
-  mpn: string,
+  cpc: string,
   supabase: SupabaseClient
 ): Promise<ClassificationResult | null> {
   const { data } = await supabase
     .from("components")
     .select("m_code, m_code_source")
-    .eq("mpn", mpn)
+    .eq("cpc", cpc)
     .not("m_code", "is", null)
     .limit(1)
     .maybeSingle();
 
   if (data?.m_code) {
     const reason = data.m_code_source === "manual"
-      ? `Previously manually classified as ${data.m_code} — MPN "${mpn}" found in components database`
-      : `MPN "${mpn}" found in components database → ${data.m_code}`;
+      ? `Previously manually classified as ${data.m_code} — CPC "${cpc}" found in components database`
+      : `CPC "${cpc}" found in components database → ${data.m_code}`;
     return { m_code: data.m_code, confidence: 0.95, source: "database", rule_id: reason };
   }
   return null;
@@ -281,25 +290,25 @@ function matchKeywords(
  * Layer 1 (database lookup) catches it automatically for all future BOMs.
  */
 export async function saveManualOverride(
-  mpn: string,
+  cpc: string,
   mCode: string,
   description: string | null,
   manufacturer: string | null,
   supabase: SupabaseClient
 ): Promise<void> {
-  // Upsert into components table — if MPN already exists, update the M-code
+  // Upsert into components table — if CPC already exists, update the M-code
   await supabase
     .from("components")
     .upsert(
       {
-        mpn,
+        cpc,
         m_code: mCode,
         m_code_source: "manual",
         description: description ?? undefined,
         manufacturer: manufacturer ?? undefined,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "mpn,manufacturer" }
+      { onConflict: "cpc,manufacturer" }
     );
 }
 
@@ -336,7 +345,7 @@ export async function classifyBomLinesWithAI(
     // Save parameters to components table for Layer 1 re-use.
     enrichPromises.push(
       enrichComponentFromAPI(supabase, {
-        mpn: lines[i].mpn,
+        cpc: lines[i].mpn,
         manufacturer: lines[i].manufacturer || "Unknown",
         description: lines[i].description,
         mounting_type: p.mounting_type ?? undefined,
@@ -381,48 +390,114 @@ export async function classifyBomLinesWithAI(
  */
 export async function classifyBomLines(
   lines: { mpn: string; description: string; cpc: string; manufacturer: string }[],
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  /**
+   * When provided, the classifier consults `customer_parts.m_code_manual` for
+   * this customer BEFORE any other data source. That's the per-customer
+   * procurement log — an operator's correction for TLAN's CPC "C1001" stays
+   * TLAN-only. Omit for classification calls that aren't tied to a customer
+   * (rare — mostly testing).
+   */
+  customerId?: string
 ): Promise<ClassificationResult[]> {
   // Fetch keywords ONCE for the entire BOM (was per-component before)
   const keywords = await fetchKeywords(supabase);
 
-  // Batch DB lookup: fetch all known MPNs in one query
-  const mpns = [...new Set(lines.map((l) => l.mpn).filter(Boolean))];
+  // Batch DB lookup: fetch all known CPCs in one query. CPC is the customer
+  // part code on the BOM line; when the BOM has no CPC column the importer
+  // falls back to the MPN, so we use (cpc || mpn) as the key.
+  const lookupKeys = [
+    ...new Set(lines.map((l) => l.cpc || l.mpn).filter(Boolean)),
+  ];
+  // customer_parts.m_code_manual is the sole source of manual classification
+  // truth. Migration 056 folded the flat manual_m_code_overrides sheet into
+  // customer_parts by matching on CPC across every customer that uses it, so
+  // a single per-customer lookup now covers both cases that used to be
+  // separate tables.
+  const customerManualMap = new Map<string, string>();
   const dbMap = new Map<string, { m_code: string; m_code_source: string }>();
   const detailsMap = new Map<string, ComponentDetails>();
 
-  if (mpns.length > 0) {
-    // Fetch M-codes AND component details (dimensions, package, mounting) in one query
-    const { data } = await supabase
-      .from("components")
-      .select("mpn, m_code, m_code_source, mounting_type, package_case, category, length_mm, width_mm")
-      .in("mpn", mpns);
-    for (const row of data ?? []) {
-      if (row.m_code) {
-        dbMap.set(row.mpn, { m_code: row.m_code, m_code_source: row.m_code_source });
-      }
-      // Store details for enrichment even if no m_code (dimensions still useful for rules)
-      if (row.mounting_type || row.package_case || row.length_mm || row.width_mm) {
-        detailsMap.set(row.mpn, {
-          mounting_type: row.mounting_type,
-          package_case: row.package_case,
-          category: row.category,
-          length_mm: row.length_mm,
-          width_mm: row.width_mm,
-        });
-      }
+  if (lookupKeys.length > 0) {
+    // Supabase's query builder is a `PromiseLike` (thenable), not a full
+    // `Promise` — typing the array as `Promise<unknown>[]` was rejected
+    // under stricter type-checking in newer @supabase/* releases.
+    const queries: PromiseLike<unknown>[] = [];
+
+    if (customerId) {
+      queries.push(
+        supabase
+          .from("customer_parts")
+          .select("cpc, m_code_manual")
+          .eq("customer_id", customerId)
+          .in("cpc", lookupKeys)
+          .then(({ data }) => {
+            for (const row of data ?? []) {
+              if (row.m_code_manual) {
+                customerManualMap.set(row.cpc, row.m_code_manual);
+              }
+            }
+          })
+      );
     }
+
+    queries.push(
+      supabase
+        .from("components")
+        .select(
+          "cpc, m_code, m_code_source, mounting_type, package_case, category, length_mm, width_mm"
+        )
+        .in("cpc", lookupKeys)
+        .then(({ data }) => {
+          for (const row of data ?? []) {
+            if (row.m_code) {
+              dbMap.set(row.cpc, {
+                m_code: row.m_code,
+                m_code_source: row.m_code_source,
+              });
+            }
+            if (
+              row.mounting_type ||
+              row.package_case ||
+              row.length_mm ||
+              row.width_mm
+            ) {
+              detailsMap.set(row.cpc, {
+                mounting_type: row.mounting_type,
+                package_case: row.package_case,
+                category: row.category,
+                length_mm: row.length_mm,
+                width_mm: row.width_mm,
+              });
+            }
+          }
+        })
+    );
+
+    await Promise.all(queries);
   }
 
   // Classify each line using cached data (no per-component DB calls)
   const results: ClassificationResult[] = [];
   for (const line of lines) {
-    // Layer 1: Check pre-fetched DB map
-    const dbHit = line.mpn ? dbMap.get(line.mpn) : null;
+    const key = line.cpc || line.mpn;
+    // Layer 1a: per-customer manual override from customer_parts.
+    if (key && customerManualMap.has(key)) {
+      const m = customerManualMap.get(key)!;
+      results.push({
+        m_code: m as MCode,
+        confidence: 0.99,
+        source: "manual",
+        rule_id: `Manual override for CPC "${key}" → ${m}`,
+      });
+      continue;
+    }
+    // Layer 1b: components cache.
+    const dbHit = key ? dbMap.get(key) : null;
     if (dbHit?.m_code) {
       const reason = dbHit.m_code_source === "manual"
-        ? `Previously manually classified as ${dbHit.m_code} — MPN "${line.mpn}" found in components database`
-        : `MPN "${line.mpn}" found in components database → ${dbHit.m_code}`;
+        ? `Previously manually classified as ${dbHit.m_code} — CPC "${key}" found in components database`
+        : `CPC "${key}" found in components database → ${dbHit.m_code}`;
       results.push({ m_code: dbHit.m_code as MCode, confidence: 0.95, source: "database", rule_id: reason });
       continue;
     }

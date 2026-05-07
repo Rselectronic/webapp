@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { login } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,25 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
+const URL_ERROR_MESSAGES: Record<string, string> = {
+  account_disabled:
+    "This account has been deactivated. Contact an admin to restore access.",
+};
+
+// Reads ?error=… from the URL into state. Split out so the Suspense
+// boundary in <LoginPage> can isolate the CSR bailout — without it the
+// whole route bails out of static prerendering at build time.
+function UrlErrorBridge({ onError }: { onError: (msg: string) => void }) {
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const code = searchParams.get("error");
+    if (code && URL_ERROR_MESSAGES[code]) {
+      onError(URL_ERROR_MESSAGES[code]);
+    }
+  }, [searchParams, onError]);
+  return null;
+}
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +49,9 @@ export default function LoginPage() {
 
   return (
     <Card>
+      <Suspense fallback={null}>
+        <UrlErrorBridge onError={setError} />
+      </Suspense>
       <CardHeader className="text-center">
         <CardTitle className="text-2xl font-bold">
           R.S. Électronique

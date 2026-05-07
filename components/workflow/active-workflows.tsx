@@ -4,6 +4,9 @@ import { WorkflowStepper } from "./workflow-stepper";
 import type { WorkflowEntities } from "./workflow-types";
 
 export interface ActiveWorkflowItem {
+  /** Stable key for the React list. Use the job_id (or whatever the
+   *  driving entity is) so re-renders don't reshuffle DOM by index. */
+  key: string;
   /** Display label like "TLAN / TL265-5040-000-T" */
   title: string;
   entities: WorkflowEntities;
@@ -30,8 +33,8 @@ export function ActiveWorkflows({ workflows }: ActiveWorkflowsProps) {
 
   return (
     <div className="divide-y">
-      {workflows.map((wf, i) => (
-        <div key={i} className="px-6 py-4">
+      {workflows.map((wf) => (
+        <div key={wf.key} className="px-6 py-4">
           <p className="mb-3 text-sm font-medium text-gray-900 dark:text-gray-100">
             {wf.title}
           </p>

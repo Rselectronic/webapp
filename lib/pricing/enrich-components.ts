@@ -11,7 +11,7 @@ import type { DigiKeyPartResult } from "./digikey";
 export async function enrichComponentFromAPI(
   supabase: SupabaseClient,
   data: {
-    mpn: string;
+    cpc: string;
     manufacturer?: string;
     description?: string;
     mounting_type?: string;
@@ -25,13 +25,13 @@ export async function enrichComponentFromAPI(
     lcsc_pn?: string;
   }
 ): Promise<void> {
-  if (!data.mpn) return;
+  if (!data.cpc) return;
 
   // Check if component exists
   const { data: existing } = await supabase
     .from("components")
     .select("id, m_code, m_code_source, mounting_type, package_case, length_mm, width_mm")
-    .eq("mpn", data.mpn)
+    .eq("cpc", data.cpc)
     .limit(1)
     .maybeSingle();
 
@@ -55,9 +55,9 @@ export async function enrichComponentFromAPI(
     }
   } else {
     // Insert new component (no M-code yet — classifier will assign it)
-    // Use upsert to handle unique constraint on (mpn, manufacturer)
+    // Use upsert to handle unique constraint on (cpc, manufacturer)
     await supabase.from("components").upsert({
-      mpn: data.mpn,
+      cpc: data.cpc,
       manufacturer: data.manufacturer ?? "Unknown",
       description: data.description ?? null,
       mounting_type: data.mounting_type ?? null,
@@ -70,7 +70,7 @@ export async function enrichComponentFromAPI(
       mouser_pn: data.mouser_pn ?? null,
       lcsc_pn: data.lcsc_pn ?? null,
       last_api_update: new Date().toISOString(),
-    }, { onConflict: "mpn,manufacturer", ignoreDuplicates: true });
+    }, { onConflict: "cpc,manufacturer", ignoreDuplicates: true });
   }
 }
 
@@ -86,7 +86,7 @@ export async function enrichComponentsFromDigiKey(
     .filter((r) => r.mpn && (r.mounting_type || r.package_case || r.length_mm))
     .map((r) =>
       enrichComponentFromAPI(supabase, {
-        mpn: r.mpn,
+        cpc: r.mpn,
         description: r.description,
         mounting_type: r.mounting_type,
         package_case: r.package_case,

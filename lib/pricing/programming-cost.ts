@@ -45,7 +45,8 @@ const PROGRAMMING_TIERS: { min_lines: number; standard: number; double_side: num
  * Calculate programming cost based on BOM line count and board type.
  *
  * @param bomLineCount - Number of component lines in the BOM (non-PCB, non-DNI)
- * @param isDoubleSided - true for TB (Top+Bottom), false for TS (Top-side only)
+ * @param isDoubleSided - true for double-sided boards (gmps.board_side = 'double'),
+ *                        false for single-sided (board_side = 'single')
  * @returns Programming cost in CAD
  */
 export function calculateProgrammingCost(
@@ -76,11 +77,17 @@ export function calculateProgrammingCost(
 }
 
 /**
- * Assembly type to double-sided mapping.
- * TB = Top+Bottom (double-sided), everything else is single-sided.
+ * Convert a `gmps.board_side` value into the boolean shape the programming
+ * cost table expects. `'double'` (top + bottom SMT) is the most common board
+ * style at RS, so it's the safe default when the GMP record hasn't been
+ * filled in yet.
  */
-export function isDoubleSidedAssembly(assemblyType: string): boolean {
-  return assemblyType === "TB";
+export function isDoubleSidedBoard(boardSide: string | null | undefined): boolean {
+  if (boardSide === "single") return false;
+  if (boardSide === "double") return true;
+  return true; // unknown / NULL → assume double-sided
 }
+
+export type BoardSide = "single" | "double";
 
 export { PROGRAMMING_TIERS };

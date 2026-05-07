@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const CATEGORIES = ["quote", "invoice", "shipping", "procurement", "general"] as const;
 
@@ -40,7 +47,7 @@ const SAMPLE_DATA: Record<string, string> = {
   board_name: "Power Controller Board",
   quantities: "50 / 100 / 250 / 500",
   expiry_date: "May 7, 2026",
-  invoice_number: "INV-2604-001",
+  invoice_number: "RSINV_20260430210347",
   job_number: "JB-2604-TLAN-001",
   total_amount: "$12,500.00",
   issued_date: "Apr 7, 2026",
@@ -164,18 +171,23 @@ export function TemplateEditor({ template, mode }: TemplateEditorProps) {
         </div>
         <div>
           <Label htmlFor="template-category">Category</Label>
-          <select
-            id="template-category"
+          <Select
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onValueChange={(v) => setCategory(v ?? "")}
           >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c.charAt(0).toUpperCase() + c.slice(1)}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="template-category" className="mt-1 w-full">
+              <SelectValue>
+                {(v: string) => v ? v.charAt(0).toUpperCase() + v.slice(1) : ""}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c.charAt(0).toUpperCase() + c.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

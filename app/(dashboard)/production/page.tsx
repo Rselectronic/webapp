@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { isAdminRole, isProductionRole } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/button";
 import { ProductionKanban } from "@/components/production/production-kanban";
 import { WeeklySchedule } from "@/components/production/weekly-schedule";
@@ -18,13 +20,27 @@ interface ProductionJob {
   job_number: string;
   status: string;
   quantity: number;
-  assembly_type: string | null;
   po_number: string | null;
   scheduled_start: string | null;
   scheduled_completion: string | null;
   created_at: string;
   customers: { code: string; company_name: string } | null;
-  gmps: { gmp_number: string; board_name: string | null } | null;
+  /** Physical layout (single/double-sided SMT) lives on gmps.board_side. */
+  gmps: { gmp_number: string; board_name: string | null; board_side: string | null } | null;
+  /** Most-recent production_event.event_type for this job, or null if
+   *  the job hasn't been touched yet. Used by the kanban's smart
+   *  "log next event" button. */
+  latest_event?: string | null;
+  /** Sum of shipments.quantity across all shipments for this job. Only
+   *  meaningful for jobs in the 'shipping' status; null when no
+   *  shipments exist. */
+  shipped_qty?: number | null;
+  /** Number of boards released into the "ready to ship" pool while the
+   *  rest of the job is still in production. Operator increments this
+   *  via the "Release N" dialog on each kanban card. Server auto-
+   *  advances the job to status='shipping' when this equals quantity.
+   *  Legacy rows have NULL — treat as 0. */
+  ready_to_ship_qty?: number | null;
 }
 
 interface ProductionEvent {
@@ -40,43 +56,124 @@ export default async function ProductionPage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const { view } = await searchParams;
-  const activeView = view === "kanban"
-    ? "kanban"
-    : view === "weekly"
-      ? "weekly"
-      : view === "monthly"
-        ? "monthly"
-        : view === "log"
-          ? "log"
-          : "dashboard";
 
   const supabase = await createClient();
 
-  // Fetch jobs in production-relevant statuses
-  // Using admin client to avoid RLS issues with nested joins
-  let adminClient: Awaited<ReturnType<typeof createAdminClient>> | null = null;
-  try {
-    adminClient = createAdminClient();
-  } catch {
-    // Fall back to regular client if admin not available
-  }
+  // Resolve the caller's role so we can hide the Dashboard tab from
+  // production users — they don't need the high-level KPI overview.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  const adminForProfile = createAdminClient();
+  const { data: profile } = await adminForProfile
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  // callerIsAdmin is no longer used here — the production-schedule
+  // dashboard is now visible to both roles. Kept the import for parity
+  // in case future per-role gating returns.
+  void isAdminRole;
+  const callerIsProduction = isProductionRole(profile?.role);
 
-  const client = adminClient ?? supabase;
+  // Default landing differs by role: admins land on Dashboard (KPI
+  // overview), production lands on Kanban (action-oriented). Both roles
+  // can switch freely between any tab — production users have access to
+  // the Dashboard view too (the production-schedule dashboard is
+  // distinct from the main app `/` dashboard, which remains admin-only).
+  const requested =
+    view === "kanban" || view === "weekly" || view === "monthly" || view === "log" || view === "dashboard"
+      ? view
+      : null;
 
-  // Monthly view needs all non-archived jobs; other views need production-relevant only
+  const activeView: "kanban" | "weekly" | "monthly" | "log" | "dashboard" =
+    requested ?? (callerIsProduction ? "kanban" : "dashboard");
+
+  // Reuse the admin client we already opened for the profile read above.
+  // Reads use admin to bypass RLS — production users have a narrower
+  // SELECT policy on jobs that doesn't cover the joined customers/gmps.
+  const client = adminForProfile;
+
+  // Monthly view: every non-archived job.
+  // Kanban / Weekly / Dashboard: include the upstream statuses
+  // (created → procurement → parts_ordered) so the production floor can
+  // see what's coming. Those columns are read-only on the kanban — they
+  // exist for visibility only, not action.
   const statusFilter = activeView === "monthly"
     ? ["created", "procurement", "parts_ordered", "parts_received", "production", "inspection", "shipping", "delivered"]
-    : ["parts_received", "production", "inspection", "shipping"];
+    : ["created", "procurement", "parts_ordered", "parts_received", "production", "inspection", "shipping"];
 
   const { data: jobsData, error: jobsError } = await client
     .from("jobs")
     .select(
-      "id, job_number, status, quantity, assembly_type, po_number, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name)"
+      "id, job_number, status, quantity, ready_to_ship_qty, po_number, scheduled_start, scheduled_completion, created_at, customers(code, company_name), gmps(gmp_number, board_name, board_side)"
     )
     .in("status", statusFilter)
     .order("created_at", { ascending: false });
 
   const jobs = (jobsData ?? []) as unknown as ProductionJob[];
+
+  // Pull the LATEST production_event for every visible job so the kanban
+  // can show a smart "log next event" button per card. We fetch all
+  // events for these jobs and reduce to the most-recent per job_id —
+  // simpler than a window-function RPC and the row count is bounded by
+  // the number of jobs on screen.
+  const visibleJobIds = jobs.map((j) => j.id);
+  if (visibleJobIds.length > 0) {
+    const { data: latestEventsData, error: latestEventsErr } = await client
+      .from("production_events")
+      .select("job_id, event_type, created_at")
+      .in("job_id", visibleJobIds)
+      .order("created_at", { ascending: false });
+    if (latestEventsErr) {
+      console.error("[production] latest events read failed", latestEventsErr.message);
+    }
+
+    const latestByJob = new Map<string, string>();
+    for (const row of (latestEventsData ?? []) as Array<{
+      job_id: string;
+      event_type: string;
+    }>) {
+      // Order is desc; first occurrence per job_id is the most recent.
+      if (!latestByJob.has(row.job_id)) {
+        latestByJob.set(row.job_id, row.event_type);
+      }
+    }
+    for (const j of jobs) {
+      (j as ProductionJob & { latest_event?: string | null }).latest_event =
+        latestByJob.get(j.id) ?? null;
+    }
+
+    // Roll up shipped quantity per job so the kanban can show a partial-
+    // shipment badge on Ready-to-Ship cards. Bounded by visible job IDs.
+    // After 099, shipments.job_id/quantity moved into shipment_lines.
+    const { data: shipmentLineRows, error: shipmentLineErr } = await client
+      .from("shipment_lines")
+      .select("job_id, quantity, shipments!inner(status)")
+      .in("job_id", visibleJobIds);
+    if (shipmentLineErr) {
+      console.error("[production] shipment_lines read failed", shipmentLineErr.message);
+    }
+
+    const shippedByJob = new Map<string, number>();
+    for (const row of (shipmentLineRows ?? []) as Array<{
+      job_id: string;
+      quantity: number | null;
+      shipments: { status?: string | null } | { status?: string | null }[] | null;
+    }>) {
+      const ship = Array.isArray(row.shipments) ? row.shipments[0] : row.shipments;
+      if (ship?.status === "cancelled") continue;
+      shippedByJob.set(
+        row.job_id,
+        (shippedByJob.get(row.job_id) ?? 0) + (row.quantity ?? 0)
+      );
+    }
+    for (const j of jobs) {
+      (j as ProductionJob & { shipped_qty?: number | null }).shipped_qty =
+        shippedByJob.get(j.id) ?? null;
+    }
+  }
 
   // Fetch latest production events for the dashboard view
   let recentEvents: {
@@ -89,11 +186,14 @@ export default async function ProductionPage({
   }[] = [];
 
   if (activeView === "dashboard") {
-    const { data: eventsData } = await client
+    const { data: eventsData, error: eventsErr } = await client
       .from("production_events")
       .select("id, job_id, event_type, created_at")
       .order("created_at", { ascending: false })
       .limit(20);
+    if (eventsErr) {
+      console.error("[production] dashboard events read failed", eventsErr.message);
+    }
 
     if (eventsData) {
       // Enrich events with job number and customer code

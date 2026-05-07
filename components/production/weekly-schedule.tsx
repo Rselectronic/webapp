@@ -121,7 +121,11 @@ export function WeeklySchedule({ jobs }: WeeklyScheduleProps) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const weekLabel = `${monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${friday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+  // Pin labels to Montreal so Piyush (India) and Anas (Montreal) see the
+  // same Mon–Fri week. NOTE: the week-boundary math above (monday/friday
+  // computed off `new Date()` in local time) still reflects the viewer's
+  // local week — a bigger refactor would Montreal-anchor that too.
+  const weekLabel = `${monday.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Toronto" })} - ${friday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Toronto" })}`;
 
   return (
     <div className="space-y-4">
@@ -169,7 +173,7 @@ export function WeeklySchedule({ jobs }: WeeklyScheduleProps) {
               {/* Day header */}
               <div className={`mb-2 text-center ${isToday ? "font-bold text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
                 <div className="text-xs uppercase">
-                  {day.toLocaleDateString("en-US", { weekday: "short" })}
+                  {day.toLocaleDateString("en-US", { weekday: "short", timeZone: "America/Toronto" })}
                 </div>
                 <div className={`text-lg ${isToday ? "" : "text-foreground"}`}>
                   {day.getDate()}

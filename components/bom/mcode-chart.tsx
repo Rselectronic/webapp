@@ -55,26 +55,36 @@ export function MCodeChart({ distribution }: MCodeChartProps) {
   const total = entries.reduce((sum, [, count]) => sum + count, 0);
   if (total === 0) return null;
 
-  // Build SVG donut segments using stroke-dasharray on circles
+  // Build donut segments as individual SVG arc paths. This avoids the stroke-
+  // dasharray pattern-repeat visual glitch that happened when
+  // dashLength+dashGap drifted slightly below circumference due to float math,
+  // causing ghost segments to appear at the top of the donut.
   const radius = 40;
-  const circumference = 2 * Math.PI * radius;
-  let cumulativeOffset = 0;
+  const cx = 50;
+  const cy = 50;
+  let cumulativeAngle = -Math.PI / 2; // start at 12 o'clock
+
+  function polar(angle: number) {
+    return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+  }
 
   const segments = entries.map(([mcode, count]) => {
     const pct = count / total;
-    const dashLength = pct * circumference;
-    const dashGap = circumference - dashLength;
-    const offset = -cumulativeOffset;
-    cumulativeOffset += dashLength;
+    const startAngle = cumulativeAngle;
+    const endAngle = startAngle + pct * 2 * Math.PI;
+    cumulativeAngle = endAngle;
 
-    return {
-      mcode,
-      count,
-      pct,
-      dashArray: `${dashLength} ${dashGap}`,
-      dashOffset: offset,
-      color: getColor(mcode),
-    };
+    // For 100% single-segment case, stroke the whole circle instead of a path
+    // (an arc from A to A is zero-length).
+    const isFull = pct >= 0.9999;
+    const s = polar(startAngle);
+    const e = polar(endAngle);
+    const largeArc = pct > 0.5 ? 1 : 0;
+    const d = isFull
+      ? null
+      : `M ${s.x} ${s.y} A ${radius} ${radius} 0 ${largeArc} 1 ${e.x} ${e.y}`;
+
+    return { mcode, count, pct, d, isFull, color: getColor(mcode) };
   });
 
   return (
@@ -87,21 +97,28 @@ export function MCodeChart({ distribution }: MCodeChartProps) {
           viewBox="0 0 100 100"
           className="block"
         >
-          {segments.map((seg) => (
-            <circle
-              key={seg.mcode}
-              cx="50"
-              cy="50"
-              r={radius}
-              fill="none"
-              stroke={seg.color}
-              strokeWidth="16"
-              strokeDasharray={seg.dashArray}
-              strokeDashoffset={seg.dashOffset}
-              transform="rotate(-90 50 50)"
-              className="transition-all duration-500"
-            />
-          ))}
+          {segments.map((seg) =>
+            seg.isFull ? (
+              <circle
+                key={seg.mcode}
+                cx={cx}
+                cy={cy}
+                r={radius}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth="16"
+              />
+            ) : (
+              <path
+                key={seg.mcode}
+                d={seg.d ?? undefined}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth="16"
+                strokeLinecap="butt"
+              />
+            )
+          )}
           {/* Center text */}
           <text
             x="50"

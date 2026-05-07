@@ -11,7 +11,7 @@ import {
   Circle, AlertTriangle, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { MCodeOverrideCell } from "@/components/quotes/mcode-override-cell";
-import { formatCurrency } from "@/lib/utils/format";
+import { formatCurrency, formatDateTime } from "@/lib/utils/format";
 
 // --- Types matching the database shape ---
 interface Batch {
@@ -280,6 +280,7 @@ export function BatchWorkflow({ batch, lines, log }: { batch: Batch; lines: Batc
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-8">#</TableHead>
+                  <TableHead>CPC</TableHead>
                   <TableHead>MPN</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Boards</TableHead>
@@ -313,6 +314,7 @@ export function BatchWorkflow({ batch, lines, log }: { batch: Batch; lines: Batc
                 {componentLines.map((line) => (
                   <TableRow key={line.id} className={line.needs_review && !line.m_code_override ? "bg-amber-50" : ""}>
                     <TableCell className="font-mono text-xs text-gray-400">{line.line_number}</TableCell>
+                    <TableCell className="font-mono text-sm text-gray-700">{line.cpc ?? "—"}</TableCell>
                     <TableCell className="font-mono text-sm font-medium">{line.mpn}</TableCell>
                     <TableCell className="max-w-48 truncate text-sm text-gray-600">{line.description ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{line.board_refs ?? "—"}</TableCell>
@@ -439,7 +441,7 @@ export function BatchWorkflow({ batch, lines, log }: { batch: Batch; lines: Batc
               <div key={entry.id} className="px-4 py-2 text-sm">
                 <span className="font-medium">{entry.action}</span>
                 <span className="ml-2 text-gray-400">
-                  {new Date(entry.created_at).toLocaleString()}
+                  {formatDateTime(entry.created_at)}
                 </span>
                 {entry.details && (
                   <pre className="mt-1 text-xs text-gray-500">{JSON.stringify(entry.details, null, 2)}</pre>

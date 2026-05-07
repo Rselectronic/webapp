@@ -53,7 +53,7 @@ export default async function PaymentsPage() {
   // Group by method for stats
   const byMethod: Record<string, number> = {};
   for (const p of all) {
-    byMethod[p.payment_method] = (byMethod[p.payment_method] ?? 0) + Number(p.amount);
+    byMethod[p.method] = (byMethod[p.method] ?? 0) + Number(p.amount);
   }
 
   return (
@@ -190,11 +190,11 @@ export default async function PaymentsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">
-                        {METHOD_LABELS[payment.payment_method] ?? payment.payment_method}
+                        {METHOD_LABELS[payment.method] ?? payment.method}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-mono text-sm text-gray-500">
-                      {payment.reference_number ?? "—"}
+                      {payment.reference ?? "—"}
                     </TableCell>
                     <TableCell className="max-w-xs truncate text-sm text-gray-500">
                       {payment.notes ?? "—"}

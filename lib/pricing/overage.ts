@@ -1,8 +1,19 @@
 import type { OverageTier } from "./types";
 
+/**
+ * Look up the overage extras for a part-line.
+ *
+ * `qty` is the PART quantity (qty_per_board × board_qty), NOT the board
+ * quantity. The seeded overage_table thresholds go up to 100,000 — they
+ * describe part counts. Earlier versions of this helper named the
+ * argument `boardQty` and several call sites passed board qty, producing
+ * silently-undersized overage (e.g. 30 boards × 10 per-board = 300 parts
+ * for a CP part returned 20 extras instead of 50). Param renamed to
+ * remove the ambiguity.
+ */
 export function getOverage(
   mCode: string | null,
-  boardQty: number,
+  qty: number,
   tiers: OverageTier[]
 ): number {
   if (!mCode) return 0;
@@ -15,7 +26,7 @@ export function getOverage(
 
   let extras = 0;
   for (const tier of relevant) {
-    if (boardQty >= tier.qty_threshold) {
+    if (qty >= tier.qty_threshold) {
       extras = tier.extras;
     }
   }
@@ -28,6 +39,7 @@ export function getOrderQty(
   mCode: string | null,
   tiers: OverageTier[]
 ): number {
-  const extras = getOverage(mCode, boardQty, tiers);
-  return qtyPerBoard * boardQty + extras;
+  const baseQty = qtyPerBoard * boardQty;
+  const extras = getOverage(mCode, baseQty, tiers);
+  return baseQty + extras;
 }

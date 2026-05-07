@@ -1,7 +1,7 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { PricingSettings } from "@/lib/pricing/types";
-
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
 
@@ -32,8 +32,8 @@ export async function PATCH(req: NextRequest) {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo")
-    return NextResponse.json({ error: "CEO role required" }, { status: 403 });
+  if (!isAdminRole(profile?.role))
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
 
   const key = new URL(req.url).searchParams.get("key") ?? "pricing";
   const body = await req.json();

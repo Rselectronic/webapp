@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,12 +12,20 @@ import {
 } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils/format";
 import { getProfitabilitySummary } from "@/lib/pricing/profitability";
+import { RevenueSection } from "@/components/reports/revenue-section";
+import type { RevenueInvoice } from "@/lib/reports/revenue";
 
 interface InvoiceRow {
   total: number;
   status: string;
   customer_id: string;
   customers: { code: string; company_name: string } | null;
+  issued_date: string | null;
+  tps_gst: number | null;
+  tvq_qst: number | null;
+  hst: number | null;
+  currency: "CAD" | "USD" | null;
+  fx_rate_to_cad: number | null;
 }
 
 interface JobRow {
@@ -39,13 +48,15 @@ export default async function ReportsPage() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo") redirect("/");
+  if (!isAdminRole(profile?.role)) redirect("/");
 
   // Fetch all data in parallel
   const [invoicesRes, jobsRes, quotesRes, profitability] = await Promise.all([
     supabase
       .from("invoices")
-      .select("total, status, customer_id, customers(code, company_name)"),
+      .select(
+        "total, status, customer_id, issued_date, tps_gst, tvq_qst, hst, currency, fx_rate_to_cad, customers(code, company_name)"
+      ),
     supabase.from("jobs").select("status"),
     supabase.from("quotes").select("created_at"),
     getProfitabilitySummary(supabase),
@@ -145,6 +156,22 @@ export default async function ReportsPage() {
     thisMonthStart
   );
 
+  // Revenue section — bucketed by issued_date, accrual basis. We pass the
+  // raw invoice list and let RevenueSection do the FY math from URL params.
+  const revenueInvoices: RevenueInvoice[] = invoices.map((i) => ({
+    issued_date: i.issued_date,
+    total: i.total,
+    tps_gst: i.tps_gst,
+    tvq_qst: i.tvq_qst,
+    hst: i.hst,
+    currency: i.currency ?? "CAD",
+    fx_rate_to_cad: i.fx_rate_to_cad ?? 1,
+    status: i.status,
+    customer_id: i.customer_id ?? null,
+    customer_code: i.customers?.code ?? null,
+    customer_company: i.customers?.company_name ?? null,
+  }));
+
   return (
     <div className="space-y-6">
       <div>
@@ -153,6 +180,9 @@ export default async function ReportsPage() {
           Business overview and performance metrics.
         </p>
       </div>
+
+      {/* Revenue by period — accrual basis */}
+      <RevenueSection invoices={revenueInvoices} />
 
       {/* Revenue Summary */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

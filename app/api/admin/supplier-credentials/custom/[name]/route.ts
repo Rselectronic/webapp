@@ -1,3 +1,4 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -5,7 +6,7 @@ import {
   isBuiltInSupplier,
 } from "@/lib/supplier-credentials";
 
-async function requireCeoOrOps() {
+async function requireAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,11 +23,11 @@ async function requireCeoOrOps() {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "ceo" && profile?.role !== "operations_manager") {
+  if (!isAdminRole(profile?.role)) {
     return {
       user: null,
       error: NextResponse.json(
-        { error: "CEO or operations_manager role required" },
+        { error: "Admin role required" },
         { status: 403 }
       ),
     };
@@ -45,7 +46,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ) {
-  const { user, error } = await requireCeoOrOps();
+  const { user, error } = await requireAdmin();
   if (error || !user) return error!;
 
   const { name } = await params;

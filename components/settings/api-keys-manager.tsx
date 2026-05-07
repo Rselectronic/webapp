@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/utils/format";
 
-type ApiKeyRole = "ceo" | "operations_manager" | "shop_floor";
+type ApiKeyRole = "admin" | "production";
 
 export interface ApiKeyRow {
   id: string;
@@ -39,22 +39,20 @@ interface ApiKeysManagerProps {
 }
 
 const ROLE_OPTIONS: { value: ApiKeyRole; label: string }[] = [
-  { value: "ceo", label: "CEO" },
-  { value: "operations_manager", label: "Operations Manager" },
-  { value: "shop_floor", label: "Shop Floor" },
+  { value: "admin", label: "Admin" },
+  { value: "production", label: "Production" },
 ];
 
 const ROLE_BADGE_CLASS: Record<ApiKeyRole, string> = {
-  ceo: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300",
-  operations_manager:
+  admin:
+    "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300",
+  production:
     "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
-  shop_floor: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
 };
 
 const ROLE_LABEL: Record<ApiKeyRole, string> = {
-  ceo: "CEO",
-  operations_manager: "Ops Manager",
-  shop_floor: "Shop Floor",
+  admin: "Admin",
+  production: "Production",
 };
 
 function formatRelativeTime(dateStr: string | null): string {
@@ -76,7 +74,7 @@ export function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
   const [keys, setKeys] = useState<ApiKeyRow[]>(initialKeys);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState<ApiKeyRole>("ceo");
+  const [newRole, setNewRole] = useState<ApiKeyRole>("admin");
   const [creating, setCreating] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -88,7 +86,7 @@ export function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
 
   const resetDialog = () => {
     setNewName("");
-    setNewRole("ceo");
+    setNewRole("admin");
     setRevealedKey(null);
     setCopied(false);
     setCreating(false);

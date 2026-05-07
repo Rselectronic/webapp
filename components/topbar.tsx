@@ -1,10 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { logout } from "@/app/(auth)/login/actions";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { SearchCommand } from "@/components/search-command";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/user-menu";
 
 export async function Topbar() {
   const supabase = await createClient();
@@ -22,15 +20,18 @@ export async function Topbar() {
     profile = data;
   }
 
-  const initials = profile?.full_name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase() ?? "?";
+  const initials =
+    profile?.full_name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase() ?? "?";
 
   const roleLabel: Record<string, string> = {
+    admin: "Admin",
     ceo: "CEO",
     operations_manager: "Operations",
+    production: "Production",
     shop_floor: "Shop Floor",
   };
 
@@ -39,22 +40,15 @@ export async function Topbar() {
       <SearchCommand />
       <div className="flex items-center gap-3">
         <ThemeToggle />
-        {profile && (
-          <>
-            <Badge variant="secondary" className="hidden sm:inline-flex">
-              {roleLabel[profile.role] ?? profile.role}
-            </Badge>
-            <span className="hidden sm:inline text-sm text-gray-600 dark:text-gray-400">{profile.full_name}</span>
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-            </Avatar>
-          </>
-        )}
-        <form action={logout}>
-          <Button variant="ghost" size="sm" type="submit">
-            Sign out
-          </Button>
-        </form>
+        {profile ? (
+          <UserMenu
+            fullName={profile.full_name}
+            email={user?.email ?? null}
+            roleLabel={roleLabel[profile.role] ?? profile.role}
+            initials={initials}
+            logoutAction={logout}
+          />
+        ) : null}
       </div>
     </div>
   );

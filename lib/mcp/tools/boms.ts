@@ -194,6 +194,12 @@ export function registerBomTools(server: McpServer) {
     "Run rule-based M-Code classification on a single component. Checks the components DB first, then applies PAR rules.",
     {
       mpn: z.string().describe("Manufacturer Part Number"),
+      cpc: z
+        .string()
+        .optional()
+        .describe(
+          "Customer Part Code (preferred lookup key — components table is CPC-keyed). Falls back to mpn if omitted."
+        ),
       description: z.string().optional().describe("Component description"),
       package_case: z
         .string()
@@ -204,12 +210,13 @@ export function registerBomTools(server: McpServer) {
         .optional()
         .describe("'Surface Mount' or 'Through Hole'"),
     },
-    async ({ mpn, description, package_case, mounting_type }) => {
-      // Layer 1: Database lookup
+    async ({ mpn, cpc, description, package_case, mounting_type }) => {
+      // Layer 1: Database lookup (components table is keyed on CPC)
+      const lookupKey = cpc || mpn;
       const { data: existing } = await supabase
         .from("components")
         .select("m_code, m_code_source")
-        .eq("mpn", mpn)
+        .eq("cpc", lookupKey)
         .limit(1)
         .maybeSingle();
 
@@ -221,6 +228,7 @@ export function registerBomTools(server: McpServer) {
               text: JSON.stringify(
                 {
                   mpn,
+                  cpc: lookupKey,
                   m_code: existing.m_code,
                   confidence: 0.95,
                   source: "database",

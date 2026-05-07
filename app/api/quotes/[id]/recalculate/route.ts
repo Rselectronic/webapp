@@ -1,8 +1,8 @@
+﻿import { isAdminRole } from "@/lib/auth/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { recomputeQuotePricing } from "@/lib/pricing/recompute";
 import type { TierInput } from "@/lib/pricing/types";
-
 // ---------------------------------------------------------------------------
 // POST /api/quotes/[id]/recalculate
 // Re-runs the pricing engine against the stored BOM using the current
@@ -21,6 +21,18 @@ export async function POST(
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Admin-only: recalc rewrites quote.pricing â€” production users have no
+  // UPDATE policy on quotes (the user-scoped update would silently no-op),
+  // and this is a commercial-money operation regardless. Gate explicitly.
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!isAdminRole(profile?.role)) {
+    return NextResponse.json({ error: "Admin role required" }, { status: 403 });
   }
 
   // --- Fetch the quote ---
@@ -73,7 +85,7 @@ export async function POST(
 
   if (!resolvedTiers || resolvedTiers.length === 0) {
     return NextResponse.json(
-      { error: "Quote has no tier inputs — cannot recalculate" },
+      { error: "Quote has no tier inputs â€” cannot recalculate" },
       { status: 400 }
     );
   }
