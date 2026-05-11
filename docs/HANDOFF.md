@@ -2367,3 +2367,743 @@ All four post-Entry-57 RLS-bearing migrations (044, 045, 046, 047) were retrofit
 
 *Entry 58 written: April 20, 2026 — full day's worth of work shipped and applied to prod.*
 
+---
+
+## Batch backfill — Entries 59–64 (written May 11, 2026)
+
+> Entries 59–64 below document the work that landed in the **May 7, 2026 squash-merge commit `c186f90`** (PR #2 from `piyush-sandbox` → `main`) and was not separately entry-logged at the time. That single commit changed 430 files (+64104 / −8583) and applied migrations 049–109 (60 migrations). Reconstructed by reading the migrations and modified source against the prior tree at Entry 58. **`docs/ABDULS_WIKI.md` still needs the matching long-form sections — flagged on the punch-list at the top of this file.**
+
+---
+
+## Entry 59 — Auth Model Simplification: Two-Role Canonical (May 7, 2026)
+
+### Problem
+
+The app inherited a three-tier legacy role model (`ceo`, `operations_manager`, `shop_floor`) inconsistently applied across RLS, API surfaces, and code. New features introduced `admin` / `production`, but the legacy strings lingered in ~110 RLS policies and stayed valid in CHECK constraints. This caused:
+
+- **Silent RLS failure**: production-role users had no matching SELECT policy on `public.users` → profile reads returned null → the `is_active` deactivation check never fired → deactivated users could still sign in.
+- **Rotted code**: duplicate role checks scattered across middleware, API routes, and MCP tools, with no single source of truth.
+- **Data drift**: `api_keys` and `users` held stale legacy strings, blocking the UI from cleanly enumerating roles.
+
+### Solution
+
+**Canonical two-role model** — `admin` (full access) and `production` (production module only). Three migrations land the change:
+
+#### [Migration 085 — roles_helpers_and_user_audit](../supabase/migrations/085_roles_helpers_and_user_audit.sql)
+
+Expands `users.role` CHECK to accept both legacy + new strings so policies don't break mid-migration. Adds `last_seen_at TIMESTAMPTZ`. Introduces SQL helpers (`SECURITY DEFINER`, bypass RLS):
+
+- `is_admin()` — `auth.uid()` ∈ `('admin', 'ceo', 'operations_manager')` AND `is_active`
+- `is_production()` — `auth.uid()` ∈ `('production', 'shop_floor')` AND `is_active`
+
+These consolidate role checks so existing RLS keeps working while data is migrated.
+
+#### [Migration 087 — users_self_read_rls](../supabase/migrations/087_users_self_read_rls.sql)
+
+**Critical fix.** Universal self-read policy:
+
+```sql
+CREATE POLICY users_self_read ON public.users
+  FOR SELECT USING (id = auth.uid());
+```
+
+Now every authenticated user can read their own row, regardless of role. Without this, the deactivation check in [app/(auth)/login/actions.ts](../app/(auth)/login/actions.ts) and [middleware.ts](../middleware.ts) silently passed for production users with null profile reads.
+
+#### [Migration 088 — drop_legacy_roles](../supabase/migrations/088_drop_legacy_roles.sql) (492 lines)
+
+Four-step payoff:
+
+1. **Migrate data.** `UPDATE users SET role = 'admin' WHERE role IN ('ceo', 'operations_manager');` `UPDATE users SET role = 'production' WHERE role = 'shop_floor';` (Same for `api_keys.role`.)
+2. **Rewrite ~110 RLS policies.** Drop literal-string policies; recreate using `is_admin()` / `is_production()` helpers. Where two near-identical policies existed (ceo + ops_manager), collapse into one `is_admin()` call.
+3. **Tighten helpers** to only accept the canonical pair (no more legacy role strings).
+4. **Tighten CHECK constraints**: `users.role` and `api_keys.role` now `CHECK (role IN ('admin', 'production'))`.
+
+> Migration 086 (`quotes_assembly_markup_override`) is orthogonal — covered in Entry 63.
+
+### Canonical Role Helpers — [lib/auth/roles.ts](../lib/auth/roles.ts)
+
+New TypeScript module mirroring the SQL functions:
+
+```typescript
+export type CanonicalRole = "admin" | "production";
+export function isAdminRole(role: string | null | undefined): boolean
+export function isProductionRole(role: string | null | undefined): boolean
+export function roleLabel(role: string | null | undefined): string
+export function isAssignableRole(role: string): role is CanonicalRole
+export const ALL_DB_ROLES: DbRole[] = ["admin", "production"];
+```
+
+All role checks now route through these helpers — no more string literals.
+
+### Middleware Route Gating — [middleware.ts](../middleware.ts)
+
+Production users are scoped to an allow-list:
+
+```typescript
+const PRODUCTION_ALLOWED_PREFIXES = [
+  "/production", "/stencils", "/shipping",
+  "/jobs/{id}" (detail pages only),
+  "/login", "/reset-password", "/api/auth", "/api/..."
+];
+```
+
+Admins see the full nav. The middleware now uses the **admin Supabase client** (not the user-scoped client) to read the profile, so the deactivation check never silently fails due to RLS gaps.
+
+### User Management UI
+
+- [app/(dashboard)/settings/users/page.tsx](../app/(dashboard)/settings/users/page.tsx) — admin-only; lists users with email, name, role, status, last sign-in, created date; filter by role / active.
+- [components/users/users-list-client.tsx](../components/users/users-list-client.tsx) — table + search; activate/deactivate; bulk ops.
+- [components/users/add-user-dialog.tsx](../components/users/add-user-dialog.tsx) — POST `/api/users`; generates temp password.
+- [components/users/edit-user-dialog.tsx](../components/users/edit-user-dialog.tsx) — PATCH `/api/users/{id}`.
+
+### Password Reset — [app/(auth)/reset-password/page.tsx](../app/(auth)/reset-password/page.tsx)
+
+New recovery route. Supabase `generateLink({ type: "recovery" })` returns an implicit-flow link with tokens in the URL hash. Page:
+
+1. Detects recovery tokens (`#access_token=…&refresh_token=…&type=recovery`).
+2. Calls `setSession()` to bootstrap a recovery session.
+3. Allows `updateUser({ password })` without the old password.
+4. Strips tokens from URL to prevent history leaks.
+
+Admins can trigger recovery via `/api/users/{id}/reset-password`.
+
+### Login Flow — [app/(auth)/login/actions.ts](../app/(auth)/login/actions.ts)
+
+After sign-in:
+
+1. Reads `role` + `is_active` via the **admin client** (not user-scoped).
+2. Signs out immediately if `is_active = false`.
+3. Routes production users to `/production`; everyone else to `/`.
+4. Best-effort `last_seen_at` update (non-blocking).
+
+### Sidebar — [components/sidebar.tsx](../components/sidebar.tsx)
+
+Production users see a narrow nav: Production / Shipping / Stencil Library. Admins see the full 16-item menu.
+
+### MCP Auth — [lib/mcp/auth.ts](../lib/mcp/auth.ts)
+
+Updated:
+
+```typescript
+export type McpRole = "admin" | "production";
+export function allowedToolsForRole(role: McpRole): Set<string>
+  // admin → all 28 tools
+  // production → 6 read-only tools (jobs, production, overview, search)
+```
+
+### API Auth Helper — [lib/auth/api-auth.ts](../lib/auth/api-auth.ts)
+
+Shared helper for routes accepting Bearer auth (API key or JWT): `getAuthUser(req) → { user: { id, role, isApiKey }, supabase }`. Falls back to `"production"` (most restrictive) if profile is missing. All routes now use this instead of duplicating role checks.
+
+### Files added
+
+- `lib/auth/roles.ts`
+- `app/(dashboard)/settings/users/page.tsx`
+- `components/users/{users-list-client,add-user-dialog,edit-user-dialog}.tsx`
+- `app/(auth)/reset-password/page.tsx`
+- `app/api/users/route.ts`, `app/api/users/[id]/route.ts`, `app/api/users/[id]/reset-password/route.ts`
+- `supabase/migrations/085_*.sql`, `087_*.sql`, `088_*.sql`
+
+### Files modified
+
+- `middleware.ts`, `lib/auth/api-auth.ts`, `lib/mcp/auth.ts`
+- `app/(auth)/login/actions.ts`, `app/(auth)/login/page.tsx`
+- `components/sidebar.tsx`
+
+### What's pending / risks
+
+1. Verify ~110 RLS policies in 088 are all correct — run `mcp__supabase__get_advisors(type="security")`.
+2. Sweep codebase for any hardcoded `role === "ceo"` / `"shop_floor"` checks the migration missed.
+3. Manually test deactivation for both admin + production accounts.
+4. Confirm production-user sidebar scoping matches the middleware allow-list.
+
+---
+
+## Entry 60 — Procurement Overhaul + Suppliers Master List + Stencils Library (May 7, 2026)
+
+### Why `/procurement/` was burned down
+
+The old model used a **1:1 relationship** between `procurements` and `jobs`. When Piyush consolidated multiple jobs into a single supplier PO, the system had no way to express the grouping — PROCs and POs didn't align. Operators worked around it in email and spreadsheets, breaking the single source of truth.
+
+**Deleted entirely:**
+
+- `app/(dashboard)/procurement/` (8 pages)
+- `components/procurement/*` (7 components: batch-workflow, create-po-button, delete-procurement-button, new-proc-batch-form, order-all-button, order-button, receive-button)
+- `app/api/bg-stock/*` (3 routes — replaced by `/api/inventory/*`, see Entry 61)
+- `components/fabrication-orders/*`, `app/api/fabrication-orders/route.ts`
+- `app/(dashboard)/bom/page.tsx` (BOM-list landing — superseded by direct GMP navigation)
+
+### New `/proc/` — Batch Model
+
+A **PROC Batch** is the new apex object. Multiple jobs roll up into one PROC via `jobs.procurement_id` (many-to-one).
+
+#### [Migration 063 — proc_batch_model](../supabase/migrations/063_proc_batch_model.sql)
+
+Additions to `procurements`:
+
+- `is_batch` BOOLEAN (true when `member_count > 1`)
+- `member_count` INT
+- `customer_id` UUID (all member jobs must share a customer)
+- `procurement_mode` TEXT — initially `{turnkey, consign_parts_supplied, consign_pcb_supplied, assembly_only}`. **Mig 070** later collapses the two consign values into a single `consignment`.
+- `proc_date` DATE + `sequence_num` INT — drive per-day-per-customer proc_code generation (format `T<YYMMDD>-NNN`, see [lib/proc/generate-proc-code.ts](../lib/proc/generate-proc-code.ts)).
+- `jobs.procurement_id` FK.
+
+Unique index on `(proc_date, customer_id, sequence_num)`.
+
+#### [Migration 064 — procurement_line_selections](../supabase/migrations/064_procurement_line_selections.sql)
+
+Per-line supplier choice — one row per `(procurement_id, mpn)`:
+
+- `chosen_supplier`, `chosen_supplier_pn`, `chosen_unit_price_cad`, `chosen_effective_qty`
+- **Mig 066** adds `order_status` ∈ `{not_ordered, ordered, shipped, received}`.
+- **Mig 067** adds `manual_unit_price_cad` + `manual_price_note` — operator override when a sales rep emails a quote outside the distributor APIs.
+- **Mig 082** adds `manual_buy_qty` — override for "qty to buy" in the merged BOM (used for BG-stock safety topups).
+
+RLS: admin only.
+
+#### Auto-allocator on PROC creation
+
+On `POST /api/proc`, the API:
+1. Creates the `procurements` row with mode + customer.
+2. Sets `jobs.procurement_id` for member jobs.
+3. Triggers [autoAllocateProcInventory()](../lib/inventory/auto-allocate-proc.ts) (Entry 61).
+4. Generates `proc_code` (e.g., `T260507-001`).
+
+The merged BOM is then fetched (CPC-aggregated, not MPN-keyed), distributor quotes are ranked ([lib/proc/rank-distributors.ts](../lib/proc/rank-distributors.ts)), and the buyer confirms each supplier via [components/proc/merged-bom-table.tsx](../components/proc/merged-bom-table.tsx).
+
+### PCB + Stencil Orders — [Migration 065](../supabase/migrations/065_pcb_stencil_orders.sql)
+
+Separate `pcb_orders` and `stencil_orders` tables. **Why:** PCB/stencil procurement runs on a different cadence than component procurement and uses different vendors (WMD, Candor, Stentech) with different metadata (e.g., stencils track `is_merged` + `covered_gmp_ids` for multi-GMP sheets).
+
+`pcb_orders`: `procurement_id`, `gmp_id`, `supplier`, `external_order_id`, `quantity`, `unit_price`, `total_price`, `currency` (default USD), `ordered_date`, `expected_arrival`, `received_date`, `status` ∈ `{ordered, shipped, received, cancelled}`, `invoice_file_path`.
+
+`stencil_orders`: same lifecycle fields, plus `stencil_type`, `is_merged`, `covered_gmp_ids` (UUID array), `currency` default CAD.
+
+UI: [pcb-orders-card.tsx](../components/proc/pcb-orders-card.tsx), [stencil-orders-card.tsx](../components/proc/stencil-orders-card.tsx).
+
+### Suppliers Master List — [Migration 076](../supabase/migrations/076_suppliers_and_contacts.sql)
+
+Curated approved-supplier system. New tables:
+
+**`suppliers`**:
+- `code` (uppercase short id, unique) — FK target on `supplier_pos`.
+- `legal_name`, `category` ∈ `{distributor, pcb_fab, stencil, mechanical, assembly, other}`.
+- `default_currency` ISO (CAD/USD/EUR/CNY).
+- `payment_terms` TEXT[] (**Mig 078** — multi-select; e.g., `["Credit Card", "Net 30"]`).
+- `billing_address` JSONB.
+- `is_approved` BOOLEAN — gating: only approved suppliers available for new POs.
+- `online_only` BOOLEAN (**Mig 077**) — true for distributors RS buys directly from (DigiKey/Mouser/LCSC). Excluded from RFQ flow.
+
+**`supplier_contacts`**: 1..N per supplier; partial unique index enforces **exactly one primary contact** per supplier; cascade delete.
+
+**`supplier_pos`** gains `supplier_id`, `supplier_contact_id`, `currency`, `cc_emails`.
+
+8 suppliers seeded as approved with 4 primary contacts. RLS: read = admin; write = admin.
+
+UI: [/settings/suppliers/](../app/(dashboard)/settings/suppliers/), [suppliers-list-client.tsx](../components/suppliers/suppliers-list-client.tsx), [add-supplier-dialog.tsx](../components/suppliers/add-supplier-dialog.tsx), [import-suppliers-dialog.tsx](../components/suppliers/import-suppliers-dialog.tsx), [supplier-detail-client.tsx](../components/suppliers/supplier-detail-client.tsx), [payment-terms-input.tsx](../components/suppliers/payment-terms-input.tsx).
+
+### Supplier Quotes / RFQ — [Migration 077](../supabase/migrations/077_supplier_quotes.sql)
+
+**`supplier_quotes`**:
+- `procurement_id`, `supplier_id`, `supplier_contact_id` FKs.
+- `currency`, `status` ∈ `{draft, requested, received, accepted, rejected, expired}`.
+- Denormalized totals `subtotal/shipping/tax/total` (recomputed on write).
+- `valid_until`, `requested_at`, `received_at`, `accepted_at`, `accepted_by`.
+- `resulting_po_id` FK — 1:1 to the PO created when accepted.
+
+**`supplier_quote_lines`**: `(supplier_quote_id, procurement_line_id)` unique; `qty`, `unit_price`, `line_total`.
+
+API: `POST /api/proc/[id]/quotes` (create/update), `POST /api/proc/[id]/quotes/[quote_id]/accept` (creates PO). UI: [supplier-quotes-panel.tsx](../components/proc/supplier-quotes-panel.tsx), [create-supplier-quote-dialog.tsx](../components/proc/create-supplier-quote-dialog.tsx).
+
+### Stencils Library — [Migration 071](../supabase/migrations/071_stencils_library.sql) + [072](../supabase/migrations/072_stencils_library_comments_discard.sql) + [103](../supabase/migrations/103_stencils_library_production_write.sql)
+
+**`stencils_library`**:
+- `position_no` INT (shelf position from source Excel).
+- `stencil_name` TEXT — physical label; partial unique on `stencil_name WHERE discarded_at IS NULL` (allows reuse after discard).
+- `comments` TEXT (**Mig 072**).
+- Soft-delete via `discarded_at`, `discarded_reason`, `discarded_by` (**Mig 072**).
+
+**`stencils_library_gmps`**: `(stencil_id, gmp_number)` join — one stencil sheet may cover multiple GMPs (merged stencils for Rev A + Rev B).
+
+Imported via [scripts/import-stencils-library.ts](../scripts/import-stencils-library.ts) from shop Excel.
+
+**Mig 103** widens RLS: production users can now `INSERT` + `UPDATE` (including soft-delete) but not rename/shuffle/restore — those stay admin-only.
+
+UI: [/stencils/](../app/(dashboard)/stencils/page.tsx), [stencils-library-manager.tsx](../components/stencils/stencils-library-manager.tsx).
+
+### Files added
+
+**API routes (18):** `app/api/proc/route.ts` + `[id]/{allocations,distributor-quotes,export-excel,lines/receive,pcb-orders,pcb-orders/[orderId],purchase-order-pdf,purchase-orders,quotes,refresh-all-distributors,refresh-prices,selections,selections/bulk,selections/buy-qty,stencil-orders,stencil-orders/[orderId]}/route.ts`
+
+**Supplier routes (7):** `app/api/suppliers/{route,[id]/route,[id]/approve,[id]/contacts,[id]/contacts/[contact_id],[id]/contacts/[contact_id]/promote,import}/route.ts`
+
+**Pages:** `/proc/{page,[id]/page,[id]/loading,pending/page}`, `/purchase-orders/page`, `/settings/suppliers/{page,[id]/page}`, `/stencils/page`
+
+**Components:** `components/proc/{merged-bom-table,proc-tabs,pcb-orders-card,stencil-orders-card,supplier-quotes-panel,stock-allocations-panel,purchase-orders-list,pending-orders-table,create-supplier-quote-dialog}.tsx`; `components/suppliers/{suppliers-list-client,supplier-detail-client,add-supplier-dialog,import-suppliers-dialog,payment-terms-input}.tsx`; `components/stencils/stencils-library-manager.tsx`; `components/purchase-orders/{purchase-orders-filter-bar,purchase-orders-table}.tsx`
+
+**Lib:** `lib/proc/{build-distributor-quotes,generate-proc-code,ordering-rollup,rank-distributors}.ts`; `lib/suppliers/types.ts`
+
+**Migrations:** 063–067, 070–072, 076–078, 082, 103.
+
+### What's pending
+
+- **Distributor buy-API integrations** — `order_status` schema is ready; operators set it manually today.
+- **Stencil top/bottom + subcontractor schema** — placeholder via `comments` only.
+- **Per-MPN refresh** — `merged-bom-table.tsx` TODO; full-PROC refresh only for now.
+- **Stencil un-discard UI** — admin-only DB op today.
+- **PCB/stencil order bulk CSV import**.
+- **PO PDF** — multi-supplier layout needs testing.
+
+---
+
+## Entry 61 — Inventory System: Stock Ledger + Allocations (May 7, 2026)
+
+### Why now
+
+The legacy `bg_stock` / `bg_stock_log` tables (simple snapshots, no ledger) couldn't track individual movements, allocations to PROCs, or serial-number feeder-slot assignments. **Mig 081** drops them entirely. The new system replaces them with append-only ledger + soft-hold allocations + CPC-based identity.
+
+Old `/api/bg-stock/*` routes deleted; all stock ops now flow through `/api/inventory/*` and `/api/proc/[id]/allocations/*`.
+
+### Schema — [Migration 079](../supabase/migrations/079_inventory.sql) + [080](../supabase/migrations/080_inventory_cpc_primary.sql) + [081](../supabase/migrations/081_cpc_primary_audit.sql) + [083](../supabase/migrations/083_inventory_serial_no.sql)
+
+**`inventory_parts`** (master, Mig 079; refactored Mig 080):
+- `cpc` TEXT UNIQUE NOT NULL — canonical identity (aligns with BOM parser, which fills CPC from MPN when customer doesn't supply one).
+- `mpn` optional (rotates when suppliers alternate).
+- `pool` ∈ `{bg, safety}`.
+- `serial_no` TEXT (**Mig 083**) — stable BG feeder-slot identifier.
+
+**`inventory_movements`** (append-only ledger):
+- `delta` INT (signed, never zero).
+- `kind` ∈ `{buy_for_proc, buy_external, consume_proc, manual_adjust, safety_topup, initial_stock}`.
+- Snapshots `qty_before` / `qty_after` on every row — audit reads never re-aggregate.
+- Indexes: `(part_id, created_at DESC)`, `(proc_id)`.
+
+**`inventory_allocations`** (soft holds):
+- `qty_allocated`, `status` ∈ `{reserved, consumed, released}`.
+- **Partial unique index**: only one OPEN reservation per `(part_id, proc_id)`; historical rows don't conflict.
+- No physical effect until status flips to `consumed` — PROCs sit allocated 2–3 weeks before consumption.
+
+**`inventory_part_stock`** (view): `physical_qty = SUM(movements.delta)`, `reserved_qty = SUM(open allocations)`, `available_qty = physical − reserved`. CPC + serial_no front the columns.
+
+**`inventory_serial_history`** (**Mig 083**): audit `(serial_no, inventory_part_id)` with `[assigned_at, unassigned_at]` spans. `unassigned_at IS NULL` = currently active. Lets operators trace "what was in slot 47 last quarter?"
+
+**CPC-primary indexing** (Mig 080/081): `procurement_lines.cpc` backfilled from `bom_lines`; `procurement_line_selections.cpc` mirrors parent; `ai_call_log.cpc` tags audit trail to canonical part.
+
+### Allocator — [lib/inventory/allocator.ts](../lib/inventory/allocator.ts)
+
+Pure helpers, no internal Supabase connection (caller supplies client):
+
+- **`recordMovement(supabase, input)`** — atomic INSERT with `qty_before`/`qty_after` snapshot. When `delta > 0`, auto-calls `topUpReservationsForPart` so stock arrivals trickle into open reservations without operator intervention.
+- **`topUpReservationsForPart(supabase, part_id)`** — finds all open reservations for this part, re-runs `reserveAllocation` on each. Reservations self-heal across PO receive / manual adjust / any future source.
+- **`reserveAllocation(supabase, {part_id, proc_id, qty_needed})`** — caps at `min(qty_needed, available_qty)`. If an open row exists for `(part, proc)`, updates in place. Returns `{allocated_qty, shortfall, allocation}`. No row-level locks (PostgREST doesn't expose them); race accepted (single operator per PROC in practice).
+- **`consumeAllocation(supabase, allocation_id)`** — two-step: flip status `reserved → consumed`, then `recordMovement(delta = -qty, kind='consume_proc')`. Idempotent guard.
+- **`releaseAllocation(supabase, allocation_id)`** — flip `reserved → released`. No movement row; frees `available_qty`.
+- **`findInventoryByCpc(supabase, cpcs[])`** — bulk lookup, normalizes (uppercase), dedupes, returns `Map<CPC, InventoryPartStock>`. Only active rows.
+
+### Auto-allocator hook — [lib/inventory/auto-allocate-proc.ts](../lib/inventory/auto-allocate-proc.ts)
+
+- **`autoAllocateProcInventory(supabase, procId)`** — fires on PROC creation. Calls `computeMergedCpcs` → POSTs to `/api/proc/[id]/allocations/auto`. Best-effort; failures logged but PROC creation never blocks.
+- **`computeMergedCpcs(supabase, procId)`** — aggregates member jobs' BOM lines: `qty per CPC = Σ(bom_line.quantity × job.quantity) + overage`. Lines without CPC skipped.
+
+### UI / API
+
+**Pages:**
+- [/inventory/page.tsx](../app/(dashboard)/inventory/page.tsx) — list, search, filter, CPC + serial prominent.
+- [/inventory/[id]/page.tsx](../app/(dashboard)/inventory/[id]/page.tsx) — movements ledger + allocations across all PROCs; edit thresholds.
+- [/settings/inventory/page.tsx](../app/(dashboard)/settings/inventory/page.tsx) — bulk CSV import.
+
+**Components:** `components/inventory/{inventory-list-client,inventory-detail-client,add-inventory-part-dialog,import-inventory-dialog,movements-ledger}.tsx`; `components/proc/stock-allocations-panel.tsx` (PROC-detail sibling).
+
+**API routes:** `/api/inventory` (GET list, POST create), `/api/inventory/[id]`, `/api/inventory/[id]/movements`, `/api/inventory/import`, `/api/inventory/allocations/[id]` (GET/DELETE-release), `/api/inventory/allocations/[id]/consume`, `/api/proc/[id]/allocations`, `/api/proc/[id]/allocations/auto`.
+
+**RLS:** admin only on every inventory table; production users see zero rows.
+
+### What's pending / risks
+
+1. **Serial-number assignment** — Mig 083 adds schema; the app must close prior history rows when `inventory_parts.serial_no` changes. Needs review — verify `/inventory/[id]` form calls the close logic instead of relying on manual closure.
+2. **Race in `reserveAllocation`** — no row-level locks; accepted for single-operator PROCs. Wrap in RPC if concurrent allocations become common.
+3. **Auto-allocate failures swallowed** — operator can click "Re-run allocation," but the UI should surface a warning badge on the merged BOM when auto-run failed.
+4. **Movement audit purity** — verify every code path calls `recordMovement` (not raw INSERTs). Spot-check the PO-receive integration.
+5. **CPC normalization** — uppercased in allocator, but DB stores raw case. Verify case-insensitive queries don't fail on mixed-case BOMs.
+
+---
+
+## Entry 62 — Payments, Invoicing, Multi-Currency + Tax Regions Overhaul (May 7, 2026)
+
+### Why
+
+The legacy invoice model had four blockers:
+
+1. **Single payment per invoice** — no partial-payment support.
+2. **No multi-currency** — USD customers were billed in CAD with manual FX notes.
+3. **No tax-by-region** — every invoice defaulted to QC tax rates.
+4. **No historical continuity** — pre-web-app Excel invoices couldn't be imported, leaving a 5-year gap in FY tax filings.
+
+This batch replaces the 1:1 invoice ↔ payment model with a **ledger**, adds **currency + FX snapshots**, introduces **5 Canadian tax regimes**, and enables **bulk import** of legacy invoices.
+
+### Partial Payment Ledger — [Migration 101](../supabase/migrations/101_payments.sql)
+
+`payments` evolves from "one row per invoice" to a true ledger.
+
+**Column renames** for spec alignment: `payment_method → method`, `reference_number → reference`, `created_by → recorded_by`.
+
+**CHECK constraints**: `amount > 0`; `method IN ('cheque','wire','eft','credit_card','cash','other')`.
+
+**Status derived** from `SUM(payments) >= invoices.total`. Status transitions are reversible:
+- `sent → paid` when fully covered.
+- `paid → sent` if a payment is deleted and balance dips below total.
+
+Logic in [lib/payments/totals.ts](../lib/payments/totals.ts) `bumpInvoiceStatusFromPayments()`.
+
+**Backfill**: every legacy `status='paid'` invoice with a `paid_date` gets a synthetic payment row at full `total`, tagged with the original `payment_method` and note "Backfilled by migration 101."
+
+Indexes on `(invoice_id)` and `(payment_date)`. RLS: admin only.
+
+### Invoice Lines — [Migration 100](../supabase/migrations/100_invoice_lines.sql)
+
+Breaks the 1:1 `invoices.job_id` link. `invoice_lines`:
+
+- One row per job covered (consolidated 4-job invoice = 4 rows).
+- `quantity`, `unit_price`, `line_total` — supports partial invoicing (e.g., 50 of 100 boards).
+- `shipment_line_id` optional FK — links to `shipment_lines` (Mig 099, Entry 64) for traceability.
+- `invoices.job_id` stays as denormalised pointer to the first line's job (back-compat).
+
+**Backfill strategy:**
+- Consolidated multi-job invoices (notes match `"Consolidated invoice for jobs: JB-X, JB-Y, …"`): regex-parsed, weighted proportionally by quantity; rounding deltas absorbed into the largest line.
+- Single-job: one line at full job quantity.
+
+A job is "fully invoiced" only when `SUM(invoice_lines.quantity)` across non-cancelled invoices ≥ `jobs.quantity`. Until then the job stays at `delivered`, triggering a "Pending Invoice" prompt.
+
+### Multi-Currency + FX — [Migration 104](../supabase/migrations/104_currency_and_tax_regions.sql)
+
+New columns on `customers`, `quotes`, `invoices`, `payments`:
+
+- **`currency`** ∈ `{CAD, USD}`; cascades customer → quote → invoice at creation.
+- **`fx_rate_to_cad`** — locked at issue/payment time, never updates.
+
+**FX source: Bank of Canada Valet API** ([lib/fx/boc.ts](../lib/fx/boc.ts)):
+
+- `fetchUsdCadRate()` — latest rate, cached 6h per process.
+- `fetchUsdCadRateOnDate(yyyymmdd)` — historical rates; searches 7 days back for weekends/holidays.
+- Fallback to customer's most recent invoice rate if BoC unreachable (tagged `source='fallback'`).
+
+Revenue reports sum `total * fx_rate_to_cad` for CAD-equivalent.
+
+### Tax Regions — [lib/tax/regions.ts](../lib/tax/regions.ts)
+
+Five regimes cascade customer → quote → invoice:
+
+| Region | Rule | Coverage |
+|--------|------|----------|
+| **QC** | 5% GST + 9.975% QST | Quebec |
+| **CA_OTHER** | 5% GST only | AB, BC, MB, SK, YT, NT, NU |
+| **HST_ON** | 13% HST | Ontario |
+| **HST_15** | 15% HST | NB, NL, NS, PE |
+| **INTERNATIONAL** | No tax | US + ROW |
+
+`deriveTaxRegion()` classifies by country + province; falls back to QC (over-collection beats under-collection domestically).
+
+**Storage**: HST regions populate `hst`; QC populates `tps_gst` + `tvq_qst`; CA_OTHER only `tps_gst`; INTERNATIONAL all zero. Reports break out federal vs. harmonized for CRA filings.
+
+### Billing Address Snapshots — [Migration 105](../supabase/migrations/105_address_country_codes_and_invoice_billing_snapshot.sql)
+
+Two moves:
+
+1. **Country code backfill** — every address in `customers.billing_addresses`/`shipping_addresses` JSONB gets `country_code` ∈ `{CA, US, OTHER}` synthesized from free-text country.
+2. **Billing address snapshot** on `quotes` and `invoices` — `billing_address JSONB`, captured at document creation, immutable. Drives `tax_region` and `currency` derivation. Moving a customer from QC to ON doesn't retroactively change a 6-month-old invoice.
+
+### Historic Invoice Import — [Migrations 106](../supabase/migrations/106_historic_invoices.sql) + [108](../supabase/migrations/108_historic_invoices_mark_paid.sql)
+
+New columns on `invoices`:
+
+- **`is_historic`** — operational queries (pending lists, AR aging, customer detail) exclude these; Reports include them.
+- **`legacy_reference`** — free text pointing back to the source (e.g., "DM File V11 r142", "QB INV #4567").
+- **`invoices.job_id`** is now nullable (historic invoices precede the jobs table).
+
+**Mig 108** auto-marks every imported historic invoice as `paid` with `paid_date = COALESCE(paid_date, issued_date)` and `payment_method='historic_import'`. Prevents stale invoices from inflating Total Outstanding KPIs.
+
+**UI**: [components/settings/historic-import-wizard.tsx](../components/settings/historic-import-wizard.tsx) — two-step CSV upload (dry-run preview → atomic commit). Schema: `customer_code, invoice_number, issued_date, currency, fx_rate_to_cad, subtotal, gst, qst, hst, freight, discount, total, tax_region, status, paid_date, legacy_reference, notes`.
+
+### NRE Billing Split — [Migration 107](../supabase/migrations/107_invoice_nre_billing.sql)
+
+NRE (stencil, programming, PCB fab setup) is now a **separate line item** on the first invoice, not baked into per-unit pricing.
+
+**Why:** Pre-migration, a 100-board job with $800 NRE split the NRE across all 100 boards (~$8/board). A 50-board partial invoice only collected $400 NRE, deferring the rest. RS wants the full $800 on shipment #1.
+
+- `invoice_lines.is_nre` BOOLEAN — synthetic NRE row (qty=1, unit_price=tier.nre_charge).
+- `jobs.nre_invoiced` BOOLEAN cache — TRUE iff at least one non-cancelled `invoice_line` with `is_nre=TRUE` exists for this job. Checked at invoice POST/PATCH/DELETE/cancel. Backfilled TRUE for every pre-migration job with any live invoice line.
+
+`getJobInvoiceTotals()` in [lib/invoices/totals.ts](../lib/invoices/totals.ts) excludes `is_nre=TRUE` from board-count sums so NRE doesn't pollute remaining-to-invoice math.
+
+### Customer Statement — [/customers/[id]/statement/page.tsx](../app/(dashboard)/customers/[id]/statement/page.tsx)
+
+Chronological ledger interleaving invoices (charges) and payments (credits), with running balance:
+
+- **Period selector** — FY-aware (Calendar / Tax FY Nov–Oct / Financial FY Oct–Sep); month/quarter/semi/annual buckets.
+- **Ledger entries** from `getCustomerLedger()` in [lib/payments/totals.ts](../lib/payments/totals.ts).
+- **Synthetic payments** auto-inserted for `paid` invoices with no real payment rows (historic imports) — tagged "Reconciled from invoice paid status."
+- **AR aging buckets** from `getCustomerAging()`: current / 30 / 60 / 90+ days.
+- **PDF export** via [components/payments/customer-statement-table.tsx](../components/payments/customer-statement-table.tsx).
+
+### Revenue Reporting — [lib/reports/revenue.ts](../lib/reports/revenue.ts)
+
+New index `idx_invoices_issued_currency` on `(issued_date, currency) WHERE status <> 'cancelled'`. Revenue queries:
+
+- Aggregate by `issued_date` (accrual basis) across current + historic-imported invoices.
+- Split totals by currency (CAD-only / USD-only / CAD-equiv).
+- Break out GST/QST/HST per region.
+- Support FY modes: Calendar, Tax (Nov–Oct), Financial (Oct–Sep).
+
+UI: [components/reports/revenue-section.tsx](../components/reports/revenue-section.tsx) + [revenue-controls.tsx](../components/reports/revenue-controls.tsx).
+
+### Files added
+
+**Migrations:** 099, 100, 101, 102, 104, 105, 106, 107, 108.
+
+**Lib:** `lib/payments/totals.ts`, `lib/invoices/totals.ts`, `lib/fx/boc.ts`, `lib/tax/regions.ts`, `lib/address/regions.ts`, `lib/reports/revenue.ts`.
+
+**Components:** `components/payments/{payments-list,record-payment-dialog,record-payment-form,bulk-payment-button,bulk-record-payment-dialog,customer-statement-table}.tsx`; `components/settings/historic-import-wizard.tsx`; `components/quotes/quote-currency-control.tsx`; `components/reports/{revenue-section,revenue-controls}.tsx`.
+
+**Pages:** `/customers/[id]/statement/page.tsx`, `/customers/[id]/statement/loading.tsx`, `/settings/historic-import/page.tsx`.
+
+**API routes:** `/api/customers/[id]/statement`, `/api/payments`, `/api/invoices/[id]` (with payment-state bump), `/api/historic-import`.
+
+### What's pending / risks
+
+1. **FX gain/loss GL posting** — `payments.fx_rate_to_cad` captured but not yet booked to a GL account.
+2. **Cross-currency payment** — invoice + payment must be same currency. No USD-paid-in-CAD swap yet.
+3. **Manual FX override** — not user-editable in UI; accountant must UPDATE the DB for negotiated rates.
+4. **Historic invoice edit guard** — soft-locked but no explicit UI banner. Consider a warning.
+5. **AR aging beyond 90 days** — no 6-month+ / 1-year+ buckets; thresholds adjustable in `getCustomerAging()`.
+
+---
+
+## Entry 63 — BOM + GMP + Pricing Evolution: CPC Migration, Customer Parts, Labour Settings, Markup Overrides (May 7, 2026)
+
+### CPC Rename: `components.mpn` → `components.cpc` — [Migration 049](../supabase/migrations/049_components_rename_mpn_to_cpc.sql)
+
+The `components` table is RS's manual-M-code repository — the Layer-1 lookup during BOM classification. Renaming `mpn` → `cpc` reflects RS's actual workflow: customer BOMs supply CPC per line; when no CPC column is present, the importer falls back to MPN. The lookup key should match customer expectations.
+
+Drops `components_mpn_manufacturer_key` unique constraint, renames the column, recreates as `components_cpc_manufacturer_key`. Renames `idx_components_mpn` for consistency. **BREAKING** for any direct read of `components.mpn`.
+
+Code: [lib/bom/column-mapper.ts](../lib/bom/column-mapper.ts) surfaces `cpc` as primary alongside `mpn` (stored per-component for traceability). Classifier still accepts raw MPN from BOMs; Layer-1 key is simply CPC.
+
+### Alternate MPNs: Multi-Source Fallback — [Migrations 050](../supabase/migrations/050_bom_line_alternates.sql) + [051](../supabase/migrations/051_components_mpn_alt.sql)
+
+Customers often list multiple part numbers (primary + second source + cross-references). The parser captures alternates so the pricing engine can fetch quotes for all candidates and the operator picks the best.
+
+**Mig 050** — `bom_line_alternates`: one row per `(bom_line, candidate_mpn)`. `rank` (0 = primary, 1..N = alternates), `source` ∈ `{customer, rs_alt, operator}`. Dedupes by `(bom_line_id, mpn)`. RLS: admin only.
+
+**Mig 051** — three nullable columns on `components`: `mpn` (original BOM MPN, informational), `alt_mpn` (RS-verified substitute), `alt_mpn_reason` (short text — e.g., "original EOL on DigiKey"). Purely informational; CPC remains the lookup key.
+
+Code: [lib/bom/parser.ts](../lib/bom/parser.ts) detects alternate-MPN columns via keyword matching ("Alternate 1", "Second Source", "Alt MPN").
+
+### Customer Parts + Manual M-Codes — [Migrations 055](../supabase/migrations/055_customer_parts_and_manual_mcodes.sql) + [056](../supabase/migrations/056_merge_manual_mcodes_into_customer_parts.sql)
+
+Replaces two flat Excel sheets with two normalized tables.
+
+**Mig 055:**
+- `customer_parts`: one row per `(customer, CPC)`. Holds original MPN/manufacturer, RS's preferred `mpn_to_use`/`manufacturer_to_use`, known distributor PNs (`digikey_pn`, `mouser_pn`, `lcsc_pn`), per-customer `m_code_manual` override, TH pin count, and a log of historical proc batch codes.
+- `manual_m_code_overrides`: flat global `CPC → M-Code` table (mirrors old Excel sheet 1:1).
+
+Classifier Layer-1 order: `customer_parts.m_code_manual` → `manual_m_code_overrides.m_code` → `components.m_code` → rule engine.
+
+**Mig 056** — idempotent merge: for each `(CPC, M-Code)` in `manual_m_code_overrides`, update every matching `customer_parts` row (only filling NULL `m_code_manual` so per-customer overrides are preserved). Drops `manual_m_code_overrides` afterward. Orphan CPCs (manual M-Codes with no procurement row) are logged; they'll be re-learned on the next BOM.
+
+Unlocks **per-customer part customization** — e.g., Cevians uses a generic 0603 10k when the designer's 1% 0603 is unavailable.
+
+### GMP Board-Side Normalization — [Migrations 074](../supabase/migrations/074_gmps_board_details.sql), [075](../supabase/migrations/075_gmps_board_details_backfill_from_quotes.sql), [089](../supabase/migrations/089_assembly_type_two_values.sql), [091](../supabase/migrations/091_drop_assembly_type.sql)
+
+Board-level details describe the physical product, not the quote. They were scattered across `boms.*` and `quotes.*`. **Now canonical on GMPs.**
+
+**Mig 074** — adds to `gmps`: `boards_per_panel` INT, `board_side` ∈ `{single, double}`, `ipc_class` ∈ `{1, 2, 3}`, `solder_type` ∈ `{leaded, lead-free}`. Backfills from the most recent non-null value across that GMP's BOMs.
+
+**Mig 075** — second backfill pass from quotes (operators who entered values via quote wizard rather than BOM). Type conversions: `quotes.assembly_type 'TB' → 'double'`, `'TS' → 'single'`.
+
+**Mig 089** — tightens legacy `assembly_type` enum to two physical values (`TB`, `TS`); old billing values (`CS`, `CB`, `AS`) deprecated. Billing now lives entirely on `procurement_mode` (see Mig 070, Entry 60).
+
+**Mig 091** — **BREAKING** — drops `assembly_type` from jobs and quotes entirely. `gmps.board_side` is the canonical physical-layout source. Defensive backfill derives `board_side` from any remaining `assembly_type` values.
+
+Code: any read of `assembly_type` must switch to `gmps.board_side`.
+
+### TH Pin Count — [Migration 057](../supabase/migrations/057_bom_lines_pin_count.sql)
+
+Accurate TH labour costing needs pin count per line — the same TH part might have different pin counts on different boards. Adds `bom_lines.pin_count` INT. Operators/classifier fill from `customer_parts.through_hole_pins`. Editable on pricing-review page.
+
+Code: [lib/mcode/classifier.ts](../lib/mcode/classifier.ts) seeds `pin_count` from `customer_parts` during classification.
+
+### Labour Settings — [Migrations 059](../supabase/migrations/059_labour_settings.sql) + [060](../supabase/migrations/060_labour_settings_depanel.sql)
+
+Replaces hard-coded labour rates in Settings → Pricing JSON. Versioned table; each edit inserts a new row keyed by `effective_date`; only one row `is_active=TRUE` at a time.
+
+Fields:
+- **Overhead**: `monthly_overhead`, `production_staff_count`, `hours_per_day`, `days_per_month`, `utilization_pct`. Burdened rate derived: `monthly_overhead / (staff × h/day × days/mo × util%)`.
+- **SMT line**: `conveyor_mm_per_sec`, `oven_length_mm`, `reflow_passes_default`.
+- **Cycle times** (seconds): `cp`, `0402`, `0201`, `ip`, `mansmt`, `th_base`, `th_per_pin`.
+- **Per-job setup**: `smt_line_setup_minutes`, `feeder_setup_minutes_each`, `first_article_minutes`.
+- **Per-board manual** (minutes): `inspection`, `touchup`, `packing`.
+
+Generated columns: `available_hours_per_month`, `burdened_rate_per_hour`. Seeded with $50K overhead, 4 staff, standard defaults.
+
+**Mig 060** — adds `cycle_depanel_seconds` (depanelisation cost; default 40s/board).
+
+UI: [components/settings/labour-settings-form.tsx](../components/settings/labour-settings-form.tsx). Operator-facing breakdown: [components/quotes/labour-breakdown-panel.tsx](../components/quotes/labour-breakdown-panel.tsx).
+
+Bridge: [lib/pricing/labour-overlay.ts](../lib/pricing/labour-overlay.ts) (122 lines) converts `labour_settings` into the existing `PricingSettings` shape so the engine consumes the new model without internal refactor.
+
+### Per-Quote Markup Overrides — [Migrations 061](../supabase/migrations/061_quotes_markup_overrides.sql) + [086](../supabase/migrations/086_quotes_assembly_markup_override.sql)
+
+Three nullable NUMERIC columns on `quotes` for one-off deals or cost-plus billing:
+
+- `component_markup_pct_override` (Mig 061)
+- `pcb_markup_pct_override` (Mig 061)
+- `assembly_markup_pct_override` (Mig 086) — also seeds global `assembly_markup_pct: 30` into the pricing JSONB.
+
+NULL means "use global." UI: [components/quotes/markup-override-editor.tsx](../components/quotes/markup-override-editor.tsx).
+
+### NRE Schema Cleanup — [Migration 052](../supabase/migrations/052_drop_nre_setup_misc.sql)
+
+Removes `nre_setup` and `nre_misc` from `app_settings.pricing`. Only three NRE types remain: programming, stencil, pcb_fab.
+
+### API Pricing Cache Fixes — [Migrations 058](../supabase/migrations/058_api_pricing_cache_allow_all_suppliers.sql) + [109](../supabase/migrations/109_api_pricing_cache_unique_per_sku.sql)
+
+**Mig 058** — drops the CHECK constraint on `source` (was pinned to DigiKey/Mouser/LCSC; silently rejected upserts from Future/Avnet/Arrow etc.).
+
+**Mig 109** — moves UNIQUE constraint from `(source, search_key)` to `(source, search_key, supplier_part_number, warehouse_code)`. Distributors like Newark return multiple SKUs per MPN (different stock/lead-time variants); the old constraint collapsed all into one row — last write won, hiding in-stock variants.
+
+### Customer folder_name — [Migration 073](../supabase/migrations/073_customers_folder_name.sql)
+
+Adds `folder_name` TEXT to `customers` — short name (e.g., "Cevians" for "Cevians LLC") for filing documents on disk. Informational; no unique constraint.
+
+### Files added (this entry)
+
+**Migrations:** 049, 050, 051, 052, 055, 056, 057, 058, 059, 060, 061, 073, 074, 075, 086, 089, 091, 109.
+
+**Lib:** `lib/bom/mcode-summary.ts` (new), `lib/pricing/labour-overlay.ts` (new), `lib/bom/column-mapper.ts` (modified), `lib/mcode/classifier.ts` (modified), `lib/bom/parser.ts` (extended).
+
+**Components:** `components/settings/labour-settings-form.tsx` (new), `components/quotes/labour-breakdown-panel.tsx` (new), `components/quotes/markup-override-editor.tsx` (new).
+
+### What's pending / risks
+
+- `manual_m_code_overrides` table is dropped (Mig 056) — any external reader will break.
+- Orphan CPCs from the manual-M-code merge will be re-learned on next BOM; not retroactively reconciled.
+- Verify no remaining reads of `quotes.assembly_type` / `jobs.assembly_type` anywhere in code (Mig 091 drops them).
+
+---
+
+## Entry 64 — Jobs, Production, Shipments: Partial Builds, Due Dates, RLS Widening (May 7, 2026)
+
+### Jobs PO Fields: Source Quote + Frozen Price — [Migrations 062](../supabase/migrations/062_jobs_po_source.sql), [068](../supabase/migrations/068_jobs_po_unit_price.sql), [069](../supabase/migrations/069_jobs_nre_charge.sql)
+
+When a customer PO is received, the job is priced from a quote tier and the price is **frozen** so later edits don't change historical costing.
+
+**Mig 062** — denormalizes the source quote snapshot onto the job:
+- `source_quote_id`, `source_tier_qty`, `frozen_unit_price`, `frozen_subtotal`, `po_date`.
+- `price_match_reason` TEXT — `{exact, closest-not-greater, manual-override, no-match}`.
+
+**Mig 068** — `po_unit_price` NUMERIC — the unit price the **customer** stated on their PO (operator-entered at ingest; independent of our internal `frozen_unit_price`).
+
+**Mig 069** — `nre_charge_cad` + `nre_included_on_po` BOOLEAN. Drives invoicing: when true, `nre_charge_cad` is added to the invoice line items.
+
+### Job Due Date — [Migration 093](../supabase/migrations/093_jobs_due_date.sql)
+
+Splits the customer-facing delivery deadline from internal production scheduling. `jobs.due_date` DATE — auto-computed from the matching quote tier's `lead_times` JSONB on job creation; admin can override for rush orders. Indexed. Existing jobs left NULL (no reliable way to back-derive lead time).
+
+Code: [lib/jobs/due-date.ts](../lib/jobs/due-date.ts):
+- `parseLeadTimeDays()` accepts "3 Weeks", "5 business days", "21 days", etc.
+- `computeDueDate()` applies lead time from matched quote tier to a base date.
+
+Used by both `/api/jobs` (new) and `/api/jobs/from-po` (PO ingest).
+
+### Programming Status Three Values — [Migration 090](../supabase/migrations/090_programming_status_three_values.sql)
+
+Tightens `jobs.programming_status` to:
+- `not_ready` (default) — firmware not yet prepared.
+- `ready` — program on hand and validated.
+- `not_required` — board has no programming step.
+
+**Auto-flip rule** (in API): if any prior job exists for the same `bom_id`, the new job starts `ready` automatically. Backfill maps `not_needed→not_required`, `done→ready`, `pending/in_progress→not_ready`.
+
+Code: [lib/jobs/programming-status.ts](../lib/jobs/programming-status.ts) `deriveInitialProgrammingStatus()`.
+
+### Job Status Log Field Discriminator — [Migration 092](../supabase/migrations/092_job_status_log_field_discriminator.sql)
+
+Extends `job_status_log` to record more than just lifecycle changes. Adds `field TEXT NOT NULL DEFAULT 'status'` with `CHECK (field IN ('status', 'programming_status'))`. The `old_status`/`new_status` columns now hold whatever from/to values the named field had. Backfill stamps existing rows as `'status'`.
+
+### Production RLS Widening — [Migrations 094](../supabase/migrations/094_production_shipping_access.sql), [095](../supabase/migrations/095_jobs_production_rls_widen.sql), [096](../supabase/migrations/096_production_customers_gmps_read.sql)
+
+Production users (Piyush at the floor) now own assembly **and** shipping. RLS rewritten:
+
+**Mig 094** — replaces read-only `shipments_production_select` with a FOR ALL policy. Production can create/update shipments and add tracking numbers.
+
+**Mig 095** — widens `jobs_production` SELECT from only `production`/`inspection` statuses to every non-financial status (`created → parts_received → production → inspection → shipping → delivered`). `invoiced`/`archived` stay admin-only.
+
+**Mig 096** — adds SELECT-only policies on `customers` and `gmps` for production users. Shipping pages need customer name + board name; without these, RLS filtered out nested objects, leaving Customer column blank.
+
+### Customer Pickup Shipments — [Migration 097](../supabase/migrations/097_shipments_customer_pickup.sql)
+
+- `picked_up_by` TEXT — name of the person who collected (set when `carrier='Customer Pickup'`).
+- Expands carrier CHECK to include `'Customer Pickup'`.
+
+No new status: pickups skip in-transit and land at `delivered` when the customer walks out.
+
+### Shipment Quantities — [Migration 098](../supabase/migrations/098_shipments_quantity.sql)
+
+`shipments.quantity` INTEGER NOT NULL CHECK > 0. Backfill: any pre-existing shipment covered the full job (`quantity = job.quantity`). Sum across a job's shipments → fully-shipped state.
+
+### Partial Builds + Shipment Lines — [Migration 099](../supabase/migrations/099_partial_build_and_shipment_lines.sql)
+
+Two coupled changes:
+
+**1. `jobs.ready_to_ship_qty`** INT NOT NULL DEFAULT 0 — monotonic count of boards released from production to shipping area. CHECK `0 ≤ ready_to_ship_qty ≤ quantity`. When equal to `quantity`, API auto-advances status to `shipping`. Backfill: jobs past production are implicitly fully released.
+
+**2. `shipment_lines`** — breaks 1:1 jobs↔shipments. One physical shipment (one tracking number, one carrier, one customer) can carry boards from multiple jobs at varying quantities. `shipments.job_id` and `shipments.quantity` dropped; lines move into `shipment_lines (shipment_id, job_id, quantity)`. RLS: CEO + production full access. Backfill: one line per existing shipment.
+
+**3. `shipments.customer_id`** UUID NOT NULL — denormalized FK; avoids join through `shipment_lines→jobs`.
+
+UI: [components/production/release-to-shipping-dialog.tsx](../components/production/release-to-shipping-dialog.tsx) — operator increments or sets `ready_to_ship_qty` (pencil affordance). Parent updates kanban optimistically.
+
+Code: [lib/shipments/totals.ts](../lib/shipments/totals.ts) computes per-job shipment totals (shipped, remaining) by summing `shipment_lines` for non-cancelled shipments.
+
+### Quote Procurement Mode Consignment — [Migration 084](../supabase/migrations/084_quotes_procurement_mode_consignment.sql)
+
+Mirrors Mig 070 onto `quotes`. Backfills legacy `consign_parts_supplied`/`consign_pcb_supplied` to `consignment`; CHECK becomes `{turnkey, consignment, assembly_only}`.
+
+### Audit Triggers Extended — [Migration 102](../supabase/migrations/102_audit_log_triggers.sql)
+
+Extends `audit_trigger_func` coverage to additional tables (procurements, supplier_pos, payments, invoices, jobs, etc.). Tightens RLS by dropping unnecessary policies. *(Note: audit_trigger_func still uses `NEW.id` — known issue for text-PK tables; see `feedback_audit_trigger_broken.md` in memory.)*
+
+### New UI Pages & Components
+
+- [/gmp/[id]/page.tsx](../app/(dashboard)/gmp/[id]/page.tsx) — GMP detail; shows canonical `board_side`, board details, recent BOMs/quotes.
+- [/jobs/new/page.tsx](../app/(dashboard)/jobs/new/page.tsx) — job creation form with due_date calc, source quote selection, PO fields.
+- [/parts/page.tsx](../app/(dashboard)/parts/page.tsx) — search/browse `customer_parts`; edit MPN overrides, pin counts, M-Code overrides.
+- [/customers/import/page.tsx](../app/(dashboard)/customers/import/page.tsx) — bulk CSV import.
+- [/settings/labour/page.tsx](../app/(dashboard)/settings/labour/page.tsx) — labour settings editor (admin only); active row + edit history.
+- [components/production/monthly-gantt.tsx](../components/production/monthly-gantt.tsx) — rewritten; uses `ready_to_ship_qty` + `due_date` to surface late-delivery risk. Driven by [lib/production/next-event.ts](../lib/production/next-event.ts).
+- [components/production/production-kanban.tsx](../components/production/production-kanban.tsx) — rewritten; cards show "20/100 ready to ship"; ReleaseToShipping modal affordance.
+- [components/shipments/](../components/shipments/) — new directory; shipment creation, edit, line items, multi-job shipments.
+- [components/quotes/quotes-table.tsx](../components/quotes/quotes-table.tsx) — lists quotes with `board_side` (read from GMP), `procurement_mode`, markup overrides.
+- [components/quotes/lead-times-editor.tsx](../components/quotes/lead-times-editor.tsx) — edit `lead_times` JSONB per tier.
+
+### Files added (this entry)
+
+**Migrations:** 062, 068, 069, 084, 090, 092, 093, 094, 095, 096, 097, 098, 099, 102.
+
+**Lib:** `lib/jobs/due-date.ts`, `lib/jobs/programming-status.ts`, `lib/production/next-event.ts`, `lib/shipments/totals.ts`.
+
+**Components:** `components/production/release-to-shipping-dialog.tsx`, `components/production/monthly-gantt.tsx` (rewritten), `components/production/production-kanban.tsx` (rewritten), `components/shipments/*`, `components/quotes/{quotes-table,lead-times-editor}.tsx`.
+
+**Pages:** `/gmp/[id]/page.tsx`, `/jobs/new/page.tsx`, `/parts/page.tsx`, `/customers/import/page.tsx`, `/settings/labour/page.tsx`.
+
+### What's pending / risks
+
+- `audit_trigger_func` still uses `NEW.id` (text-PK tables broken) — known issue.
+- Existing jobs (pre-Mig 093) have NULL `due_date`; no back-derive possible.
+- `programming_status` backfill best-effort; spot-check that prior-job auto-flip didn't misclassify long-paused builds.
+- Production users now see customers + GMPs (Mig 096) — verify no sensitive fields leak (e.g., contact emails). The policies are SELECT-only and read whole rows.
+
+---
+
+*Entries 59–64 backfilled: May 11, 2026 — covers everything from May 7 squash-merge `c186f90` (migrations 049–109, 430 files, +64104 / −8583).*
+
