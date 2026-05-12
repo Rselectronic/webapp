@@ -39,6 +39,7 @@ export async function PATCH(
     revision?: string | null;
     gerber_name?: string | null;
     gerber_revision?: string | null;
+    bom_section?: string | null;
   };
 
   // The boms table has no updated_at column (only created_at), so don't
@@ -65,6 +66,27 @@ export async function PATCH(
       typeof body.gerber_revision === "string" ? body.gerber_revision.trim() : "";
     updates.gerber_revision = v.length > 0 ? v : null;
   }
+  // Section retag: only the four whitelisted values are allowed. We mirror
+  // the change onto bom_lines below so the per-row tag tracks the BOM's
+  // label. Cross-BOM auto-merge on retag isn't handled here — re-upload is
+  // the supported path when the operator wants the lines moved into a
+  // partner BOM.
+  const allowedSections = new Set(["full", "smt", "th", "other"]);
+  let nextSection: string | null = null;
+  if (body.bom_section !== undefined) {
+    const v =
+      typeof body.bom_section === "string"
+        ? body.bom_section.trim().toLowerCase()
+        : "";
+    if (!allowedSections.has(v)) {
+      return NextResponse.json(
+        { error: `bom_section must be one of: ${Array.from(allowedSections).join(", ")}` },
+        { status: 400 }
+      );
+    }
+    nextSection = v;
+    updates.bom_section = v;
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json(
@@ -78,10 +100,32 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .select(
-      "id, bom_name, file_name, revision, gerber_name, gerber_revision"
+      "id, bom_name, file_name, revision, gerber_name, gerber_revision, bom_section, source_files"
     )
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // After a section retag, decide whether to sync per-line tags. For
+  // single-file BOMs every line should match the BOM-level label, so we
+  // retag. For multi-file BOMs (source_files has more than one entry) the
+  // per-line tag records which uploaded file each line came from — that
+  // traceability is worth more than the cosmetic label, so leave it alone.
+  if (nextSection) {
+    const sourceFiles = Array.isArray(
+      (data as { source_files?: unknown[] }).source_files
+    )
+      ? ((data as { source_files: unknown[] }).source_files as unknown[])
+      : [];
+    const isMultiFile = sourceFiles.length > 1;
+    if (!isMultiFile) {
+      await supabase
+        .from("bom_lines")
+        .update({ bom_section: nextSection })
+        .eq("bom_id", id)
+        .neq("bom_section", nextSection);
+    }
+  }
+
   return NextResponse.json(data);
 }
 

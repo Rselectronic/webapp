@@ -335,13 +335,13 @@ export function BatchWorkflow({ batch, lines, log }: { batch: Batch; lines: Batc
                               <span className={`text-[10px] font-medium px-1 py-px rounded ${
                                 line.m_code_source === "database" ? "bg-purple-100 text-purple-700"
                                   : line.m_code_source === "rules" ? "bg-cyan-100 text-cyan-700"
-                                  : line.m_code_source === "api" ? "bg-orange-100 text-orange-700"
+                                  : line.m_code_source === "ai" ? "bg-orange-100 text-orange-700"
                                   : line.m_code_source === "manual" ? "bg-green-100 text-green-700"
                                   : "bg-gray-100 text-gray-500"
                               }`}>
                                 {line.m_code_source === "database" ? "DB Match"
                                   : line.m_code_source === "rules" ? "Rule"
-                                  : line.m_code_source === "api" ? "AI"
+                                  : line.m_code_source === "ai" ? "AI"
                                   : line.m_code_source === "manual" ? "Manual"
                                   : "Unclassified"}
                               </span>

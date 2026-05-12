@@ -28,7 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
-import { Search, X, Trash2, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, X, Trash2, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface BomLine {
@@ -46,6 +46,8 @@ interface BomLine {
   m_code_source: string | null;
   m_code_reasoning: string | null;
   pin_count: number | null;
+  m_code_approved_by?: string | null;
+  m_code_approved_at?: string | null;
 }
 
 interface BomTableProps {
@@ -176,14 +178,23 @@ const COL_INITIAL_PCT: Record<ColKey, number> = {
 /** Minimum column width in pixels — drag can't shrink below this. */
 const COL_MIN_PX = 40;
 
-export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alternatesByLineId }: BomTableProps) {
+export function BomTable({ lines: initialLines, bomId, customerId, alternatesByLineId }: BomTableProps) {
   const router = useRouter();
   const [lines, setLines] = useState(initialLines);
   const [search, setSearch] = useState("");
   const [activeMcodes, setActiveMcodes] = useState<Set<string>>(new Set());
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
+  // AI-only filter: show only rows the classifier API tagged
+  // (m_code_source === "ai"). Useful for verifying AI picks before locking
+  // an m_code with the operator's manual review pass.
+  const [aiOnly, setAiOnly] = useState(false);
   const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
+  // AI-approval workflow state. Set of line IDs currently being approved
+  // (so we can disable the per-row button + show a spinner) and a flag for
+  // the bulk-approve action.
+  const [approvingIds, setApprovingIds] = useState<Set<string>>(new Set());
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -290,11 +301,10 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
 
   // Qty=0 lines are not-installed placeholders — kept in the table so
   // production sees the empty designators, but excluded from classification
-  // stats since they intentionally don't get M-coded.
-  const nonPcb = lines.filter((l) => !l.is_pcb);
-  const classifiable = nonPcb.filter((l) => l.quantity > 0);
-  const classified = classifiable.filter((l) => l.m_code).length;
-  const unclassified = classifiable.length - classified;
+  // stats since they intentionally don't get M-coded. The PCB row is now
+  // INCLUDED (qty>0, m_code=APCB) so the Components / Classified tiles
+  // reflect every billable line on the board.
+  const classifiable = lines.filter((l) => l.quantity > 0);
   const thLines = classifiable.filter((l) => l.m_code === "TH");
   const thMissingPins = thLines.filter(
     (l) => l.pin_count === null || l.pin_count === undefined
@@ -302,6 +312,17 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
 
   // Collect all M-codes actually present in the BOM, sorted by frequency desc.
   // Qty=0 lines are excluded so the filter pill counts match the summary badges.
+  // PCB rows (m_code = APCB) ARE included so the operator can filter to them
+  // — handy when they want to verify which row is currently tagged as the
+  // PCB before deciding to keep or re-tag it.
+  // Rows the AI tagged but the operator hasn't approved yet. Drives the
+  // bulk-approve banner above the table and gates the "Start Quote" button
+  // (downstream — handled by the page that owns StartQuoteButton).
+  const pendingAiLines = useMemo(
+    () => lines.filter((l) => l.m_code_source === "ai"),
+    [lines]
+  );
+
   const availableMcodes = useMemo(() => {
     const counts = new Map<string, number>();
     for (const line of classifiable) {
@@ -315,16 +336,25 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
   const filteredLines = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = lines.filter((line) => {
-      if (line.is_pcb) {
-        if (q || activeMcodes.size > 0 || unclassifiedOnly) return false;
-        return true;
-      }
+      // PCB rows participate in search + m_code filters just like any other
+      // row. Operators wanted to be able to "Filter by APCB" and see the
+      // PCB row, and to find a misclassified PCB by typing its CPC / MPN.
+      //
+      // Qty=0 rows are "not installed" placeholders, not unclassified
+      // components — exclude them from BOTH the "Unclassified Only" toggle
+      // and the __UNCLASSIFIED__ filter pill so the unclassified bucket
+      // matches what actually needs human review.
+      if (unclassifiedOnly && (line.m_code || line.quantity <= 0)) return false;
 
-      if (unclassifiedOnly && line.m_code) return false;
+      // AI-only: filter to rows the classifier API tagged. PCB rows with
+      // m_code_source "auto" don't count — only "ai" rows survive this
+      // filter so the operator can review what the AI actually picked.
+      if (aiOnly && line.m_code_source !== "ai") return false;
 
       if (activeMcodes.size > 0) {
         const code = line.m_code ?? "__UNCLASSIFIED__";
         if (!activeMcodes.has(code)) return false;
+        if (code === "__UNCLASSIFIED__" && line.quantity <= 0) return false;
       }
 
       if (q) {
@@ -370,13 +400,12 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
     }
 
     return filtered;
-  }, [lines, search, activeMcodes, unclassifiedOnly, sortField, sortDir]);
+  }, [lines, search, activeMcodes, unclassifiedOnly, aiOnly, sortField, sortDir]);
 
   // Totals displayed in the summary row exclude qty=0 (not-installed) lines.
+  // PCB rows are included (they're a real line on the board).
   const totalComponentCount = classifiable.length;
-  const shownComponentCount = filteredLines.filter(
-    (l) => !l.is_pcb && l.quantity > 0
-  ).length;
+  const shownComponentCount = filteredLines.filter((l) => l.quantity > 0).length;
 
   function toggleMcode(code: string) {
     setActiveMcodes((prev) => {
@@ -391,9 +420,11 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
     setSearch("");
     setActiveMcodes(new Set());
     setUnclassifiedOnly(false);
+    setAiOnly(false);
   }
 
-  const hasActiveFilters = search.length > 0 || activeMcodes.size > 0 || unclassifiedOnly;
+  const hasActiveFilters =
+    search.length > 0 || activeMcodes.size > 0 || unclassifiedOnly || aiOnly;
 
   async function handlePinCountChange(lineId: string, rawValue: string) {
     const trimmed = rawValue.trim();
@@ -429,13 +460,70 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
     }
   }
 
+  /**
+   * Approve one or more AI-classified m_codes. The server flips
+   * m_code_source from "ai" → "manual", stamps approved_by + approved_at,
+   * and writes the m_code to the global components cache + per-customer
+   * override so the next BOM with the same CPC skips the AI call.
+   */
+  async function approveLines(lineIds: string[]) {
+    if (lineIds.length === 0) return;
+    const bulk = lineIds.length > 1;
+    if (bulk) setBulkApproving(true);
+    else setApprovingIds((s) => new Set(s).add(lineIds[0]));
+
+    try {
+      const res = await fetch(`/api/bom/${bomId}/approve-mcode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ line_ids: lineIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          (data as { error?: string }).error ?? `HTTP ${res.status}`
+        );
+      }
+      const data = (await res.json()) as { approved: number; approved_at: string };
+      const nowIso = data.approved_at ?? new Date().toISOString();
+      setLines((prev) =>
+        prev.map((l) =>
+          lineIds.includes(l.id)
+            ? {
+                ...l,
+                m_code_source: "manual",
+                m_code_approved_at: nowIso,
+              }
+            : l
+        )
+      );
+      toast.success(
+        bulk
+          ? `Approved ${data.approved} AI classification${data.approved === 1 ? "" : "s"}`
+          : "AI classification approved"
+      );
+      router.refresh();
+    } catch (err) {
+      toast.error("Approval failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      if (bulk) setBulkApproving(false);
+      else setApprovingIds((s) => {
+        const next = new Set(s);
+        for (const id of lineIds) next.delete(id);
+        return next;
+      });
+    }
+  }
+
   async function handleMcodeChange(lineId: string, mcode: string) {
     const supabase = createClient();
 
-    // When m_code=APCB, the line is really a PCB — flip is_pcb so every
-    // "skip PCBs" filter in the codebase (pricing fetch, etc.) catches it
-    // via a single predicate.
-    const pcbFlip = mcode === "APCB" ? { is_pcb: true } : {};
+    // Keep is_pcb in sync with the m_code choice in BOTH directions:
+    //   APCB → is_pcb = true  (so all "skip PCBs" predicates catch it)
+    //   any other code → is_pcb = false (operator is fixing a wrong PCB tag)
+    const isPcb = mcode === "APCB";
 
     await supabase
       .from("bom_lines")
@@ -444,7 +532,7 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
         m_code_confidence: 1.0,
         m_code_source: "manual",
         m_code_reasoning: "Manual override",
-        ...pcbFlip,
+        is_pcb: isPcb,
       })
       .eq("id", lineId);
 
@@ -494,7 +582,7 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
               m_code_confidence: 1.0,
               m_code_source: "manual",
               m_code_reasoning: "Manual override",
-              is_pcb: mcode === "APCB" ? true : l.is_pcb,
+              is_pcb: isPcb,
             }
           : l
       )
@@ -507,11 +595,12 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
   }
 
   // Live M-Code distribution — recomputes whenever lines change. Excludes
-  // qty=0 placeholders so they don't inflate the Unclassified bucket.
+  // qty=0 placeholders so they don't inflate the Unclassified bucket. The
+  // PCB row is INCLUDED (it's m_code=APCB) so the donut sums to the same
+  // total as the Components tile.
   const mcodeDistribution = useMemo(() => {
     const dist: Record<string, number> = {};
     for (const line of lines) {
-      if (line.is_pcb) continue;
       if (line.quantity <= 0) continue;
       const code = line.m_code ?? "Unclassified";
       dist[code] = (dist[code] ?? 0) + 1;
@@ -527,24 +616,17 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
   return (
     <TooltipProvider delay={200}>
       <div className="space-y-4">
-        {/* Summary */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <Badge variant="secondary">{totalComponentCount} components</Badge>
-          <Badge variant="default">{classified} classified</Badge>
-          {unclassified > 0 && (
-            <Badge variant="destructive">{unclassified} need review</Badge>
-          )}
-          {thLines.length > 0 && (
-            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-              {thLines.length} TH {thLines.length === 1 ? "part" : "parts"}
-            </Badge>
-          )}
-          {thMissingPins > 0 && (
+        {/* TH pin warning — surfaces only the unique signal not already in
+            the stat tiles above. Components/Classified/Need-Review counts
+            live in the cards; repeating them here was clutter. TH-parts
+            count is in the M-Code Distribution chart's APCB/TH slices. */}
+        {thMissingPins > 0 && (
+          <div className="flex items-center gap-3 flex-wrap">
             <Badge variant="destructive">
               {thMissingPins} missing TH pin{thMissingPins === 1 ? "" : "s"}
             </Badge>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Live M-Code Distribution Chart */}
         {hasClassifiedForChart && (
@@ -559,6 +641,45 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
               <MCodeChart distribution={mcodeDistribution} />
             </CardContent>
           </Card>
+        )}
+
+        {/* AI-approval banner — appears when the classifier tagged rows that
+            no one has signed off on yet. Bulk approve flips them to
+            "manual" and caches the m_codes globally + per-customer so the
+            next BOM with the same CPC skips the AI entirely. */}
+        {pendingAiLines.length > 0 && (
+          <div className="rounded-lg border-2 border-orange-200 bg-orange-50 px-4 py-3 dark:border-orange-900/50 dark:bg-orange-950/30 flex flex-wrap items-center gap-3">
+            <Sparkles className="h-4 w-4 shrink-0 text-orange-600 dark:text-orange-400" />
+            <div className="flex-1 min-w-[260px] text-sm">
+              <span className="font-semibold text-orange-900 dark:text-orange-100">
+                {pendingAiLines.length} AI classification
+                {pendingAiLines.length === 1 ? "" : "s"} pending approval
+              </span>
+              <span className="ml-2 text-orange-800/80 dark:text-orange-200/80 text-xs">
+                Review and approve before starting the quote. Approved m-codes
+                are cached so the same CPC won&apos;t re-hit the AI.
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setAiOnly(true)}
+              className="bg-white dark:bg-gray-900"
+            >
+              Review
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => approveLines(pendingAiLines.map((l) => l.id))}
+              disabled={bulkApproving}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {bulkApproving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : null}
+              Approve all
+            </Button>
+          </div>
         )}
 
         {/* Filter + search bar — always visible above the table */}
@@ -594,6 +715,11 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
                 onCheckedChange={setUnclassifiedOnly}
               />
               <span>Show only unclassified</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <Switch checked={aiOnly} onCheckedChange={setAiOnly} />
+              <span>Show only AI-classified</span>
             </label>
 
             {hasActiveFilters && (
@@ -722,7 +848,7 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
                     }
                   >
                     <TableCell className="px-3 py-2.5 text-xs text-gray-400">
-                      {line.is_pcb ? "PCB" : line.line_number}
+                      {line.line_number}
                     </TableCell>
                     <TableCell className="px-3 py-2.5 font-mono text-sm">
                       {line.quantity}
@@ -734,46 +860,38 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
                       <CellWithTooltip value={line.cpc} />
                     </TableCell>
                     <TableCell className="px-3 py-2.5 font-mono text-xs">
-                      <CellWithTooltip value={line.mpn} />
-                      {(() => {
-                        const alts = alternatesByLineId?.[line.id];
-                        if (!alts || alts.length === 0) return null;
-                        const shown = alts.slice(0, 3);
-                        const overflow = alts.length - shown.length;
-                        return (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {shown.map((alt, i) => (
-                              <Tooltip key={`${alt.mpn}-${i}`}>
-                                <TooltipTrigger
-                                  render={
-                                    <span className="inline-block max-w-full truncate rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono text-gray-600 dark:bg-gray-800 dark:text-gray-400 cursor-default">
-                                      {alt.mpn}
-                                    </span>
-                                  }
-                                />
-                                <TooltipContent side="top" align="start" sideOffset={6} className="max-w-xs break-words">
-                                  {alt.manufacturer ? `${alt.manufacturer} · ` : ""}
-                                  {sourceLabel(alt.source)}
-                                </TooltipContent>
-                              </Tooltip>
-                            ))}
-                            {overflow > 0 && (
-                              <Tooltip>
-                                <TooltipTrigger
-                                  render={
-                                    <span className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono text-gray-500 dark:bg-gray-800 dark:text-gray-500 cursor-default">
-                                      +{overflow} more
-                                    </span>
-                                  }
-                                />
-                                <TooltipContent side="top" align="start" sideOffset={6} className="max-w-xs break-words whitespace-pre-wrap">
-                                  {alts.slice(3).map((a) => `${a.mpn}${a.manufacturer ? ` (${a.manufacturer})` : ""}`).join("\n")}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                          </div>
-                        );
-                      })()}
+                      <div className="flex items-center gap-1.5">
+                        <div className="min-w-0 flex-1">
+                          <CellWithTooltip value={line.mpn} />
+                        </div>
+                        {(() => {
+                          // Show a single "+N" pill (never the alts themselves)
+                          // so every row stays the same height. Hover the pill
+                          // to read the full alternate list with manufacturer
+                          // and source labels.
+                          const alts = alternatesByLineId?.[line.id];
+                          if (!alts || alts.length === 0) return null;
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <span className="shrink-0 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono text-gray-600 dark:bg-gray-800 dark:text-gray-400 cursor-default">
+                                    +{alts.length}
+                                  </span>
+                                }
+                              />
+                              <TooltipContent side="top" align="start" sideOffset={6} className="max-w-xs break-words whitespace-pre-wrap">
+                                {alts
+                                  .map(
+                                    (a) =>
+                                      `${a.mpn}${a.manufacturer ? ` (${a.manufacturer})` : ""} — ${sourceLabel(a.source)}`,
+                                  )
+                                  .join("\n")}
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        })()}
+                      </div>
                     </TableCell>
                     <TableCell className="px-3 py-2.5 text-xs">
                       <CellWithTooltip value={line.description} />
@@ -782,8 +900,22 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
                       <CellWithTooltip value={line.manufacturer} />
                     </TableCell>
                     <TableCell className="px-3 py-2.5">
-                      {line.is_pcb ? (
-                        <Badge variant="secondary" className="text-xs">PCB</Badge>
+                      {/* Qty=0 rows are "not installed" placeholders kept in
+                          the table for visibility only — they don't need a
+                          classification, so hide the dropdown.
+                          On every other row the M-Code dropdown is editable
+                          (including PCB rows: picking a non-APCB code there
+                          clears is_pcb so misclassified PCBs can be rescued).
+                          The PCB badge sits beside the dropdown so the row
+                          still reads as "PCB" at a glance. */}
+                      {/* PCB-ness is already conveyed by the row's blue
+                          background and the APCB value in the dropdown — no
+                          need for an extra "PCB" badge here, which used to
+                          push the cell wider than its column. */}
+                      {line.quantity <= 0 ? (
+                        <span className="text-xs italic text-gray-400">
+                          not installed
+                        </span>
                       ) : (
                         <McodeSelect
                           value={line.m_code}
@@ -811,13 +943,13 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
                           <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${
                             line.m_code_source === "database" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
                               : line.m_code_source === "rules" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300"
-                              : line.m_code_source === "api" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                              : line.m_code_source === "ai" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
                               : line.m_code_source === "manual" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
                               : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
                           }`}>
                             {line.m_code_source === "database" ? "DB"
                               : line.m_code_source === "rules" ? "Rule"
-                              : line.m_code_source === "api" ? "AI"
+                              : line.m_code_source === "ai" ? "AI"
                               : line.m_code_source === "manual" ? "Manual"
                               : "—"}
                           </span>
@@ -830,6 +962,23 @@ export function BomTable({ lines: initialLines, bomId: _bomId, customerId, alter
                               }
                             />
                           </div>
+                          {line.m_code_source === "ai" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => approveLines([line.id])}
+                              disabled={approvingIds.has(line.id) || bulkApproving}
+                              className="shrink-0 h-6 gap-1 border-orange-300 bg-orange-50 px-1.5 text-[10px] text-orange-800 hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200"
+                              title="Approve AI classification — caches m_code globally + per-customer so this CPC won't re-hit AI."
+                            >
+                              {approvingIds.has(line.id) ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Check className="h-3 w-3" />
+                              )}
+                              Approve
+                            </Button>
+                          )}
                         </div>
                       )}
                     </TableCell>

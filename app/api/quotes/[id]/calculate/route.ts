@@ -159,8 +159,11 @@ export async function POST(
     (labourRow ?? null) as LabourSettingsRow | null
   );
 
-  // Per-quote markup overrides take precedence over the global pricing
-  // settings. Null columns fall through to the global value.
+  // Legacy quote-level markup overrides. The UI now writes per-tier overrides
+  // into quantities.tier_markup_overrides; these columns are kept as a
+  // fallback so quotes saved before the per-tier migration still apply.
+  // When set, they shift the engine's settings — per-tier overrides further
+  // up the chain still win for tiers that have them.
   const compOver =
     quote.component_markup_pct_override !== null && quote.component_markup_pct_override !== undefined
       ? Number(quote.component_markup_pct_override)
@@ -181,6 +184,40 @@ export async function POST(
   }
   if (assemblyOver !== null && Number.isFinite(assemblyOver)) {
     settings = { ...settings, assembly_markup_pct: assemblyOver };
+  }
+
+  // Per-tier markup overrides — stored in quote.quantities.tier_markup_overrides
+  // as { [tier_qty]: { component?, pcb?, assembly? } }. When present for a
+  // tier, beats the legacy column and the global setting for that markup type.
+  const rawTierMarkupOverrides =
+    ((quote.quantities as Record<string, unknown> | null) ?? {})
+      .tier_markup_overrides;
+  const tierMarkupOverrides = new Map<
+    number,
+    {
+      component_markup_pct?: number;
+      pcb_markup_pct?: number;
+      assembly_markup_pct?: number;
+    }
+  >();
+  if (rawTierMarkupOverrides && typeof rawTierMarkupOverrides === "object") {
+    for (const [k, v] of Object.entries(
+      rawTierMarkupOverrides as Record<string, unknown>
+    )) {
+      const qty = Number(k);
+      if (!Number.isFinite(qty)) continue;
+      if (!v || typeof v !== "object") continue;
+      const o = v as Record<string, unknown>;
+      const pick = (key: string): number | undefined => {
+        const n = Number(o[key]);
+        return Number.isFinite(n) ? n : undefined;
+      };
+      tierMarkupOverrides.set(qty, {
+        component_markup_pct: pick("component_markup_pct"),
+        pcb_markup_pct: pick("pcb_markup_pct"),
+        assembly_markup_pct: pick("assembly_markup_pct"),
+      });
+    }
   }
   const overages: OverageTier[] = (overageRows ?? []).map((o) => ({
     m_code: o.m_code,
@@ -409,6 +446,7 @@ export async function POST(
     // fall back to whatever's currently saved on the GMP.
     board_side: body.board_side ?? quoteBoardSide,
     pricing_overrides: pricingOverrides,
+    tier_markup_overrides: tierMarkupOverrides.size > 0 ? tierMarkupOverrides : undefined,
     boards_per_panel: Number(
       body.boards_per_panel ?? quote.boards_per_panel ?? 1
     ) || 1,

@@ -53,6 +53,16 @@ export interface ParseLogEntry {
   action: "INCLUDED" | "PCB" | "AUTO-PCB" | "AUTO-PCB-FAIL" | "FIDUCIAL" | "DNI" | "MERGED" | "SECTION_HEADER" | "NOT_MOUNTED" | "EMPTY" | "HEADER";
   merged_into?: number;
   detail?: string;
+  /** For MERGED entries: full row snapshot of the SOURCE row that was
+   *  absorbed into another. Captured before the merge mutates existing. */
+  merged_row?: {
+    quantity: number;
+    reference_designator: string;
+    cpc: string | null;
+    description: string;
+    mpn: string;
+    manufacturer: string;
+  };
 }
 
 /** Result of parsing a BOM file */
@@ -106,5 +116,14 @@ export interface BomConfig {
    * to the primary manufacturer.
    */
   alt_manufacturer_columns?: string[];
+  /**
+   * Additional designator names that should be recognized as the PCB row.
+   * The parser always matches the standard `^PCB[A-Z0-9\-]*$` pattern; this
+   * list adds customer-specific names (Lanka uses "FIBRE" on their boards,
+   * for example). Matched case-insensitively against the FIRST designator
+   * token. Description-based PCB matching is still forbidden — Rule 6 — to
+   * avoid false positives like "PCB MOUNTING BRACKET".
+   */
+  pcb_designators?: string[];
   notes?: string;
 }

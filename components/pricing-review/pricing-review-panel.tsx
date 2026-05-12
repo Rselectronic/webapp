@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, RefreshCw, ChevronDown, ChevronRight, Check, AlertCircle, X, Info, FileSpreadsheet } from "lucide-react";
+import { Loader2, RefreshCw, ChevronDown, ChevronRight, Check, AlertCircle, X, Info, FileSpreadsheet, FileText, ClipboardPaste } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -22,6 +22,8 @@ import { BUILT_IN_SUPPLIER_NAMES, SUPPLIER_METADATA } from "@/lib/supplier-metad
 import type { BuiltInSupplierName } from "@/lib/supplier-metadata";
 import type { SupplierQuote, OverageTier } from "@/lib/pricing/types";
 import { getOverage } from "@/lib/pricing/overage";
+import { CustomerQuoteModal } from "@/components/pricing-review/customer-quote-modal";
+import { CustomerQuoteBulkModal } from "@/components/pricing-review/customer-quote-bulk-modal";
 
 // ---------------------------------------------------------------------------
 // Component Pricing Review — top-to-bottom workflow:
@@ -52,6 +54,12 @@ type QuoteWithCad = SupplierQuote & {
   from_cache?: boolean;
   cache_age_hours?: number | null;
   fetched_at?: string | null;
+  /** Populated only when source==='customer_quote' — drives the import badge
+   *  on the quote row so reviewers can see which lines came from a real
+   *  distributor quote vs. an API call. */
+  customer_supplier_name?: string | null;
+  customer_quote_ref?: string | null;
+  customer_valid_until?: string | null;
 };
 
 type FetchMode = "cache_only" | "cache_first" | "live";
@@ -95,6 +103,11 @@ interface CachedQuoteRow {
   franchised: boolean | null;
   warehouse_code: string | null;
   fetched_at: string;
+  /** Populated for source='customer_quote' rows (operator-imported distributor
+   *  quotes). For built-in API rows these stay null. */
+  supplier_name?: string | null;
+  quote_ref?: string | null;
+  valid_until?: string | null;
 }
 
 interface FxRateRow {
@@ -184,6 +197,20 @@ export function PricingReviewPanel(props: Props) {
   } = props;
   const wizardMode = Boolean(quoteId);
   const router = useRouter();
+
+  // ---- Customer-quote import modals ----
+  // Per-line override popover (the row clicked dictates which line it targets)
+  // and the bulk import dialog (scoped to the whole BOM). Both write into
+  // api_pricing_cache as source='customer_quote' and rely on router.refresh()
+  // to surface the new rows in initialCachedQuotes.
+  const [customerQuoteLineId, setCustomerQuoteLineId] = useState<string | null>(
+    null
+  );
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const customerQuoteLine =
+    customerQuoteLineId != null
+      ? lines.find((l) => l.id === customerQuoteLineId) ?? null
+      : null;
 
   // ---- Supplier selection ----
   // Start with no distributors pre-selected — the operator picks which
@@ -358,6 +385,9 @@ export function PricingReviewPanel(props: Props) {
             product_url: null,
             unit_price_cad: null,
             fx_rate_applied: null,
+            customer_supplier_name: r.supplier_name ?? null,
+            customer_quote_ref: r.quote_ref ?? null,
+            customer_valid_until: r.valid_until ?? null,
           });
         }
       }
@@ -1810,8 +1840,18 @@ export function PricingReviewPanel(props: Props) {
           <Button
             variant="outline"
             size="sm"
-            onClick={exportQuotesToExcel}
+            onClick={() => setBulkImportOpen(true)}
             className="h-7 text-xs ml-auto"
+            title="Paste a vendor RFQ response (TSV/CSV) and apply prices to matching lines"
+          >
+            <ClipboardPaste className="h-3.5 w-3.5 mr-1.5" />
+            Import distributor quotes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportQuotesToExcel}
+            className="h-7 text-xs"
             title="Export every supplier quote on every BOM line to an Excel file"
           >
             <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />
@@ -2033,6 +2073,7 @@ export function PricingReviewPanel(props: Props) {
             onSelectQuote={(tier, quote) => saveSelection(line, tier, quote)}
             onClearSelection={(tier) => clearSelection(line.id, tier)}
             onRefreshLine={() => fetchPrices([line.id])}
+            onImportCustomerQuote={() => setCustomerQuoteLineId(line.id)}
             cacheStats={lineCacheStats.get(line.id) ?? null}
             errors={lineErrors.get(line.id) ?? []}
             fetchMode={fetchMode}
@@ -2063,6 +2104,26 @@ export function PricingReviewPanel(props: Props) {
           />
         ))}
       </div>
+
+      {/* Customer-quote import — per-line popover + bulk paste modal.
+          Both write source='customer_quote' rows into api_pricing_cache and
+          rely on router.refresh() to surface them on next render. */}
+      <CustomerQuoteModal
+        open={customerQuoteLine != null}
+        onClose={() => setCustomerQuoteLineId(null)}
+        onSaved={() => router.refresh()}
+        bomLineId={customerQuoteLine?.id ?? ""}
+        mpn={customerQuoteLine?.mpn ?? null}
+        cpc={customerQuoteLine?.cpc ?? null}
+        description={customerQuoteLine?.description ?? null}
+      />
+      <CustomerQuoteBulkModal
+        open={bulkImportOpen}
+        onClose={() => setBulkImportOpen(false)}
+        onSaved={() => router.refresh()}
+        bomId={bomId}
+        bomLines={lines.map((l) => ({ id: l.id, mpn: l.mpn, cpc: l.cpc }))}
+      />
     </div>
   );
 }
@@ -2428,6 +2489,7 @@ function LineRow({
   onSelectQuote,
   onClearSelection,
   onRefreshLine,
+  onImportCustomerQuote,
   cacheStats,
   errors,
   fetchMode,
@@ -2457,6 +2519,8 @@ function LineRow({
   onSelectQuote: (tier: number, quote: QuoteWithCad) => void;
   onClearSelection: (tier: number) => void;
   onRefreshLine: () => void;
+  /** Opens the customer-quote import modal targeted at this line. */
+  onImportCustomerQuote: () => void;
   cacheStats: LineCachedStats | null;
   errors: Array<{ supplier: string; mpn: string; error: string }>;
   fetchMode: FetchMode;
@@ -2642,6 +2706,16 @@ function LineRow({
                 <span>Cust. supplied</span>
               </label>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onImportCustomerQuote}
+              className="h-6 px-2 text-xs"
+              title="Import a distributor quote you already have for this line"
+            >
+              <FileText className="h-3 w-3 mr-1" />
+              Use my quote
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -2879,18 +2953,62 @@ function QuoteRow({
   savingKey: string | null;
 }) {
   const meta = SUPPLIER_METADATA[quote.source as BuiltInSupplierName];
+  const isCustomerQuote = quote.source === "customer_quote";
+  // For source='customer_quote' rows the actual distributor sits in
+  // customer_supplier_name (the source string is just the tag). Display the
+  // real distributor name + a "Your quote" pill so reviewers can tell at a
+  // glance that this came from an imported quote, not an API call. The valid-
+  // until date and quote_ref surface on hover via the badge tooltip.
+  const displaySupplier = isCustomerQuote
+    ? quote.customer_supplier_name ?? "Customer quote"
+    : meta?.display_name ?? quote.source;
+  const tooltipParts: string[] = [];
+  if (isCustomerQuote) {
+    if (quote.customer_quote_ref)
+      tooltipParts.push(`Ref: ${quote.customer_quote_ref}`);
+    if (quote.customer_valid_until)
+      tooltipParts.push(`Valid until ${quote.customer_valid_until}`);
+  }
   return (
-    <tr className="border-t dark:border-gray-800">
+    <tr
+      className={`border-t dark:border-gray-800 ${
+        isCustomerQuote
+          ? "bg-violet-50/60 dark:bg-violet-950/20"
+          : ""
+      }`}
+    >
       <td className="px-3 py-2">
-        <div className="flex items-center gap-1.5">
-          <Badge variant="outline" className="text-[10px]">
-            {meta?.display_name ?? quote.source}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge
+            variant="outline"
+            className={`text-[10px] ${
+              isCustomerQuote
+                ? "border-violet-300 bg-violet-100 text-violet-900 dark:border-violet-800 dark:bg-violet-900/40 dark:text-violet-200"
+                : ""
+            }`}
+            title={tooltipParts.join(" · ") || undefined}
+          >
+            {displaySupplier}
           </Badge>
-          <CacheBadge
-            fromCache={quote.from_cache}
-            ageHours={quote.cache_age_hours ?? null}
-            fetchedAt={quote.fetched_at ?? null}
-          />
+          {isCustomerQuote && (
+            <Badge
+              variant="secondary"
+              className="text-[9px] bg-violet-200 text-violet-900 dark:bg-violet-800/50 dark:text-violet-100"
+              title={tooltipParts.join(" · ") || "Imported customer quote"}
+            >
+              Your quote
+              {quote.customer_valid_until
+                ? ` · until ${quote.customer_valid_until}`
+                : ""}
+            </Badge>
+          )}
+          {!isCustomerQuote && (
+            <CacheBadge
+              fromCache={quote.from_cache}
+              ageHours={quote.cache_age_hours ?? null}
+              fetchedAt={quote.fetched_at ?? null}
+            />
+          )}
         </div>
         {quote.supplier_part_number && (
           <div className="text-[10px] text-gray-400 font-mono">{quote.supplier_part_number}</div>

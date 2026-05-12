@@ -174,6 +174,40 @@ export default async function CustomerStatementPage({
   const invoices = (invoicesRes.data ?? []) as InvoiceRow[];
   const realPayments = (paymentsRes.data ?? []) as PaymentRow[];
 
+  // Older invoices have notes like "[BACKDATED ... by user <uuid>]" because
+  // an earlier API revision stamped the actor's UUID instead of their name.
+  // Resolve those UUIDs to full names at render time so the ledger
+  // description stays legible without rewriting history.
+  const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  const noteUserIds = new Set<string>();
+  for (const inv of invoices) {
+    if (!inv.notes) continue;
+    for (const m of inv.notes.matchAll(UUID_RE)) noteUserIds.add(m[0]);
+  }
+  const userNameById = new Map<string, string>();
+  if (noteUserIds.size > 0) {
+    const { data: userRows } = await supabase
+      .from("users")
+      .select("id, full_name")
+      .in("id", Array.from(noteUserIds));
+    for (const u of (userRows ?? []) as Array<{
+      id: string;
+      full_name: string | null;
+    }>) {
+      if (u.full_name) userNameById.set(u.id, u.full_name);
+    }
+  }
+  function humanizeNote(notes: string | null): string {
+    if (!notes) return "";
+    let out = notes;
+    for (const [id, name] of userNameById) {
+      // collapse "user <uuid>" → "<name>" first, then any stray bare uuid.
+      out = out.replace(new RegExp(`user\\s+${id}`, "gi"), name);
+      out = out.replaceAll(id, name);
+    }
+    return out;
+  }
+
   // ── Synthesize offsetting payments for status='paid' invoices that
   // aren't fully covered by real payment rows. Without this, an imported
   // historic invoice (status='paid' + zero payment rows) renders as a
@@ -306,12 +340,13 @@ export default async function CustomerStatementPage({
       inv.issued_date ??
       // fall back to whatever is least bad if no issued date
       todayMontreal();
+    const humanized = humanizeNote(inv.notes);
     entries.push({
       kind: "invoice",
       id: inv.id,
       date,
       reference: inv.invoice_number,
-      description: inv.notes?.slice(0, 80) ?? "Invoice",
+      description: humanized ? humanized.slice(0, 80) : "Invoice",
       amount: Number(inv.total ?? 0),
     });
   }

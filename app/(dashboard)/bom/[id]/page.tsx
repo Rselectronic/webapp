@@ -14,6 +14,7 @@ import { WorkflowBanner } from "@/components/workflow/workflow-banner";
 import { ExportBomButton } from "@/components/bom/export-bom-button";
 import { DeleteBomButton } from "@/components/bom/delete-bom-button";
 import { EditBomMetaButton } from "@/components/bom/edit-bom-meta-button";
+import { MergeLogPanel } from "@/components/bom/merge-log-panel";
 import { StartQuoteButton } from "@/components/quote-wizard/start-quote-button";
 import { formatDateTime } from "@/lib/utils/format";
 
@@ -144,7 +145,16 @@ export default async function BomDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {bom.status === "parsed" && <StartQuoteButton bomId={id} />}
+          {bom.status === "parsed" && (
+            <StartQuoteButton
+              bomId={id}
+              pendingAiCount={
+                (lines ?? []).filter(
+                  (l) => l.m_code_source === "ai" && l.quantity > 0
+                ).length
+              }
+            />
+          )}
           {linkedQuote && (
             <Link href={`/quotes/${linkedQuote.id}`}>
               <Button size="sm" variant="secondary" className="gap-1.5">
@@ -161,6 +171,11 @@ export default async function BomDetailPage({
               revision: bom.revision ?? null,
               gerber_name: bom.gerber_name ?? null,
               gerber_revision: bom.gerber_revision ?? null,
+              bom_section: (bom.bom_section ?? "full") as
+                | "full"
+                | "smt"
+                | "th"
+                | "other",
             }}
           />
           <ExportBomButton bomId={id} fileName={bom.file_name} gmpNumber={gmp?.gmp_number ?? ""} />
@@ -179,8 +194,11 @@ export default async function BomDetailPage({
           production print-out shows their designators, and they deliberately
           don't get M-coded. */}
       {(() => {
+        // Count every installed (qty > 0) line, INCLUDING the PCB row —
+        // it's a real billable line on the board. is_dni placeholders are
+        // still excluded because they explicitly don't get installed.
         const classifiableLines = (lines ?? []).filter(
-          (l) => !l.is_pcb && !l.is_dni && (l.quantity ?? 0) > 0
+          (l) => !l.is_dni && (l.quantity ?? 0) > 0
         );
         const liveComponents = classifiableLines.length;
         const liveClassified = classifiableLines.filter((l) => l.m_code).length;
@@ -208,6 +226,30 @@ export default async function BomDetailPage({
 
       {/* M-Code Distribution chart is rendered inside BomTable below
           so it recomputes live after manual M-Code assignments. */}
+
+      {/* Merge log — collapsed by default. Surfaces every source row that
+          the parser folded into another row via MPN dedup, with the
+          surviving line number, so operators can audit what got combined. */}
+      {(() => {
+        const parseResult = (bom.parse_result ?? {}) as {
+          merge_log?: Array<{
+            mpn: string;
+            merged_into_line: number;
+            file_name?: string | null;
+            source?: {
+              quantity: number;
+              reference_designator: string;
+              cpc: string | null;
+              description: string;
+              mpn: string;
+              manufacturer: string;
+            };
+          }>;
+        };
+        return parseResult.merge_log && parseResult.merge_log.length > 0 ? (
+          <MergeLogPanel entries={parseResult.merge_log} />
+        ) : null;
+      })()}
 
       {/* AI Classify Button */}
       {lines && lines.length > 0 && (

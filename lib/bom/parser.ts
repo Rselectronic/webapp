@@ -93,7 +93,7 @@ function extractAlternates(
   return out;
 }
 
-function naturalSort(a: string, b: string): number {
+export function naturalSort(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 }
 
@@ -160,12 +160,32 @@ export function parseBom(
     const manufacturer = getField(row, mapping, "manufacturer", headers);
     const cpc = getField(row, mapping, "cpc", headers);
 
-    // Quantity: either from the qty column, or count designators if no_qty mode
+    // Quantity: either from the qty column, or count designators if no_qty mode.
+    //
+    // Some customers (Lanka especially) use the Quantity cell on wire/jumper
+    // rows to store a length string like "0.75in" or "1.75in" instead of an
+    // integer count. parseInt would silently yield 0 for "0.75in" and drop
+    // the part. Rules:
+    //   • blank cell or literal "0" → qty=0 (DNI candidate, behaviour unchanged)
+    //   • pure integer ("5") → qty=that integer
+    //   • anything else (length spec, "TBD", "ea", "1 of 2"...) → qty defaults
+    //     to 1 AND we capture the raw cell on `qtyCellNote` so production can
+    //     see the original spec (e.g. wire length) on the BOM detail page.
     let qty: number;
+    let qtyCellNote: string | null = null;
     if (config.no_qty) {
       qty = countDesignators(designator);
     } else {
-      qty = parseInt(qtyStr, 10) || 0;
+      const trimmed = (qtyStr ?? "").trim();
+      if (!trimmed) {
+        qty = 0;
+      } else if (/^\d+$/.test(trimmed)) {
+        qty = parseInt(trimmed, 10);
+      } else {
+        const parsed = parseInt(trimmed, 10);
+        qty = !isNaN(parsed) && parsed > 0 ? parsed : 1;
+        qtyCellNote = trimmed;
+      }
     }
 
     // Skip empty rows — all text fields blank (regardless of qty).
@@ -212,8 +232,17 @@ export function parseBom(
       continue;
     }
 
-    // Rule 2 & 6: PCB Detection (designator ONLY — never by description)
-    if (/^PCB[A-Z0-9\-]*$/i.test(firstDesignator)) {
+    // Rule 2 & 6: PCB Detection (designator ONLY — never by description).
+    // Standard match is the `^PCB[A-Z0-9\-]*$` pattern. Customers who use a
+    // board-specific designator (e.g. Lanka uses "FIBRE") can add it to
+    // their bom_config.pcb_designators list — case-insensitive exact match
+    // on the first designator token.
+    const isCustomPcbDesignator =
+      Array.isArray(config.pcb_designators) &&
+      config.pcb_designators.some(
+        (d) => d.trim().toLowerCase() === firstDesignator.toLowerCase()
+      );
+    if (/^PCB[A-Z0-9\-]*$/i.test(firstDesignator) || isCustomPcbDesignator) {
       pcbRow = {
         line_number: 0,
         quantity: qty || 1,
@@ -256,12 +285,19 @@ export function parseBom(
 
     const alternates = extractAlternates(row, mapping, mpn, manufacturer);
 
+    // Preserve the original qty cell text on rows where it wasn't a plain
+    // integer — Lanka wire/jumper rows put the build length here (e.g.
+    // "0.75in") and production needs to see it.
+    const descriptionOut = qtyCellNote
+      ? [description, `[qty: ${qtyCellNote}]`].filter(Boolean).join(" ")
+      : description;
+
     included.push({
       line_number: lineCounter++,
       quantity: qty,
       reference_designator: designator,
       cpc: cpcNormalized,
-      description,
+      description: descriptionOut,
       mpn,
       manufacturer,
       is_pcb: false,
@@ -287,16 +323,39 @@ export function parseBom(
     });
   }
 
-  // Rule 9: Sort — quantity DESC, then first designator ASC (natural sort)
+  // mergeSameMpn logged `merged_into: <existing.line_number>` which is the
+  // PRE-sort line number. The sort+renumber below mutates each ParsedLine's
+  // line_number, so we snapshot pre-sort line_number → ParsedLine here and
+  // patch the MERGED entries after renumber so they point at the final
+  // surviving line number.
+  const refByOldLine = new Map<number, ParsedLine>();
+  for (const l of merged) refByOldLine.set(l.line_number, l);
+
+  // Rule 9: Sort to match the operators' Excel convention:
+  //   1. qty=0 ("not installed" placeholders) pushed to the bottom
+  //   2. Within each bucket: designator A→Z primary, qty DESC tiebreaker
+  //      ("Sort by Column B A-Z, then by Column A Largest-to-Smallest")
   merged.sort((a, b) => {
-    if (b.quantity !== a.quantity) return b.quantity - a.quantity;
-    return naturalSort(a.reference_designator, b.reference_designator);
+    const aZero = a.quantity <= 0;
+    const bZero = b.quantity <= 0;
+    if (aZero !== bZero) return aZero ? 1 : -1;
+    const desCmp = naturalSort(a.reference_designator, b.reference_designator);
+    if (desCmp !== 0) return desCmp;
+    return b.quantity - a.quantity;
   });
 
   // Re-number lines after merge + sort
   merged.forEach((line, idx) => {
     line.line_number = idx + 1;
   });
+
+  // Now patch every MERGED log entry's merged_into to the new line number
+  // (looked up via the pre-sort → ParsedLine map).
+  for (const entry of log) {
+    if (entry.action !== "MERGED" || typeof entry.merged_into !== "number") continue;
+    const ref = refByOldLine.get(entry.merged_into);
+    if (ref) entry.merged_into = ref.line_number;
+  }
 
   return { lines: merged, log, pcb_row: pcbRow, stats };
 }
@@ -347,11 +406,22 @@ function mergeSameMpn(
       }
 
       stats.merged++;
+      // Snapshot the SOURCE row (the one being absorbed) BEFORE we lose
+      // its identity by folding into `existing`. The audit panel renders
+      // every column so production can see what got combined.
       log.push({
         raw_row_index: -1,
         action: "MERGED",
         merged_into: existing.line_number,
         detail: `MPN ${line.mpn}`,
+        merged_row: {
+          quantity: line.quantity,
+          reference_designator: line.reference_designator,
+          cpc: line.cpc,
+          description: line.description,
+          mpn: line.mpn,
+          manufacturer: line.manufacturer,
+        },
       });
     } else {
       mpnMap.set(key, line);

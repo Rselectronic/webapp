@@ -60,11 +60,22 @@ export function UploadForm({
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const customerWrapperRef = useRef<HTMLDivElement>(null);
   const [gmps, setGmps] = useState<Gmp[]>([]);
+  const [gmpsLoading, setGmpsLoading] = useState(false);
   const [gmpId, setGmpId] = useState("");
   const [gmpInput, setGmpInput] = useState("");
   const [gmpDropdownOpen, setGmpDropdownOpen] = useState(false);
   const gmpWrapperRef = useRef<HTMLDivElement>(null);
-  const [file, setFile] = useState<File | null>(null);
+  // Multi-file state. The first entry is the "primary" file used by the
+  // column mapper preview; additional files are parsed by the server using
+  // the same shared column mapping. Each file has its own bom_section tag
+  // (full / smt / th / other) so a single upload can carry SMT + TH halves
+  // of a split board.
+  type BomSection = "full" | "smt" | "th" | "other";
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileSections, setFileSections] = useState<BomSection[]>([]);
+  // Derived: the primary file drives the column mapper preview. Anywhere
+  // the form historically said `file` (the first selected file) still works.
+  const file: File | null = files[0] ?? null;
   const [bomName, setBomName] = useState("");
   const [revision, setRevision] = useState("1");
   const [gerberName, setGerberName] = useState("");
@@ -107,6 +118,32 @@ export function UploadForm({
   } | null>(null);
   const [usingSavedMapping, setUsingSavedMapping] = useState(false);
 
+  // Multi-file column mapping. The live mapper state (columnMapping,
+  // headerRow, allFileRows, etc.) always represents the ACTIVE file. When
+  // the operator switches files we snapshot the live state into this cache
+  // for the old file and restore the new file's cached state (or run
+  // readFilePreview if it hasn't been previewed yet). At submit time we
+  // walk the cache to send per-file mappings to the server.
+  type FileCache = {
+    allRows: (string | number | null)[][];
+    previewHeaders: string[];
+    previewRows: string[][];
+    columnMapping: ColumnMapping;
+    altMpnHeaders: string[];
+    altMfrHeaders: string[];
+    headerRow: number;
+    lastRow: number;
+    sheetNames: string[];
+    activeSheet: string;
+    previewError: string | null;
+    usingSavedMapping: boolean;
+    showMapper: boolean;
+    workbook: XLSX.WorkBook | null;
+    fileExt: string;
+  };
+  const [activeFileIdx, setActiveFileIdx] = useState(0);
+  const perFileCacheRef = useRef<Record<number, FileCache>>({});
+
   // True when launched from a customer/GMP detail page with pre-selection.
   // Locks the customer + GMP fields to a compact read-only display until
   // the operator clicks "Change" to override.
@@ -129,6 +166,7 @@ export function UploadForm({
       }
       setCustomerId(prefilledCustomerId);
 
+      setGmpsLoading(true);
       const [gmpsRes, customerRes] = await Promise.all([
         fetch(`/api/gmps?customer_id=${prefilledCustomerId}`),
         fetch(`/api/customers/${prefilledCustomerId}`),
@@ -141,6 +179,7 @@ export function UploadForm({
         if (cancelled) return;
         setGmps(list);
       }
+      if (!cancelled) setGmpsLoading(false);
       if (customerRes.ok) {
         const data = await customerRes.json();
         if (cancelled) return;
@@ -242,6 +281,7 @@ export function UploadForm({
     setGmpInput("");
     setGmpDropdownOpen(false);
     setGmps([]);
+    setGmpsLoading(true);
     setCustomerBomConfig(null);
 
     // Fetch GMPs + full customer detail in parallel. The customer detail
@@ -255,6 +295,7 @@ export function UploadForm({
       const data = await gmpsRes.json();
       setGmps(data.gmps ?? []);
     }
+    setGmpsLoading(false);
     if (customerRes.ok) {
       const data = await customerRes.json();
       const cfg = data?.bom_config ?? null;
@@ -560,9 +601,21 @@ export function UploadForm({
     applySheetRows(rowsFromSheet(wb, name));
   }
 
-  function handleFileSelected(f: File | null) {
-    setFile(f);
-    setBomName(f ? f.name : "");
+  // Pick a default section tag from a filename so the operator doesn't have
+  // to manually flip the dropdown for obvious cases. Conservative: only
+  // matches "smt" or "th" surrounded by non-word chars; defaults to "full".
+  function guessSectionFromName(name: string): BomSection {
+    const n = name.toLowerCase();
+    if (/(^|[^a-z])smt([^a-z]|$)/.test(n)) return "smt";
+    if (/(^|[^a-z])th([^a-z]|$)/.test(n)) return "th";
+    if (/through[\s_-]?hole/.test(n)) return "th";
+    return "full";
+  }
+
+  // Reset all parse-preview state. Used when the file list goes from
+  // populated → empty so the column mapper UI vanishes cleanly.
+  function resetPreviewState() {
+    setBomName("");
     setShowMapper(false);
     setPreviewHeaders([]);
     setPreviewRows([]);
@@ -574,15 +627,206 @@ export function UploadForm({
     setActiveSheet("");
     setPreviewError(null);
     workbookRef.current = null;
-    if (f) void readFilePreview(f);
   }
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) handleFileSelected(dropped);
-  }, []);
+  // First-file path: clears the list and starts fresh. Mirrors the old
+  // single-file `handleFileSelected` so all the call sites that drop ONE
+  // file still work — including the drop zone before any file is selected.
+  function handleFileSelected(f: File | null) {
+    if (!f) {
+      setFiles([]);
+      setFileSections([]);
+      setActiveFileIdx(0);
+      perFileCacheRef.current = {};
+      resetPreviewState();
+      return;
+    }
+    setFiles([f]);
+    setFileSections([guessSectionFromName(f.name)]);
+    setActiveFileIdx(0);
+    perFileCacheRef.current = {};
+    setBomName(f.name);
+    setShowMapper(false);
+    setPreviewHeaders([]);
+    setPreviewRows([]);
+    setColumnMapping({});
+    setAllFileRows([]);
+    setHeaderRow(1);
+    setLastRow(1);
+    setSheetNames([]);
+    setActiveSheet("");
+    setPreviewError(null);
+    workbookRef.current = null;
+    void readFilePreview(f);
+  }
+
+  // Append additional files (drag-drop of multiple files, or "Add another
+  // file" button after the first is loaded). Does NOT re-run the column
+  // mapper preview — that stays anchored on files[0] since we assume the
+  // split halves use the same template.
+  function handleFilesAdded(newFiles: File[]) {
+    if (newFiles.length === 0) return;
+    // First file ever? Use the single-file path so the preview kicks in.
+    if (files.length === 0) {
+      handleFileSelected(newFiles[0]);
+      // Append the rest as secondary files.
+      const rest = newFiles.slice(1);
+      if (rest.length > 0) {
+        setFiles((prev) => [...prev, ...rest]);
+        setFileSections((prev) => [
+          ...prev,
+          ...rest.map((f) => guessSectionFromName(f.name)),
+        ]);
+      }
+      return;
+    }
+    setFiles((prev) => [...prev, ...newFiles]);
+    setFileSections((prev) => [
+      ...prev,
+      ...newFiles.map((f) => guessSectionFromName(f.name)),
+    ]);
+  }
+
+  function handleFileSectionChange(idx: number, section: BomSection) {
+    setFileSections((prev) =>
+      prev.map((s, i) => (i === idx ? section : s))
+    );
+  }
+
+  // Snapshot the live mapper state (the active file's edits) into the cache.
+  function snapshotActiveToCache() {
+    perFileCacheRef.current[activeFileIdx] = {
+      allRows: allFileRows,
+      previewHeaders,
+      previewRows,
+      columnMapping,
+      altMpnHeaders,
+      altMfrHeaders,
+      headerRow,
+      lastRow,
+      sheetNames,
+      activeSheet,
+      previewError,
+      usingSavedMapping,
+      showMapper,
+      workbook: workbookRef.current,
+      fileExt: fileExtRef.current,
+    };
+  }
+
+  // Restore the live mapper state from a cached snapshot.
+  function restoreFromCache(c: FileCache) {
+    setAllFileRows(c.allRows);
+    setPreviewHeaders(c.previewHeaders);
+    setPreviewRows(c.previewRows);
+    setColumnMapping(c.columnMapping);
+    setAltMpnHeaders(c.altMpnHeaders);
+    setAltMfrHeaders(c.altMfrHeaders);
+    setHeaderRow(c.headerRow);
+    setLastRow(c.lastRow);
+    setSheetNames(c.sheetNames);
+    setActiveSheet(c.activeSheet);
+    setPreviewError(c.previewError);
+    setUsingSavedMapping(c.usingSavedMapping);
+    setShowMapper(c.showMapper);
+    workbookRef.current = c.workbook;
+    fileExtRef.current = c.fileExt;
+  }
+
+  // Switch which file the column mapper is previewing. Caches the OLD
+  // file's edits, restores the NEW file's cached state if present, else
+  // runs readFilePreview for the first time. Per-file mappings are kept in
+  // the cache and submitted independently at upload time, so files with
+  // different templates can have different column mappings.
+  function switchToFile(newIdx: number) {
+    if (newIdx === activeFileIdx) return;
+    if (newIdx < 0 || newIdx >= files.length) return;
+    snapshotActiveToCache();
+    setActiveFileIdx(newIdx);
+    const cached = perFileCacheRef.current[newIdx];
+    if (cached) {
+      restoreFromCache(cached);
+    } else {
+      void readFilePreview(files[newIdx]);
+    }
+  }
+
+  function handleRemoveFile(idx: number) {
+    const remaining = files.filter((_, i) => i !== idx);
+    const remainingSections = fileSections.filter((_, i) => i !== idx);
+    // No files left → wipe preview state entirely.
+    if (remaining.length === 0) {
+      handleFileSelected(null);
+      return;
+    }
+
+    // Snapshot the active file's edits before reshuffling the cache so
+    // nothing is lost if the operator was on the file we're about to drop
+    // (or its sibling whose index shifts).
+    snapshotActiveToCache();
+
+    // Drop the removed file's cache entry and shift higher indices down.
+    const oldCache = perFileCacheRef.current;
+    const newCache: Record<number, FileCache> = {};
+    for (const key of Object.keys(oldCache)) {
+      const k = Number(key);
+      if (k === idx) continue;
+      newCache[k > idx ? k - 1 : k] = oldCache[k];
+    }
+    perFileCacheRef.current = newCache;
+
+    setFiles(remaining);
+    setFileSections(remainingSections);
+
+    // Figure out which file becomes active after the removal:
+    //  - removed the active file → fall back to file 0
+    //  - removed a file before the active one → active index shifts down
+    //  - removed a file after the active one → active index unchanged
+    let newActive: number;
+    if (idx === activeFileIdx) {
+      newActive = 0;
+    } else if (idx < activeFileIdx) {
+      newActive = activeFileIdx - 1;
+    } else {
+      newActive = activeFileIdx;
+    }
+    setActiveFileIdx(newActive);
+
+    // bomName mirrors files[0].name when it's the default — refresh it if
+    // the primary changed.
+    if (idx === 0) setBomName(remaining[0].name);
+
+    // Load the new active file's state — from cache if cached, else from
+    // disk via readFilePreview.
+    const cached = newCache[newActive];
+    if (cached) {
+      restoreFromCache(cached);
+    } else {
+      setShowMapper(false);
+      setPreviewHeaders([]);
+      setPreviewRows([]);
+      setColumnMapping({});
+      setAllFileRows([]);
+      setHeaderRow(1);
+      setLastRow(1);
+      setSheetNames([]);
+      setActiveSheet("");
+      setPreviewError(null);
+      workbookRef.current = null;
+      void readFilePreview(remaining[newActive]);
+    }
+  }
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const dropped = Array.from(e.dataTransfer.files);
+      if (dropped.length > 0) handleFilesAdded(dropped);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [files.length]
+  );
 
   // Filtered GMPs based on input text
   const filteredGmps = gmps.filter((g) => {
@@ -621,7 +865,7 @@ export function UploadForm({
   };
 
   const handleUpload = async () => {
-    if (!file || !customerId) return;
+    if (files.length === 0 || !customerId) return;
     setUploading(true);
     setError(null);
 
@@ -666,40 +910,55 @@ export function UploadForm({
 
       if (!resolvedGmpId) throw new Error("Please enter a GMP number");
 
+      // Snapshot the active file's current mapper state into the cache so
+      // every file has a consistent, up-to-date entry to read from below.
+      snapshotActiveToCache();
+
       const formData = new FormData();
-      formData.append("file", file);
       formData.append("customer_id", customerId);
       formData.append("gmp_id", resolvedGmpId);
       formData.append("revision", revision.trim() || "1");
       if (bomName.trim()) formData.append("bom_name", bomName.trim());
       if (gerberName.trim()) formData.append("gerber_name", gerberName.trim());
       if (gerberRevision.trim()) formData.append("gerber_revision", gerberRevision.trim());
-      // Send the user's column mapping so the server uses it instead of auto-detect
-      if (Object.keys(columnMapping).length > 0) {
-        formData.append("column_mapping", JSON.stringify(columnMapping));
-      }
-      // User-picked alternate MPN / Manufacturer columns from the Column
-      // Mapper UI. Sent as separate keys so the server can bind them to the
-      // alt_mpns / alt_manufacturers slots on the parsed ColumnMapping.
-      if (altMpnHeaders.length > 0) {
-        formData.append("alt_mpn_columns", JSON.stringify(altMpnHeaders));
-      }
-      if (altMfrHeaders.length > 0) {
-        formData.append("alt_manufacturer_columns", JSON.stringify(altMfrHeaders));
-      }
-      // Always send header row and last row (1-indexed) when the column mapper was shown.
-      // This overrides the customer's bom_config header detection (e.g. TLAN has columns_fixed
-      // which tells the server "no header row" — but the file might actually have one).
-      if (showMapper && headerRow >= 1) {
-        formData.append("header_row", String(headerRow));
-        formData.append("last_row", String(lastRow));
-      }
-      // Multi-sheet workbooks: tell the server which sheet to parse.
-      // Without this the server defaults to sheet 0, which is the wrong
-      // tab whenever the BOM lives on sheet 2/3 (Cevians-style files).
-      if (activeSheet) {
-        formData.append("sheet_name", activeSheet);
-      }
+
+      // Walk every file and send its file blob + section tag + (optional)
+      // per-file column mapping. Files the operator never opened in the
+      // preview have no cache entry — the server falls back to the
+      // customer's saved bom_config / AI mapper for those.
+      files.forEach((f, i) => {
+        formData.append(`files[${i}]`, f);
+        formData.append(`sections[${i}]`, fileSections[i] ?? "full");
+
+        const c = perFileCacheRef.current[i];
+        if (!c) return; // Server will auto-resolve this file's mapping.
+
+        if (Object.keys(c.columnMapping).length > 0) {
+          formData.append(
+            `column_mappings[${i}]`,
+            JSON.stringify(c.columnMapping)
+          );
+        }
+        if (c.altMpnHeaders.length > 0) {
+          formData.append(
+            `alt_mpn_columns[${i}]`,
+            JSON.stringify(c.altMpnHeaders)
+          );
+        }
+        if (c.altMfrHeaders.length > 0) {
+          formData.append(
+            `alt_manufacturer_columns[${i}]`,
+            JSON.stringify(c.altMfrHeaders)
+          );
+        }
+        if (c.showMapper && c.headerRow >= 1) {
+          formData.append(`header_rows[${i}]`, String(c.headerRow));
+          formData.append(`last_rows[${i}]`, String(c.lastRow));
+        }
+        if (c.activeSheet) {
+          formData.append(`sheet_names[${i}]`, c.activeSheet);
+        }
+      });
 
       const res = await fetch("/api/bom/parse", { method: "POST", body: formData });
       if (!res.ok) {
@@ -843,21 +1102,34 @@ export function UploadForm({
       </div>
       )}
 
-      {/* GMP — also hidden in locked-context mode since the GMP is already
-          implied by the launch context. */}
-      {!contextLocked && customerId && (
+      {/* GMP — hidden in locked-context mode only when a GMP was actually
+          prefilled. "Add Board" from the customer page passes customer_id
+          without gmp_id, so the operator still needs the input to enter a
+          new GMP name. */}
+      {(!contextLocked || !prefilledGmp) && customerId && (
         <div className="space-y-2">
           <Label>GMP (Board / Product)</Label>
           <div className="relative" ref={gmpWrapperRef}>
             <Input
-              placeholder={gmps.length > 0 ? "Type to search or enter new GMP..." : "e.g. TL265-5040-000-T"}
+              placeholder={
+                gmpsLoading
+                  ? "Loading existing GMPs for this customer..."
+                  : gmps.length > 0
+                    ? "Type to search or enter new GMP..."
+                    : "e.g. TL265-5040-000-T"
+              }
               value={gmpInput}
               onChange={(e) => handleGmpInputChange(e.target.value)}
-              onFocus={() => { if (gmps.length > 0) setGmpDropdownOpen(true); }}
+              onFocus={() => { if (!gmpsLoading && gmps.length > 0) setGmpDropdownOpen(true); }}
               autoComplete="off"
+              disabled={gmpsLoading}
+              className={gmpsLoading ? "pr-9" : undefined}
             />
+            {gmpsLoading && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+            )}
             {/* Dropdown list */}
-            {gmpDropdownOpen && gmps.length > 0 && (
+            {gmpDropdownOpen && !gmpsLoading && gmps.length > 0 && (
               <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
                 <div className="max-h-48 overflow-y-auto p-1">
                   {filteredGmps.length > 0 ? (
@@ -899,53 +1171,175 @@ export function UploadForm({
         </div>
       )}
 
-      {/* File drop zone */}
-      {customerId && gmpReady && (
+      {/* File drop zone — empty state. Once at least one file is selected,
+          this collapses into the per-file list (below) plus an "Add another
+          file" button so the operator can layer in the partner half of a
+          split BOM. */}
+      {customerId && gmpReady && files.length === 0 && (
         <div
           className={`relative rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
             dragOver
               ? "border-blue-400 bg-blue-50"
-              : file
-                ? "border-green-400 bg-green-50"
-                : "border-gray-300 hover:border-gray-400"
+              : "border-gray-300 hover:border-gray-400"
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
         >
-          {file ? (
-            <div className="flex flex-col items-center gap-2">
-              <FileSpreadsheet className="h-10 w-10 text-green-500" />
-              <p className="font-medium">{file.name}</p>
-              <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-              <Button variant="ghost" size="sm" onClick={() => handleFileSelected(null)}>
-                Remove
+          <div className="flex flex-col items-center gap-2">
+            <Upload className="h-10 w-10 text-gray-400" />
+            <p className="font-medium">Drag &amp; drop BOM file(s) here</p>
+            <p className="text-sm text-gray-500">
+              Supports .xlsx, .xls, .csv — drop multiple files at once if the
+              customer splits SMT and TH into separate files.
+            </p>
+            <div>
+              <input
+                id="bom-file-input"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                multiple
+                className="hidden"
+                onChange={(e) =>
+                  handleFilesAdded(Array.from(e.target.files ?? []))
+                }
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() =>
+                  document.getElementById("bom-file-input")?.click()
+                }
+              >
+                Browse files
               </Button>
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2">
-              <Upload className="h-10 w-10 text-gray-400" />
-              <p className="font-medium">Drag & drop a BOM file here</p>
-              <p className="text-sm text-gray-500">Supports .xlsx, .xls, .csv</p>
-              <div>
-                <input
-                  id="bom-file-input"
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={(e) => handleFileSelected(e.target.files?.[0] ?? null)}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  onClick={() => document.getElementById("bom-file-input")?.click()}
+          </div>
+        </div>
+      )}
+
+      {/* Per-file list — shown once at least one file is selected. Each row
+          has the filename, a section dropdown, and a remove button. The
+          "Add another file" trigger sits at the bottom for layering in the
+          partner half. */}
+      {customerId && gmpReady && files.length > 0 && (
+        <div
+          className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
+            dragOver ? "border-blue-400 bg-blue-50" : "border-green-300 bg-green-50/30 dark:bg-green-950/10"
+          }`}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+        >
+          <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+            {files.length} file{files.length === 1 ? "" : "s"} selected
+            {files.length > 1 ? " — will be merged into a single BOM" : ""}
+            {files.length > 1 && (
+              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                · click a file to preview &amp; map it
+              </span>
+            )}
+          </p>
+          <ul className="space-y-2">
+            {files.map((f, i) => {
+              const isActive = i === activeFileIdx;
+              const cached = perFileCacheRef.current[i];
+              const hasMapping =
+                isActive
+                  ? Object.keys(columnMapping).length > 0
+                  : cached
+                    ? Object.keys(cached.columnMapping).length > 0
+                    : false;
+              return (
+                <li
+                  key={`${f.name}-${i}`}
+                  className={`flex items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
+                    isActive
+                      ? "border-blue-400 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/40"
+                      : "border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+                  }`}
                 >
-                  Browse files
-                </Button>
-              </div>
-            </div>
-          )}
+                  <button
+                    type="button"
+                    onClick={() => switchToFile(i)}
+                    disabled={isActive}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+                    aria-label={isActive ? "Currently previewing" : `Switch preview to ${f.name}`}
+                  >
+                    <FileSpreadsheet
+                      className={`h-5 w-5 shrink-0 ${
+                        isActive ? "text-blue-600" : "text-green-600"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{f.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {(f.size / 1024).toFixed(1)} KB
+                        {isActive ? " • previewing now" : hasMapping ? " • mapped" : " • not yet previewed"}
+                      </p>
+                    </div>
+                  </button>
+                  <div className="w-40 shrink-0">
+                    <Select
+                      value={fileSections[i] ?? "full"}
+                      onValueChange={(v) =>
+                        handleFileSectionChange(i, (v ?? "full") as BomSection)
+                      }
+                    >
+                      <SelectTrigger size="sm">
+                        <SelectValue placeholder="Full" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="full">Full board</SelectItem>
+                        <SelectItem value="smt">SMT only</SelectItem>
+                        <SelectItem value="th">Through-Hole only</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    onClick={() => handleRemoveFile(i)}
+                    aria-label={`Remove ${f.name}`}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              id="bom-file-input-more"
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                handleFilesAdded(Array.from(e.target.files ?? []));
+                // Reset the input so the same file can be picked again if
+                // the operator removed and re-added it.
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() =>
+                document.getElementById("bom-file-input-more")?.click()
+              }
+            >
+              <Upload className="mr-2 h-3.5 w-3.5" />
+              Add another file
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Use this when the customer ships TH and SMT as separate files.
+            </span>
+          </div>
         </div>
       )}
 
@@ -1061,6 +1455,14 @@ export function UploadForm({
           adjusting the row number instead of the whole section disappearing).
           When the active sheet is empty we still mount it so the operator
           can see the empty state and switch sheets / fix the file. */}
+      {showMapper && files.length > 1 && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+          Mapping for: <span className="font-mono font-medium">{files[activeFileIdx]?.name}</span>
+          <span className="ml-2 text-xs text-blue-700/80 dark:text-blue-300/70">
+            Each file keeps its own mapping. Click a file above to switch.
+          </span>
+        </div>
+      )}
       {showMapper && (
         <SheetMapper
           allRows={allFileRows}

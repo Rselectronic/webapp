@@ -21,6 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -28,6 +35,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+type BomSection = "full" | "smt" | "th" | "other";
 
 interface EditBomMetaButtonProps {
   bomId: string;
@@ -37,6 +46,7 @@ interface EditBomMetaButtonProps {
     revision: string | null;
     gerber_name: string | null;
     gerber_revision: string | null;
+    bom_section: BomSection | null;
   };
 }
 
@@ -56,12 +66,16 @@ export function EditBomMetaButton({
   const [gerberRevision, setGerberRevision] = useState(
     initial.gerber_revision ?? ""
   );
+  const [bomSection, setBomSection] = useState<BomSection>(
+    initial.bom_section ?? "full"
+  );
 
   function reset() {
     setBomName(initial.bom_name ?? "");
     setRevision(initial.revision ?? "");
     setGerberName(initial.gerber_name ?? "");
     setGerberRevision(initial.gerber_revision ?? "");
+    setBomSection(initial.bom_section ?? "full");
     setError(null);
   }
 
@@ -80,6 +94,7 @@ export function EditBomMetaButton({
           revision: revision,
           gerber_name: gerberName,
           gerber_revision: gerberRevision,
+          bom_section: bomSection,
         }),
       });
       if (!res.ok) {
@@ -172,6 +187,30 @@ export function EditBomMetaButton({
                   className="mt-1"
                 />
               </div>
+            </div>
+
+            <div>
+              <Label htmlFor="bom-meta-section">BOM Section</Label>
+              <Select
+                value={bomSection}
+                onValueChange={(v) =>
+                  setBomSection((v ?? "full") as BomSection)
+                }
+              >
+                <SelectTrigger id="bom-meta-section" className="mt-1">
+                  <SelectValue placeholder="Full" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full">Full board</SelectItem>
+                  <SelectItem value="smt">SMT only</SelectItem>
+                  <SelectItem value="th">Through-Hole only</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Changes the label only. To actually merge an SMT half with a
+                TH half, re-upload the file with the correct section tag.
+              </p>
             </div>
 
             {error ? (

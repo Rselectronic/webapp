@@ -190,6 +190,38 @@ export async function GET(
   }
   const payments: Pay[] = [...realPayments, ...syntheticPayments];
 
+  // Resolve UUIDs embedded in invoice notes (legacy "[BACKDATED ... by user
+  // <uuid>]" stamps) into full names so the PDF description matches the
+  // on-screen ledger and stays readable.
+  const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  const noteUserIds = new Set<string>();
+  for (const inv of invoices) {
+    if (!inv.notes) continue;
+    for (const m of inv.notes.matchAll(UUID_RE)) noteUserIds.add(m[0]);
+  }
+  const userNameById = new Map<string, string>();
+  if (noteUserIds.size > 0) {
+    const { data: userRows } = await supabase
+      .from("users")
+      .select("id, full_name")
+      .in("id", Array.from(noteUserIds));
+    for (const u of (userRows ?? []) as Array<{
+      id: string;
+      full_name: string | null;
+    }>) {
+      if (u.full_name) userNameById.set(u.id, u.full_name);
+    }
+  }
+  function humanizeNote(notes: string | null): string {
+    if (!notes) return "";
+    let out = notes;
+    for (const [id, name] of userNameById) {
+      out = out.replace(new RegExp(`user\\s+${id}`, "gi"), name);
+      out = out.replaceAll(id, name);
+    }
+    return out;
+  }
+
   // Opening balance — pull pre-period invoices with the fields we need
   // to do the same synthesis, so the carried balance doesn't include the
   // total of historic-paid invoices that have no payment rows.
@@ -265,7 +297,7 @@ export async function GET(
       kind: "invoice",
       date: inv.issued_date ?? "",
       reference: inv.invoice_number,
-      description: (inv.notes ?? "Invoice").slice(0, 60),
+      description: (humanizeNote(inv.notes) || "Invoice").slice(0, 60),
       charges: Number(inv.total ?? 0),
       pays: 0,
     });
