@@ -10,12 +10,31 @@ import { toast } from "sonner";
  * Kicks off the new quote wizard: POSTs to /api/quotes/wizard/start for this
  * BOM, gets back a freshly-minted quote_id + quote_number (e.g. TLAN0003 or
  * TLAN0001R1), then navigates to /quotes/wizard/<id>.
+ *
+ * `pendingAiCount` gates the action — when the AI tagged rows that haven't
+ * been approved yet, the button is disabled. Operators must approve every
+ * AI classification before moving to quoting so the cache writes happen
+ * AND so the quote isn't built on guesses no one signed off on.
  */
-export function StartQuoteButton({ bomId }: { bomId: string }) {
+export function StartQuoteButton({
+  bomId,
+  pendingAiCount = 0,
+}: {
+  bomId: string;
+  pendingAiCount?: number;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
+  const blocked = pendingAiCount > 0;
+
   async function start() {
+    if (blocked) {
+      toast.error("Approve AI classifications first", {
+        description: `${pendingAiCount} line${pendingAiCount === 1 ? " is" : "s are"} still tagged "ai". Approve them on the BOM table before starting a quote.`,
+      });
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/quotes/wizard/start", {
@@ -35,9 +54,21 @@ export function StartQuoteButton({ bomId }: { bomId: string }) {
   }
 
   return (
-    <Button size="sm" onClick={start} disabled={loading} className="gap-1.5">
+    <Button
+      size="sm"
+      onClick={start}
+      disabled={loading || blocked}
+      className="gap-1.5"
+      title={
+        blocked
+          ? `${pendingAiCount} AI classification${pendingAiCount === 1 ? "" : "s"} need approval first`
+          : undefined
+      }
+    >
       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-      Start Quote
+      {blocked
+        ? `Approve ${pendingAiCount} AI line${pendingAiCount === 1 ? "" : "s"} first`
+        : "Start Quote"}
     </Button>
   );
 }

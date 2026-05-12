@@ -11,10 +11,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Mail, Phone, User, MapPin, CircuitBoard, Plus, FileText } from "lucide-react";
+import { ArrowLeft, Mail, Phone, MapPin, CircuitBoard, Plus } from "lucide-react";
 import { formatPhone, formatDate, formatCurrency } from "@/lib/utils/format";
 import { CustomerEditToggle } from "@/components/customers/customer-edit-toggle";
 import { DeleteCustomerButton } from "@/components/customers/delete-customer-button";
+import { ContactsTile } from "@/components/customers/contacts-tile";
+import { GmpsList } from "@/components/customers/gmps-list";
 import {
   taxRegionForAddress,
   currencyForAddress,
@@ -90,7 +92,7 @@ export default async function CustomerDetailPage({
       .order("gmp_number", { ascending: true }),
     supabase
       .from("boms")
-      .select("id, gmp_id, file_name, revision, status, component_count, created_at")
+      .select("id, gmp_id, file_name, revision, status, component_count, bom_section, created_at")
       .eq("customer_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -137,6 +139,7 @@ export default async function CustomerDetailPage({
     revision: string | null;
     status: string;
     component_count: number;
+    bom_section: string | null;
     created_at: string;
   };
 
@@ -149,7 +152,9 @@ export default async function CustomerDetailPage({
     ? (paymentTermsResult.data.value as string[])
     : undefined;
 
-  // Group BOMs by GMP
+  // Group BOMs by GMP. Multi-file uploads (SMT + TH split) land on a single
+  // BOM row whose bom_section is "full"; per-file traceability lives on
+  // bom_lines.bom_section, not on a separate boms row.
   const bomsByGmp = new Map<string, BomRow[]>();
   for (const bom of allBoms) {
     const existing = bomsByGmp.get(bom.gmp_id) ?? [];
@@ -205,76 +210,60 @@ export default async function CustomerDetailPage({
         />
       </div>
 
-      {/* Contacts */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Contacts / Sales Reps ({contacts.length || 1})</CardTitle>
-          <CardDescription>People who contact RS for quotations and orders</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {contacts.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {contacts.map((c, i) => (
-                <div key={i} className="rounded-lg border p-4 space-y-2 dark:border-gray-800">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-gray-400" />
-                    <span className="text-sm font-medium">{c.name || "Unnamed"}</span>
-                    {c.is_primary && (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900 dark:text-green-300">Primary</span>
-                    )}
-                  </div>
-                  {c.role && <p className="text-xs text-gray-500">{c.role}</p>}
-                  {c.email && (
-                    <p className="flex items-center gap-1.5 text-sm">
-                      <Mail className="h-3.5 w-3.5 text-gray-400" />
-                      <a href={`mailto:${c.email}`} className="text-blue-600 hover:underline">{c.email}</a>
-                    </p>
-                  )}
-                  {c.phone && (
-                    <p className="flex items-center gap-1.5 text-sm">
-                      <Phone className="h-3.5 w-3.5 text-gray-400" />
-                      {formatPhone(c.phone)}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-sm">{customer.contact_name ?? "Not specified"}</p>
-              {customer.contact_email && (
-                <p className="flex items-center gap-2 text-sm">
-                  <Mail className="h-4 w-4 text-gray-400" />
-                  <a href={`mailto:${customer.contact_email}`} className="text-blue-600 hover:underline">{customer.contact_email}</a>
-                </p>
-              )}
-              {customer.contact_phone && (
-                <p className="flex items-center gap-2 text-sm">
-                  <Phone className="h-4 w-4 text-gray-400" />
-                  {formatPhone(customer.contact_phone)}
-                </p>
-              )}
-            </div>
-          )}
-          <Separator className="my-4" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Payment Terms</p>
-              <p className="text-sm">{customer.payment_terms}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Folder Name</p>
-              <p className="text-sm">
-                {customer.folder_name ? (
-                  <span className="font-mono">{customer.folder_name}</span>
-                ) : (
-                  <span className="text-gray-400">Not specified</span>
+      {/* Contacts + Terms + Folder */}
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card className="md:col-span-1">
+          <CardHeader>
+            <CardTitle>Contacts / Sales Reps ({contacts.length || 1})</CardTitle>
+            <CardDescription>People who contact RS for quotations and orders</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {contacts.length > 0 ? (
+              <ContactsTile contacts={contacts} />
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm">{customer.contact_name ?? "Not specified"}</p>
+                {customer.contact_email && (
+                  <p className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                    <a href={`mailto:${customer.contact_email}`} className="text-blue-600 hover:underline">{customer.contact_email}</a>
+                  </p>
                 )}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                {customer.contact_phone && (
+                  <p className="flex items-center gap-2 text-sm">
+                    <Phone className="h-4 w-4 text-gray-400" />
+                    {formatPhone(customer.contact_phone)}
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Terms</CardTitle>
+            <CardDescription>Default invoice terms for this customer</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-base">{customer.payment_terms}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Folder Name</CardTitle>
+            <CardDescription>Storage folder used for this customer</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {customer.folder_name ? (
+              <p className="text-base font-mono break-all">{customer.folder_name}</p>
+            ) : (
+              <p className="text-base text-gray-400">Not specified</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Addresses */}
       <div className="grid gap-6 md:grid-cols-2">
@@ -417,80 +406,10 @@ export default async function CustomerDetailPage({
           </div>
         </CardHeader>
         <CardContent>
-          {gmps.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              No boards yet. Upload a BOM to create the first board.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {gmps.map((gmp) => {
-                const gmpBoms = bomsByGmp.get(gmp.id) ?? [];
-                return (
-                  <div key={gmp.id} className="rounded-lg border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm font-bold text-blue-600">
-                          {gmp.gmp_number}
-                        </span>
-                        {gmp.board_name && (
-                          <span className="text-sm text-gray-600">{gmp.board_name}</span>
-                        )}
-                        {gmp.revision && (
-                          <span className="text-xs text-gray-400">Rev {gmp.revision}</span>
-                        )}
-                        <Badge variant={gmp.is_active ? "default" : "secondary"} className="text-xs">
-                          {gmp.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </div>
-                      <Link href={`/bom/upload?gmp_id=${gmp.id}`}>
-                        <Button variant="outline" size="sm">
-                          <Plus className="mr-1 h-3 w-3" />
-                          Upload BOM
-                        </Button>
-                      </Link>
-                    </div>
-
-                    {gmpBoms.length > 0 && (
-                      <div className="mt-3 space-y-1">
-                        {gmpBoms.map((bom) => (
-                          <Link
-                            key={bom.id}
-                            href={`/bom/${bom.id}`}
-                            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                          >
-                            <FileText className="h-4 w-4 text-gray-400" />
-                            <span className="flex-1 font-mono text-xs">{bom.file_name}</span>
-                            {bom.revision && (
-                              <span className="text-xs text-gray-400">Rev {bom.revision}</span>
-                            )}
-                            <Badge
-                              variant="secondary"
-                              className={`text-xs ${
-                                bom.status === "parsed"
-                                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                                  : bom.status === "error"
-                                    ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                                    : ""
-                              }`}
-                            >
-                              {bom.status}
-                            </Badge>
-                            <span className="font-mono text-xs text-gray-400">
-                              {bom.component_count} parts
-                            </span>
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-
-                    {gmpBoms.length === 0 && (
-                      <p className="mt-2 text-xs text-gray-400">No BOMs uploaded yet</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <GmpsList
+            gmps={gmps}
+            bomsByGmp={Object.fromEntries(bomsByGmp)}
+          />
         </CardContent>
       </Card>
 

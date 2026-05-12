@@ -84,9 +84,14 @@ export async function DELETE(
 
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const discarded_reason: string | null = body.discarded_reason
-    ? String(body.discarded_reason)
-    : null;
+  const discarded_reason = body.discarded_reason
+    ? String(body.discarded_reason).trim()
+    : "";
+  if (!discarded_reason)
+    return NextResponse.json(
+      { error: "discarded_reason is required" },
+      { status: 400 }
+    );
 
   const { error } = await supabase
     .from("stencils_library")

@@ -30,6 +30,7 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
     tier_inputs,
     board_side,
     pricing_overrides,
+    tier_markup_overrides,
     boards_per_panel,
   } = input;
 
@@ -46,12 +47,12 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
         nre_pcb_fab: 0,
       }));
 
-  const markupMultiplier = 1 + settings.component_markup_pct / 100;
-  const pcbMarkupMultiplier = 1 + settings.pcb_markup_pct / 100;
-  // Assembly margin — applied on labour + machine + setup + programming
-  // costs (i.e. everything in the "assembly" bucket). Default 30%.
-  const assemblyMarkupPct = settings.assembly_markup_pct ?? 30;
-  const assemblyMarkupMultiplier = 1 + assemblyMarkupPct / 100;
+  // Quote-level (settings-applied) defaults. Per-tier overrides re-derive
+  // these multipliers inside the tier loop. The values here are the
+  // fallback used when a tier has no override for a given markup type.
+  const defaultComponentPct = settings.component_markup_pct;
+  const defaultPcbPct = settings.pcb_markup_pct;
+  const defaultAssemblyPct = settings.assembly_markup_pct ?? 30;
   const warnings: string[] = [];
   const tiers: PricingTier[] = [];
 
@@ -160,6 +161,28 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
   for (const tierInput of resolvedTiers) {
     const boardQty = tierInput.qty;
 
+    // Per-tier markup resolution. Each markup type independently falls back
+    // to the quote-level (settings) value when this tier doesn't override.
+    const tierOverride = tier_markup_overrides?.get(boardQty);
+    const componentMarkupPct =
+      tierOverride?.component_markup_pct != null &&
+      Number.isFinite(tierOverride.component_markup_pct)
+        ? tierOverride.component_markup_pct
+        : defaultComponentPct;
+    const pcbMarkupPct =
+      tierOverride?.pcb_markup_pct != null &&
+      Number.isFinite(tierOverride.pcb_markup_pct)
+        ? tierOverride.pcb_markup_pct
+        : defaultPcbPct;
+    const assemblyMarkupPct =
+      tierOverride?.assembly_markup_pct != null &&
+      Number.isFinite(tierOverride.assembly_markup_pct)
+        ? tierOverride.assembly_markup_pct
+        : defaultAssemblyPct;
+    const markupMultiplier = 1 + componentMarkupPct / 100;
+    const pcbMarkupMultiplier = 1 + pcbMarkupPct / 100;
+    const assemblyMarkupMultiplier = 1 + assemblyMarkupPct / 100;
+
     // Per-tier NRE values
     const nreProgramming = tierInput.nre_programming ?? 0;
     const nreStencil = tierInput.nre_stencil ?? 0;
@@ -237,7 +260,7 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
         order_qty: orderQty,
         unit_price: round2(unitPrice),
         unit_price_source: priceSource,
-        markup_pct: settings.component_markup_pct,
+        markup_pct: componentMarkupPct,
         extended_before_markup: round2(lineExtendedBefore),
         extended_after_markup: round2(lineExtendedAfter),
       });
@@ -421,10 +444,10 @@ export function calculateQuote(input: QuoteInput): QuotePricing {
       // Markup breakdown
       component_cost_before_markup: round2(componentCost / markupMultiplier),
       component_markup_amount: round2(componentCost - componentCost / markupMultiplier),
-      component_markup_pct: settings.component_markup_pct,
+      component_markup_pct: componentMarkupPct,
       pcb_cost_before_markup: round2(pcbCost / pcbMarkupMultiplier),
       pcb_markup_amount: round2(pcbCost - pcbCost / pcbMarkupMultiplier),
-      pcb_markup_pct: settings.pcb_markup_pct,
+      pcb_markup_pct: pcbMarkupPct,
       assembly_cost_before_markup: round2(assemblyCostBeforeMarkup),
       assembly_markup_amount: assemblyMarkupAmount,
       assembly_markup_pct: assemblyMarkupPct,

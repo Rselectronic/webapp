@@ -346,13 +346,15 @@ export function StencilsLibraryManager({
 
   async function confirmDiscard() {
     if (!discardTarget) return;
+    const reason = discardReason.trim();
+    if (!reason) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/stencils-library/${discardTarget.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          discarded_reason: discardReason.trim() || null,
+          discarded_reason: reason,
         }),
       });
       if (!res.ok) {
@@ -676,7 +678,7 @@ export function StencilsLibraryManager({
               you add.
             </p>
             <label className="mt-4 block text-xs font-medium text-gray-700 dark:text-gray-300">
-              Reason for discard (optional)
+              Reason for discard <span className="text-red-600">*</span>
             </label>
             <textarea
               value={discardReason}
@@ -701,7 +703,7 @@ export function StencilsLibraryManager({
               <button
                 type="button"
                 onClick={confirmDiscard}
-                disabled={busy}
+                disabled={busy || !discardReason.trim()}
                 className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {busy ? "Discarding…" : "Discard"}

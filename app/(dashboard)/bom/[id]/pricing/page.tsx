@@ -123,7 +123,7 @@ export default async function BomPricingReviewPage({
   const { data: cachedQuotes } = uniqueKeys.length > 0
     ? await supabase
         .from("api_pricing_cache")
-        .select("source, search_key, unit_price, currency, stock_qty, manufacturer, supplier_part_number, price_breaks, lead_time_days, moq, order_multiple, lifecycle_status, ncnr, franchised, warehouse_code, fetched_at")
+        .select("source, search_key, unit_price, currency, stock_qty, manufacturer, supplier_part_number, price_breaks, lead_time_days, moq, order_multiple, lifecycle_status, ncnr, franchised, warehouse_code, fetched_at, supplier_name, quote_ref, valid_until")
         .or(orFilter)
         .gte("expires_at", new Date().toISOString())
     : { data: [] };

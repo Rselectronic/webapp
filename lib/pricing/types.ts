@@ -55,7 +55,15 @@ export interface PricingLine {
   m_code: MCode | null;
   qty_per_board: number;
   unit_price: number | null;
-  price_source: "cache" | "digikey" | "mouser" | "lcsc" | "historical" | "manual" | null;
+  price_source:
+    | "cache"
+    | "digikey"
+    | "mouser"
+    | "lcsc"
+    | "historical"
+    | "manual"
+    | "customer_quote"
+    | null;
   /** Number of through-hole pins for this line. Used for true per-pin TH time. */
   pin_count?: number | null;
 }
@@ -264,6 +272,22 @@ export interface QuoteInput {
    * Shape: bom_line_id → (tier_qty → unit_price_cad).
    */
   pricing_overrides?: Map<string, Map<number, number>>;
+  /**
+   * Per-tier markup percent overrides, from the MarkupOverrideEditor UI.
+   * When present for a given tier_qty, the tier-specific value wins over
+   * `settings.{component,pcb,assembly}_markup_pct`. Each markup type is
+   * independent — a tier can override component but inherit PCB.
+   *
+   * Shape: tier_qty → { component_markup_pct?, pcb_markup_pct?, assembly_markup_pct? }.
+   */
+  tier_markup_overrides?: Map<
+    number,
+    {
+      component_markup_pct?: number;
+      pcb_markup_pct?: number;
+      assembly_markup_pct?: number;
+    }
+  >;
 }
 
 export interface MissingPriceComponent {

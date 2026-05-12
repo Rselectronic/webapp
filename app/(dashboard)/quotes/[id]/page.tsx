@@ -562,10 +562,11 @@ export default async function QuoteDetailPage({
         </Card>
       )}
 
-      {/* Markup Overrides — per-quote override of component + PCB markup */}
+      {/* Markup Overrides — per-tier (component / PCB / assembly) */}
       {tiers.length > 0 && (
         <MarkupOverrideEditor
           quoteId={id}
+          tiers={tiers.map((t) => t.board_qty)}
           globalComponentPct={Number(
             (pricingSettingsRow?.value as { component_markup_pct?: number } | null)
               ?.component_markup_pct ?? 20
@@ -578,23 +579,16 @@ export default async function QuoteDetailPage({
             (pricingSettingsRow?.value as { assembly_markup_pct?: number } | null)
               ?.assembly_markup_pct ?? 30
           )}
-          componentOverride={
-            quote.component_markup_pct_override !== null &&
-            quote.component_markup_pct_override !== undefined
-              ? Number(quote.component_markup_pct_override)
-              : null
-          }
-          pcbOverride={
-            quote.pcb_markup_pct_override !== null &&
-            quote.pcb_markup_pct_override !== undefined
-              ? Number(quote.pcb_markup_pct_override)
-              : null
-          }
-          assemblyOverride={
-            quote.assembly_markup_pct_override !== null &&
-            quote.assembly_markup_pct_override !== undefined
-              ? Number(quote.assembly_markup_pct_override)
-              : null
+          tierOverrides={
+            ((quote.quantities as Record<string, unknown> | null)
+              ?.tier_markup_overrides as Record<
+              string,
+              {
+                component_markup_pct?: number | null;
+                pcb_markup_pct?: number | null;
+                assembly_markup_pct?: number | null;
+              }
+            >) ?? {}
           }
           canEdit={quote.status === "draft" || quote.status === "review"}
         />

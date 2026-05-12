@@ -71,13 +71,31 @@ export async function recomputeQuotePricing(
         .limit(50000)
     : { data: [] };
 
-  // Prefer the lowest non-null unit_price per key, regardless of source.
-  // Key the map by UPPERCASE for case-insensitive lookup.
+  // Pick the winning price per key with source-aware ranking:
+  //   customer_quote  → operator imported a real distributor quote; always wins.
+  //   manual          → operator typed a price for a part the APIs couldn't find.
+  //   anything else   → API-sourced (digikey, mouser, lcsc, ...).
+  // Within the same rank, prefer the lowest unit_price. This matters because
+  // a user-imported quote should not be silently undercut by a cached API
+  // price that may be stale or unfranchised. Key map by UPPERCASE so MPN/CPC
+  // lookups are case-insensitive.
+  const sourceRank = (source: string): number => {
+    if (source === "customer_quote") return 3;
+    if (source === "manual") return 2;
+    return 1;
+  };
   const priceMap = new Map<string, { unit_price: number; source: string }>();
   for (const row of priceRows ?? []) {
     if (row.unit_price === null) continue;
     const key = row.search_key.toUpperCase();
-    if (!priceMap.has(key) || row.unit_price < priceMap.get(key)!.unit_price) {
+    const incoming = sourceRank(row.source);
+    const existing = priceMap.get(key);
+    if (
+      !existing ||
+      incoming > sourceRank(existing.source) ||
+      (incoming === sourceRank(existing.source) &&
+        row.unit_price < existing.unit_price)
+    ) {
       priceMap.set(key, {
         unit_price: row.unit_price,
         source: row.source,
